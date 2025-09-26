@@ -1,0 +1,71 @@
+"""Mock SearchVectara base class for testing without Ansari dependencies.
+
+This mimics the interface from Ansari Backend.
+In production, this would be imported from ansari.tools.
+"""
+
+from abc import ABC, abstractmethod
+from typing import Dict, Any, List, Optional
+
+
+class SearchVectara(ABC):
+    """Base class for Vectara-based search tools.
+
+    This is a mock of the actual SearchVectara from Ansari Backend.
+    Replace with actual import when integrating: from ansari.tools import SearchVectara
+    """
+
+    def __init__(self,
+                 api_key: str,
+                 customer_id: str,
+                 corpus_id: str,
+                 base_url: Optional[str] = None):
+        """Initialize Vectara search tool.
+
+        Args:
+            api_key: Vectara API key
+            customer_id: Vectara customer ID
+            corpus_id: Vectara corpus ID
+            base_url: Optional custom base URL
+        """
+        self.api_key = api_key
+        self.customer_id = customer_id
+        self.corpus_id = corpus_id
+        self.base_url = base_url or "https://api.vectara.io"
+
+    @abstractmethod
+    def run(self, query: str, **kwargs) -> Dict[str, Any]:
+        """Execute search query.
+
+        Args:
+            query: Search query string
+            **kwargs: Additional parameters
+
+        Returns:
+            Raw response from Vectara API
+        """
+        pass
+
+    @abstractmethod
+    def format_as_tool_result(self, results: Dict[str, Any]) -> str:
+        """Format results for tool usage.
+
+        Args:
+            results: Raw API response
+
+        Returns:
+            Formatted string for display
+        """
+        pass
+
+    def format_as_ref_list(self, results: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Format results as reference list.
+
+        Args:
+            results: Raw API response
+
+        Returns:
+            List of reference documents
+        """
+        # Default implementation
+        return results.get("documents", [])
