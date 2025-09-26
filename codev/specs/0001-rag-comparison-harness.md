@@ -9,10 +9,10 @@
 - Decision to adopt new system based on subjective evaluation
 
 ### Desired State
-- Data-driven comparison framework for RAG systems
-- Quantifiable metrics for relevance, latency, and quality
-- Side-by-side evaluation capability
-- Clear migration path if goodmem proves superior
+- Subjective quality comparison framework for RAG systems
+- Human-friendly side-by-side evaluation interface
+- LLM-based comparative analysis using Claude 4.1 Opus
+- Clear, qualitative insights for decision-making
 - Reusable testing infrastructure for future RAG evaluations
 
 ### Stakeholders
@@ -86,7 +86,8 @@ rag-comparison-harness/
 │   ├── core/
 │   │   ├── models.py        # RagResult, ComparisonResult
 │   │   ├── comparator.py    # Comparison logic
-│   │   ├── metrics.py       # Metric calculations
+│   │   ├── evaluator.py     # LLM-based evaluation (Claude 4.1 Opus)
+│   │   ├── display.py       # Human-friendly display formatting
 │   │   └── runner.py        # Batch execution
 │   └── cli/
 │       └── compare_rag.py   # CLI interface
@@ -141,10 +142,11 @@ class RagResult:
 - [ ] Memory usage < 500MB
 - [ ] Graceful handling of API rate limits
 
-### Quality Metrics
-- [ ] Overlap@k metric computed accurately
+### Quality Assessment
+- [ ] Human-readable side-by-side comparison display
+- [ ] Claude 4.1 Opus evaluation integrated
+- [ ] Qualitative comparison summaries generated
 - [ ] Latency tracked per tool (p50, p95)
-- [ ] Rank correlation calculated for shared results
 - [ ] Error rates logged and reported
 
 ### Integration Requirements
@@ -153,19 +155,58 @@ class RagResult:
 - [ ] Environment-based configuration
 - [ ] No hardcoded credentials
 
-## Comparison Metrics
+## Comparison Approach
 
-### Core Metrics (MVP)
-1. **Overlap@k**: Jaccard similarity of top-k results
-2. **Latency**: Response time percentiles (p50, p95)
-3. **Availability**: Success/failure rates
-4. **Result Count**: Number of results returned
+### Primary: Subjective Quality Evaluation
 
-### Advanced Metrics (Future)
-1. **Rank Correlation**: Kendall's tau for shared documents
-2. **nDCG@k**: If relevance labels available
-3. **Source Congruence**: LLM-judged answer quality
-4. **Cost**: API usage costs if available
+#### 1. Human-Friendly Side-by-Side Display
+- **Visual Comparison Interface**:
+  - Two-column layout with synchronized scrolling
+  - Color-coded highlighting of key differences
+  - Expandable/collapsible result sections
+  - Clear typography optimized for readability
+  - Export to HTML for easy sharing
+
+#### 2. LLM-Based Evaluation (Claude 4.1 Opus)
+- **Model**: claude-opus-4-1-20250805 via Anthropic API
+- **Evaluation Process**:
+  - Send both result sets with query context
+  - Request structured comparison analysis
+  - Generate qualitative insights and recommendations
+
+- **Evaluation Dimensions**:
+  - **Relevance**: How well results match query intent
+  - **Completeness**: Coverage and depth of information
+  - **Accuracy**: Factual correctness where verifiable
+  - **Coherence**: Quality and readability of text
+  - **Source Quality**: Credibility and authority of sources
+  - **Unique Strengths**: What each system does better
+
+- **Output Format**:
+  ```json
+  {
+    "summary": "High-level comparison",
+    "winner": "goodmem|mawsuah|tie",
+    "confidence": "high|medium|low",
+    "key_differences": [...],
+    "recommendations": "..."
+  }
+  ```
+
+### Secondary: Objective Metrics
+1. **Performance**:
+   - Latency (p50, p95)
+   - Throughput (queries/second)
+   - Error rates
+
+2. **Coverage**:
+   - Result count
+   - Source diversity
+   - Language coverage
+
+3. **Cost**:
+   - API usage costs
+   - Token consumption (for LLM evaluation)
 
 ## Open Questions
 
@@ -175,9 +216,10 @@ class RagResult:
 3. Is goodmem synchronous or asynchronous?
 
 ### Important (Affects Design)
-1. Should we support custom scoring functions?
-2. How to handle pagination for large result sets?
-3. What constitutes a "fair" comparison between different scoring systems?
+1. What specific comparison prompts work best for Claude 4.1 Opus?
+2. How to handle pagination for large result sets in the display?
+3. Should we store LLM evaluations for later analysis?
+4. What's the optimal result truncation for readable comparisons?
 
 ### Nice-to-Know (Optimization)
 1. Can we cache results for repeated queries?
@@ -193,37 +235,6 @@ class RagResult:
 | Credential Exposure | High | Use env vars, never commit secrets, .env.example |
 | Production Data Access | High | Separate configs, validation checks |
 | Async/Sync Mismatch | Medium | Provide sync wrappers for async operations |
-
-## Implementation Phases
-
-### Phase 1: Core Infrastructure (Day 1)
-- Set up project structure
-- Implement BaseRagTool
-- Create RagResult model
-- Basic configuration management
-
-### Phase 2: Adapters (Day 1-2)
-- Implement MawsuahAdapter
-- Implement GoodmemAdapter
-- Response normalization
-- Error handling
-
-### Phase 3: Comparison Engine (Day 2)
-- Comparator implementation
-- Basic metrics (overlap, latency)
-- Result formatting
-
-### Phase 4: CLI & Output (Day 2-3)
-- CLI interface (like use_tools.py)
-- Side-by-side display
-- JSONL/CSV export
-- Batch processing
-
-### Phase 5: Testing & Documentation (Day 3)
-- Unit tests for adapters
-- Integration tests
-- Documentation
-- Example queries
 
 ## Path to Production
 
@@ -257,6 +268,12 @@ class RagResult:
 - Highlighted async/sync considerations
 - Emphasized configuration isolation needs
 - Validated overall architecture approach
+
+### User Feedback Incorporation
+- **Key Change**: Shifted focus from quantitative metrics (overlap@k) to subjective quality comparison
+- **Added**: Claude 4.1 Opus (claude-opus-4-1-20250805) for LLM-based evaluation
+- **Emphasized**: Human-friendly side-by-side display for easy comparison
+- **Rationale**: Subjective quality assessment provides more actionable insights for RAG system selection
 
 ## Decision
 
