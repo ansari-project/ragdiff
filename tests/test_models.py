@@ -89,13 +89,15 @@ class TestComparisonResult:
         """Test creating ComparisonResult."""
         result = ComparisonResult(
             query="test query",
-            timestamp=datetime.now(),
-            goodmem_results=[
-                RagResult(id="g1", text="result1", score=0.9)
-            ],
-            mawsuah_results=[
-                RagResult(id="m1", text="result2", score=0.8)
-            ]
+            tool_results={
+                "goodmem": [
+                    RagResult(id="g1", text="result1", score=0.9)
+                ],
+                "mawsuah": [
+                    RagResult(id="m1", text="result2", score=0.8)
+                ]
+            },
+            errors={}
         )
         assert result.query == "test query"
         assert len(result.goodmem_results) == 1
@@ -105,28 +107,29 @@ class TestComparisonResult:
         """Test error detection."""
         result = ComparisonResult(
             query="test",
-            timestamp=datetime.now(),
-            goodmem_results=[],
-            mawsuah_results=[]
+            tool_results={"goodmem": [], "mawsuah": []},
+            errors={}
         )
         assert not result.has_errors()
 
-        result.goodmem_error = "API failed"
+        result.errors["goodmem"] = "API failed"
         assert result.has_errors()
 
     def test_get_result_counts(self):
         """Test result counting."""
         result = ComparisonResult(
             query="test",
-            timestamp=datetime.now(),
-            goodmem_results=[
-                RagResult(id=f"g{i}", text=f"text{i}", score=0.9)
-                for i in range(3)
-            ],
-            mawsuah_results=[
-                RagResult(id=f"m{i}", text=f"text{i}", score=0.8)
-                for i in range(5)
-            ]
+            tool_results={
+                "goodmem": [
+                    RagResult(id=f"g{i}", text=f"text{i}", score=0.9)
+                    for i in range(3)
+                ],
+                "mawsuah": [
+                    RagResult(id=f"m{i}", text=f"text{i}", score=0.8)
+                    for i in range(5)
+                ]
+            },
+            errors={}
         )
         counts = result.get_result_counts()
         assert counts["goodmem"] == 3
@@ -134,20 +137,19 @@ class TestComparisonResult:
 
     def test_to_dict(self):
         """Test dictionary conversion."""
+        goodmem_result = RagResult(id="g1", text="result1", score=0.9, latency_ms=150.5)
         result = ComparisonResult(
             query="test query",
-            timestamp=datetime.now(),
-            goodmem_results=[
-                RagResult(id="g1", text="result1", score=0.9)
-            ],
-            mawsuah_results=[],
-            goodmem_latency_ms=150.5,
-            mawsuah_error="Connection failed"
+            tool_results={
+                "goodmem": [goodmem_result],
+                "mawsuah": []
+            },
+            errors={"mawsuah": "Connection failed"}
         )
 
         dict_result = result.to_dict()
         assert dict_result["query"] == "test query"
-        assert dict_result["performance"]["goodmem_latency_ms"] == 150.5
+        assert dict_result["tool_results"]["goodmem"][0]["id"] == "g1"
         assert dict_result["errors"]["mawsuah"] == "Connection failed"
 
 

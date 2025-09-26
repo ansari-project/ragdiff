@@ -75,26 +75,53 @@ class ComparisonResult:
     """Complete comparison result for a query."""
 
     query: str
-    timestamp: datetime
-    goodmem_results: List[RagResult]
-    mawsuah_results: List[RagResult]
+    tool_results: Dict[str, List[RagResult]]
+    errors: Dict[str, str]
+    timestamp: datetime = field(default_factory=datetime.now)
     llm_evaluation: Optional[LLMEvaluation] = None
 
-    # Performance metrics
-    goodmem_latency_ms: Optional[float] = None
-    mawsuah_latency_ms: Optional[float] = None
-    goodmem_error: Optional[str] = None
-    mawsuah_error: Optional[str] = None
+    # Legacy properties for backward compatibility
+    @property
+    def goodmem_results(self) -> List[RagResult]:
+        """Get Goodmem results for backward compatibility."""
+        return self.tool_results.get("goodmem", [])
+
+    @property
+    def mawsuah_results(self) -> List[RagResult]:
+        """Get Mawsuah results for backward compatibility."""
+        return self.tool_results.get("mawsuah", [])
+
+    @property
+    def goodmem_error(self) -> Optional[str]:
+        """Get Goodmem error for backward compatibility."""
+        return self.errors.get("goodmem")
+
+    @property
+    def mawsuah_error(self) -> Optional[str]:
+        """Get Mawsuah error for backward compatibility."""
+        return self.errors.get("mawsuah")
+
+    @property
+    def goodmem_latency_ms(self) -> Optional[float]:
+        """Get Goodmem latency for backward compatibility."""
+        results = self.tool_results.get("goodmem", [])
+        return results[0].latency_ms if results else None
+
+    @property
+    def mawsuah_latency_ms(self) -> Optional[float]:
+        """Get Mawsuah latency for backward compatibility."""
+        results = self.tool_results.get("mawsuah", [])
+        return results[0].latency_ms if results else None
 
     def has_errors(self) -> bool:
-        """Check if either system had errors."""
-        return bool(self.goodmem_error or self.mawsuah_error)
+        """Check if any system had errors."""
+        return bool(self.errors)
 
     def get_result_counts(self) -> Dict[str, int]:
         """Get count of results from each system."""
         return {
-            "goodmem": len(self.goodmem_results),
-            "mawsuah": len(self.mawsuah_results)
+            tool_name: len(results)
+            for tool_name, results in self.tool_results.items()
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -102,35 +129,21 @@ class ComparisonResult:
         return {
             "query": self.query,
             "timestamp": self.timestamp.isoformat(),
-            "goodmem_results": [
-                {
-                    "id": r.id,
-                    "text": r.text,
-                    "score": r.score,
-                    "source": r.source,
-                    "metadata": r.metadata
-                }
-                for r in self.goodmem_results
-            ],
-            "mawsuah_results": [
-                {
-                    "id": r.id,
-                    "text": r.text,
-                    "score": r.score,
-                    "source": r.source,
-                    "metadata": r.metadata
-                }
-                for r in self.mawsuah_results
-            ],
-            "llm_evaluation": self.llm_evaluation.to_dict() if self.llm_evaluation else None,
-            "performance": {
-                "goodmem_latency_ms": self.goodmem_latency_ms,
-                "mawsuah_latency_ms": self.mawsuah_latency_ms
+            "tool_results": {
+                tool_name: [
+                    {
+                        "id": r.id,
+                        "text": r.text,
+                        "score": r.score,
+                        "source": r.source,
+                        "metadata": r.metadata
+                    }
+                    for r in results
+                ]
+                for tool_name, results in self.tool_results.items()
             },
-            "errors": {
-                "goodmem": self.goodmem_error,
-                "mawsuah": self.mawsuah_error
-            }
+            "errors": self.errors,
+            "llm_evaluation": self.llm_evaluation.to_dict() if self.llm_evaluation else None
         }
 
 
