@@ -2,6 +2,9 @@
 .env
 .env.local
 
+# uv
+uv.lock
+
 # Python
 __pycache__/
 *.py[cod]
@@ -10,6 +13,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/

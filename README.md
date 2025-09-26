@@ -14,13 +14,38 @@ A flexible framework for comparing Retrieval-Augmented Generation (RAG) tools si
 
 ## Installation
 
+### Prerequisites
+
+- Python 3.9+
+- [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
+
+To install uv:
+```bash
+# On macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or with Homebrew
+brew install uv
+
+# Or with pip
+pip install uv
+```
+
+### Setup
+
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd tool2
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies with uv
+uv sync --all-extras  # Install all dependencies including dev tools
+
+# Or install only core dependencies
+uv sync
+
+# Or install with goodmem support
+uv sync --extra goodmem
 
 # Copy environment template
 cp .env.example .env
@@ -56,49 +81,49 @@ llm:
 
 ```bash
 # Compare all configured tools
-python -m src compare "What is Islamic inheritance law?"
+uv run python -m src.cli compare "What is Islamic inheritance law?"
 
 # Compare specific tools
-python -m src compare "Your query" --tool mawsuah --tool goodmem
+uv run python -m src.cli compare "Your query" --tool mawsuah --tool goodmem
 
 # Adjust number of results
-python -m src compare "Your query" --top-k 10
+uv run python -m src.cli compare "Your query" --top-k 10
 ```
 
 ### Output Formats
 
 ```bash
 # Default display format (side-by-side)
-python -m src compare "Your query"
+uv run python -m src.cli compare "Your query"
 
 # JSON output
-python -m src compare "Your query" --format json
+uv run python -m src.cli compare "Your query" --format json
 
 # Markdown output
-python -m src compare "Your query" --format markdown
+uv run python -m src.cli compare "Your query" --format markdown
 
 # Summary output
-python -m src compare "Your query" --format summary
+uv run python -m src.cli compare "Your query" --format summary
 
 # Save to file
-python -m src compare "Your query" --output results.json --format json
+uv run python -m src.cli compare "Your query" --output results.json --format json
 ```
 
 ### Other Commands
 
 ```bash
 # List available tools
-python -m src list-tools
+uv run python -m src.cli list-tools
 
 # Validate configuration
-python -m src validate-config
+uv run python -m src.cli validate-config
 
 # Run quick test
-python -m src quick-test
+uv run python -m src.cli quick-test
 
 # Get help
-python -m src --help
-python -m src compare --help
+uv run python -m src.cli --help
+uv run python -m src.cli compare --help
 ```
 
 ## Project Structure
@@ -179,13 +204,13 @@ tools:
 
 ```bash
 # Run all tests
-python -m pytest tests/
+uv run pytest tests/
 
 # Run specific test file
-python -m pytest tests/test_cli.py
+uv run pytest tests/test_cli.py
 
 # Run with coverage
-python -m pytest tests/ --cov=src
+uv run pytest tests/ --cov=src
 ```
 
 ### Code Style
@@ -194,6 +219,17 @@ The project uses:
 - Black for formatting
 - Ruff for linting
 - MyPy for type checking
+
+```bash
+# Format code with Black
+uv run black src/ tests/
+
+# Check linting with Ruff
+uv run ruff check src/ tests/
+
+# Type checking with MyPy
+uv run mypy src/
+```
 
 ## Environment Variables
 
