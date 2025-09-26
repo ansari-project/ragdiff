@@ -18,18 +18,20 @@ class TestConfig:
     def temp_config_file(self):
         """Create temporary configuration file."""
         config_data = {
-            "goodmem": {
-                "name": "goodmem",
-                "api_key_env": "GOODMEM_KEY",
-                "timeout": 30,
-                "default_top_k": 5
-            },
-            "mawsuah": {
-                "name": "mawsuah",
-                "api_key_env": "VECTARA_KEY",
-                "customer_id": "${VECTARA_CUSTOMER}",
-                "corpus_id": "corpus123",
-                "timeout": 45
+            "tools": {
+                "goodmem": {
+                    "name": "goodmem",
+                    "api_key_env": "GOODMEM_KEY",
+                    "timeout": 30,
+                    "default_top_k": 5
+                },
+                "mawsuah": {
+                    "name": "mawsuah",
+                    "api_key_env": "VECTARA_KEY",
+                    "customer_id": "${VECTARA_CUSTOMER}",
+                    "corpus_id": "corpus123",
+                    "timeout": 45
+                }
             },
             "llm": {
                 "model": "claude-opus-4-1",
@@ -63,8 +65,8 @@ class TestConfig:
         """Test loading configuration from file."""
         config = Config(temp_config_file)
         assert config.config_path == temp_config_file
-        assert "goodmem" in config._raw_config
-        assert "mawsuah" in config._raw_config
+        assert "goodmem" in config.tools
+        assert "mawsuah" in config.tools
 
     def test_missing_config_file(self):
         """Test error when config file doesn't exist."""
@@ -133,18 +135,21 @@ class TestConfig:
         assert display["max_text_length"] == 500
         assert display["highlight_differences"] is True
 
-    @patch.dict(os.environ, {"ANTHROPIC_KEY": "test_key"})
+    @patch.dict(os.environ, {"ANTHROPIC_KEY": "test_key", "GOODMEM_KEY": "test_key", "VECTARA_KEY": "test_key"})
     def test_validate_success(self, temp_config_file):
         """Test successful validation."""
         config = Config(temp_config_file)
         config.validate()  # Should not raise
 
+    @patch.dict(os.environ, {"KEY": "test"})
     def test_validate_missing_tool(self):
         """Test validation with missing required tool."""
         config_data = {
-            "goodmem": {
-                "name": "goodmem",
-                "api_key_env": "KEY"
+            "tools": {
+                "goodmem": {
+                    "name": "goodmem",
+                    "api_key_env": "KEY"
+                }
             },
             "llm": {
                 "api_key_env": "ANTHROPIC_KEY"
@@ -166,7 +171,7 @@ class TestConfig:
         finally:
             temp_path.unlink()
 
-    @patch.dict(os.environ, {}, clear=True)
+    @patch.dict(os.environ, {"GOODMEM_KEY": "test", "VECTARA_KEY": "test"}, clear=False)
     def test_validate_missing_llm_key(self, temp_config_file):
         """Test validation with missing LLM API key."""
         config = Config(temp_config_file)

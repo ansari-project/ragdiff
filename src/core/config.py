@@ -98,20 +98,10 @@ class Config:
         Returns:
             ToolConfig object
         """
-        if tool_name not in self._raw_config:
+        if tool_name not in self.tools:
             raise ValueError(f"Unknown tool: {tool_name}")
 
-        tool_dict = self._raw_config[tool_name]
-        return ToolConfig(
-            name=tool_dict.get("name", tool_name),
-            api_key_env=tool_dict.get("api_key_env"),
-            base_url=tool_dict.get("base_url"),
-            corpus_id=tool_dict.get("corpus_id"),
-            customer_id=tool_dict.get("customer_id"),
-            timeout=tool_dict.get("timeout", 30),
-            max_retries=tool_dict.get("max_retries", 3),
-            default_top_k=tool_dict.get("default_top_k", 5)
-        )
+        return self.tools[tool_name]
 
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM configuration.
@@ -145,11 +135,15 @@ class Config:
         """
         # Check required tools
         for tool in ["goodmem", "mawsuah"]:
-            if tool not in self._raw_config:
+            if tool not in self.tools:
                 raise ValueError(f"Missing required tool configuration: {tool}")
 
-            config = self.get_tool_config(tool)
-            config.validate()
+            config = self.tools[tool]
+            # Check API key is set in environment
+            if not os.getenv(config.api_key_env):
+                raise ValueError(
+                    f"Missing required environment variable: {config.api_key_env}"
+                )
 
         # Check LLM config
         llm_config = self.get_llm_config()
