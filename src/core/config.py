@@ -27,6 +27,7 @@ class Config:
         self.config_path = config_path
         self._raw_config = self._load_config()
         self._process_env_vars()
+        self._parse_config()
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from YAML file.
@@ -60,6 +61,33 @@ class Config:
             return obj
 
         self._raw_config = replace_env_vars(self._raw_config)
+
+    def _parse_config(self) -> None:
+        """Parse configuration into structured objects."""
+        # Parse tool configs
+        self.tools = {}
+        tools_config = self._raw_config.get("tools", {})
+        for tool_name, tool_dict in tools_config.items():
+            self.tools[tool_name] = ToolConfig(
+                name=tool_name,
+                api_key_env=tool_dict.get("api_key_env"),
+                base_url=tool_dict.get("base_url"),
+                corpus_id=tool_dict.get("corpus_id"),
+                customer_id=tool_dict.get("customer_id"),
+                timeout=tool_dict.get("timeout", 30),
+                max_retries=tool_dict.get("max_retries", 3),
+                default_top_k=tool_dict.get("default_top_k", 5)
+            )
+
+        # Parse LLM config
+        llm_config = self._raw_config.get("llm", {})
+        if llm_config:
+            self.llm = type('LLMConfig', (), {
+                'model': llm_config.get("model"),
+                'api_key_env': llm_config.get("api_key_env")
+            })()
+        else:
+            self.llm = None
 
     def get_tool_config(self, tool_name: str) -> ToolConfig:
         """Get configuration for a specific tool.
