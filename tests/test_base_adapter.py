@@ -31,7 +31,6 @@ class TestBaseRagTool:
         return ToolConfig(
             name="test_tool",
             api_key_env="TEST_API_KEY",
-            customer_id="test_customer",
             corpus_id="test_corpus",
             base_url="https://test.api.com",
             timeout=30,

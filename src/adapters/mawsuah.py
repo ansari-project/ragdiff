@@ -38,11 +38,10 @@ class MawsuahAdapter(BaseRagTool):
             # Prepare Vectara API request
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-                "customer-id": self.customer_id
+                "Authorization": f"Bearer {self.api_key}"
             }
 
-            # Vectara query API format
+            # Vectara query API format (v2 API doesn't require customer_id)
             request_body = {
                 "query": [
                     {
@@ -50,7 +49,6 @@ class MawsuahAdapter(BaseRagTool):
                         "num_results": top_k,
                         "corpus_key": [
                             {
-                                "customer_id": self.customer_id,
                                 "corpus_id": self.corpus_id
                             }
                         ]

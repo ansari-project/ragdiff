@@ -36,10 +36,11 @@ class BaseRagTool(SearchVectara):
             raise ValueError(f"Missing API key environment variable: {config.api_key_env}")
 
         # Initialize parent with Vectara-compatible parameters
+        # Note: customer_id is no longer required in Vectara v2 API
         super().__init__(
             api_key=api_key,
-            customer_id=config.customer_id or "",
             corpus_id=config.corpus_id or "",
+            customer_id=config.customer_id,  # Optional in v2 API
             base_url=config.base_url
         )
 

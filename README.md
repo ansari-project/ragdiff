@@ -60,7 +60,6 @@ Create a `configs/tools.yaml` file:
 tools:
   mawsuah:
     api_key_env: VECTARA_API_KEY
-    customer_id: ${VECTARA_CUSTOMER_ID}
     corpus_id: ${VECTARA_CORPUS_ID}
     base_url: https://api.vectara.io
     timeout: 30
@@ -236,7 +235,6 @@ uv run mypy src/
 Required environment variables:
 
 - `VECTARA_API_KEY`: For Mawsuah/Vectara access
-- `VECTARA_CUSTOMER_ID`: Vectara customer ID
 - `VECTARA_CORPUS_ID`: Vectara corpus ID
 - `GOODMEM_API_KEY`: For Goodmem access (optional, uses mock if not set)
 - `ANTHROPIC_API_KEY`: For LLM evaluation (optional)

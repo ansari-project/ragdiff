@@ -32,7 +32,6 @@ class TestAdapterFactory:
         """Test creating Mawsuah adapter."""
         tool_config.name = "mawsuah"
         tool_config.api_key_env = "VECTARA_API_KEY"
-        tool_config.customer_id = "test_customer"
         tool_config.corpus_id = "test_corpus"
 
         adapter = create_adapter("mawsuah", tool_config)

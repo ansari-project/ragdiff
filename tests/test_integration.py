@@ -70,7 +70,6 @@ llm:
 tools:
   mawsuah:
     api_key_env: MISSING_KEY
-    customer_id: test_customer
     corpus_id: test_corpus
 
   goodmem:
@@ -114,7 +113,6 @@ llm:
         config = ToolConfig(
             name="mawsuah",
             api_key_env="VECTARA_API_KEY",
-            customer_id="test_customer",
             corpus_id="test_corpus"
         )
         adapter = MawsuahAdapter(config)

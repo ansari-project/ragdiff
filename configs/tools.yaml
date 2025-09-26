@@ -1,42 +1,25 @@
-# Tool Configuration
-# API keys are read from environment variables
+# Example configuration for RAG comparison tool
+# Copy this to tools.yaml and update with your values
 
-goodmem:
-  name: "goodmem"
-  api_key_env: "GOODMEM_API_KEY"
-  base_url: null  # Will use default from goodmem-client
-  timeout: 30
-  max_retries: 3
-  default_top_k: 5
+tools:
+  # Mawsuah/Vectara configuration
+  mawsuah:
+    api_key_env: VECTARA_API_KEY
+    corpus_id: ${VECTARA_CORPUS_ID}
+    base_url: https://api.vectara.io
+    timeout: 30
+    default_top_k: 5
 
-mawsuah:
-  name: "mawsuah"
-  api_key_env: "VECTARA_API_KEY"
-  customer_id: "${VECTARA_CUSTOMER_ID}"
-  corpus_id: "${VECTARA_CORPUS_ID}"
-  base_url: "https://api.vectara.io"
-  timeout: 30
-  max_retries: 3
-  default_top_k: 5
+  # Goodmem configuration
+  goodmem:
+    api_key_env: GOODMEM_API_KEY
+    base_url: ${GOODMEM_BASE_URL}  # Optional, defaults to standard endpoint
+    timeout: 30
+    default_top_k: 5
 
-# LLM Configuration for evaluation
+# LLM evaluation configuration (optional)
 llm:
-  model: "claude-opus-4-1-20250805"
-  api_key_env: "ANTHROPIC_API_KEY"
-  max_tokens: 4000
-  temperature: 0.3  # Lower for more consistent evaluation
-
-# Output Configuration
-output:
-  formats:
-    - "console"  # Rich console display
-    - "html"     # HTML export
-    - "jsonl"    # JSONL for analysis
-  output_dir: "outputs"
-
-# Display Configuration
-display:
-  max_text_length: 500  # Truncate long text in display
-  highlight_differences: true
-  color_scheme: "default"
-  side_by_side_width: 80  # Characters per column
+  model: claude-opus-4-1-20250805
+  api_key_env: ANTHROPIC_API_KEY
+  max_tokens: 4096
+  temperature: 0.7

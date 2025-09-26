@@ -19,7 +19,6 @@ class TestMawsuahAdapter:
         return ToolConfig(
             name="mawsuah",
             api_key_env="VECTARA_API_KEY",
-            customer_id="test_customer",
             corpus_id="test_corpus",
             base_url="https://api.vectara.io",
             timeout=30,
@@ -63,7 +62,6 @@ class TestMawsuahAdapter:
         """Test adapter initialization."""
         adapter = MawsuahAdapter(tool_config)
         assert adapter.name == "mawsuah"
-        assert adapter.customer_id == "test_customer"
         assert adapter.corpus_id == "test_corpus"
         assert "jurisprudence" in adapter.description.lower()
 
@@ -88,12 +86,17 @@ class TestMawsuahAdapter:
         # Check request headers
         headers = call_args[1]["headers"]
         assert headers["Authorization"] == "Bearer test_key"
-        assert headers["customer-id"] == "test_customer"
+        # customer-id header is no longer required in Vectara v2 API
+        assert "customer-id" not in headers
 
         # Check request body
         body = call_args[1]["json"]
         assert body["query"][0]["query"] == "Islamic inheritance law"
         assert body["query"][0]["num_results"] == 3
+        # Verify corpus_key doesn't have customer_id in v2 API
+        corpus_key = body["query"][0]["corpus_key"][0]
+        assert "customer_id" not in corpus_key
+        assert corpus_key["corpus_id"] == "test_corpus"
 
         # Verify results
         assert len(results) == 3  # Summary + 2 results

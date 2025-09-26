@@ -28,7 +28,6 @@ class TestConfig:
                 "mawsuah": {
                     "name": "mawsuah",
                     "api_key_env": "VECTARA_KEY",
-                    "customer_id": "${VECTARA_CUSTOMER}",
                     "corpus_id": "corpus123",
                     "timeout": 45
                 }
@@ -73,20 +72,57 @@ class TestConfig:
         with pytest.raises(FileNotFoundError):
             Config(Path("/nonexistent/config.yaml"))
 
-    @patch.dict(os.environ, {"VECTARA_CUSTOMER": "customer456"})
+    @patch.dict(os.environ, {"VECTARA_CORPUS": "corpus456"})
     def test_env_var_substitution(self, temp_config_file):
         """Test environment variable substitution."""
-        config = Config(temp_config_file)
-        mawsuah_config = config.get_tool_config("mawsuah")
-        assert mawsuah_config.customer_id == "customer456"
+        # First update the config to use env var for corpus_id
+        config_data = {
+            "tools": {
+                "goodmem": {
+                    "name": "goodmem",
+                    "api_key_env": "GOODMEM_KEY",
+                    "timeout": 30,
+                    "default_top_k": 5
+                },
+                "mawsuah": {
+                    "name": "mawsuah",
+                    "api_key_env": "VECTARA_KEY",
+                    "corpus_id": "${VECTARA_CORPUS}",
+                    "timeout": 45
+                }
+            },
+            "llm": {
+                "model": "claude-opus-4-1",
+                "api_key_env": "ANTHROPIC_KEY",
+                "temperature": 0.3
+            }
+        }
+        import tempfile
+        import yaml
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            suffix='.yaml',
+            delete=False
+        ) as f:
+            yaml.dump(config_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            config = Config(temp_path)
+            mawsuah_config = config.get_tool_config("mawsuah")
+            assert mawsuah_config.corpus_id == "corpus456"
+        finally:
+            temp_path.unlink()
 
     def test_env_var_not_set(self, temp_config_file):
         """Test behavior when environment variable is not set."""
         with patch.dict(os.environ, {}, clear=True):
             config = Config(temp_config_file)
             mawsuah_config = config.get_tool_config("mawsuah")
-            # Should keep placeholder if env var not found
-            assert mawsuah_config.customer_id == "${VECTARA_CUSTOMER}"
+            # corpus_id should be present
+            assert mawsuah_config.corpus_id == "corpus123"
 
     def test_get_tool_config(self, temp_config_file):
         """Test getting tool configuration."""

@@ -17,20 +17,20 @@ class SearchVectara(ABC):
 
     def __init__(self,
                  api_key: str,
-                 customer_id: str,
                  corpus_id: str,
+                 customer_id: Optional[str] = None,
                  base_url: Optional[str] = None):
         """Initialize Vectara search tool.
 
         Args:
             api_key: Vectara API key
-            customer_id: Vectara customer ID
             corpus_id: Vectara corpus ID
+            customer_id: Optional Vectara customer ID (not required in v2 API)
             base_url: Optional custom base URL
         """
         self.api_key = api_key
-        self.customer_id = customer_id
         self.corpus_id = corpus_id
+        self.customer_id = customer_id  # Optional in v2 API
         self.base_url = base_url or "https://api.vectara.io"
 
     @abstractmethod
