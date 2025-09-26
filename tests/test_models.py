@@ -53,33 +53,30 @@ class TestLLMEvaluation:
     def test_creation(self):
         """Test creating LLMEvaluation."""
         eval = LLMEvaluation(
-            summary="Goodmem provides better coverage",
-            winner=ComparisonOutcome.GOODMEM_BETTER,
-            confidence="high",
-            key_differences=["Better relevance", "More sources"],
-            recommendations="Use goodmem for production"
+            llm_model="claude-opus-4-1",
+            winner="goodmem",
+            analysis="Goodmem provides better coverage with more relevant results",
+            quality_scores={"goodmem": 9, "mawsuah": 7},
+            metadata={"confidence": "high"}
         )
-        assert eval.winner == ComparisonOutcome.GOODMEM_BETTER
-        assert eval.confidence == "high"
-        assert len(eval.key_differences) == 2
+        assert eval.llm_model == "claude-opus-4-1"
+        assert eval.winner == "goodmem"
+        assert eval.quality_scores["goodmem"] == 9
 
     def test_to_dict(self):
         """Test dictionary conversion."""
         eval = LLMEvaluation(
-            summary="Test summary",
-            winner=ComparisonOutcome.TIE,
-            confidence="medium",
-            key_differences=["diff1"],
-            recommendations="test rec",
-            strengths_goodmem=["strength1"],
-            strengths_mawsuah=["strength2"]
+            llm_model="gpt-4",
+            winner="tie",
+            analysis="Both tools have similar quality",
+            quality_scores={"goodmem": 7, "mawsuah": 7}
         )
 
         result = eval.to_dict()
+        assert result["llm_model"] == "gpt-4"
         assert result["winner"] == "tie"
-        assert result["confidence"] == "medium"
-        assert "strengths_goodmem" in result
-        assert "strengths_mawsuah" in result
+        assert result["analysis"] == "Both tools have similar quality"
+        assert result["quality_scores"]["goodmem"] == 7
 
 
 class TestComparisonResult:

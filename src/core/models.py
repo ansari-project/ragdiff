@@ -43,29 +43,30 @@ class ComparisonOutcome(Enum):
 
 @dataclass
 class LLMEvaluation:
-    """Results from Claude 4.1 Opus evaluation."""
+    """Results from LLM evaluation."""
 
-    summary: str
-    winner: ComparisonOutcome
-    confidence: str  # high, medium, low
-    key_differences: List[str]
-    recommendations: str
+    llm_model: str  # e.g., "claude-opus-4-1"
+    winner: Optional[str] = None  # Tool name that won, or None for tie
+    analysis: str = ""  # Analysis text
+    quality_scores: Dict[str, int] = field(default_factory=dict)  # Tool -> score (0-10)
+    metadata: Dict[str, Any] = field(default_factory=dict)  # Additional metadata
+
+    # Legacy fields for backward compatibility
+    summary: Optional[str] = None
+    confidence: Optional[str] = None  # high, medium, low
+    key_differences: List[str] = field(default_factory=list)
+    recommendations: Optional[str] = None
     raw_response: Optional[str] = None
     evaluation_time_ms: Optional[float] = None
-
-    strengths_goodmem: List[str] = field(default_factory=list)
-    strengths_mawsuah: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            "summary": self.summary,
-            "winner": self.winner.value,
-            "confidence": self.confidence,
-            "key_differences": self.key_differences,
-            "recommendations": self.recommendations,
-            "strengths_goodmem": self.strengths_goodmem,
-            "strengths_mawsuah": self.strengths_mawsuah,
+            "llm_model": self.llm_model,
+            "winner": self.winner,
+            "analysis": self.analysis,
+            "quality_scores": self.quality_scores,
+            "metadata": self.metadata,
             "evaluation_time_ms": self.evaluation_time_ms
         }
 
