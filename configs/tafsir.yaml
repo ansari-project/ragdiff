@@ -1,0 +1,27 @@
+# Tafsir corpus configuration - Quranic commentaries
+
+tools:
+  # Tafsir corpus - Quranic commentaries
+  tafsir:
+    api_key_env: VECTARA_API_KEY
+    corpus_id: ${TAFSIR_VECTARA_CORPUS_KEY}
+    base_url: https://api.vectara.io
+    timeout: 60
+    default_top_k: 10
+
+  # Goodmem configuration
+  goodmem:
+    api_key_env: GOODMEM_API_KEY
+    base_url: ${GOODMEM_BASE_URL}
+    timeout: 60
+    default_top_k: 10
+    # Space IDs from the operational doc
+    space_ids:
+      - efd91f05-87cf-4c4c-a04d-0a970f8d30a7  # Ibn Katheer
+
+# LLM evaluation configuration (optional - not yet implemented)
+llm:
+   model: claude-sonnet-4-5
+   api_key_env: ANTHROPIC_API_KEY
+   max_tokens: 16384
+   temperature: 0.1

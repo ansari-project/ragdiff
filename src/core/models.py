@@ -160,6 +160,7 @@ class ToolConfig:
     timeout: int = 30
     max_retries: int = 3
     default_top_k: int = 5
+    space_ids: Optional[List[str]] = None
 
     def validate(self) -> None:
         """Validate configuration."""

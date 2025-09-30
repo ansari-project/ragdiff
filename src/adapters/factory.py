@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 # Registry of available adapters
 ADAPTER_REGISTRY: Dict[str, Type[BaseRagTool]] = {
     "mawsuah": MawsuahAdapter,
+    "tafsir": MawsuahAdapter,  # Same adapter, different name for clarity
     "goodmem": GoodmemAdapter,
 }
 

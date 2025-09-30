@@ -1,0 +1,27 @@
+# Mawsuah corpus configuration - Islamic jurisprudence encyclopedia
+
+tools:
+  # Mawsuah corpus - Islamic jurisprudence encyclopedia
+  mawsuah:
+    api_key_env: VECTARA_API_KEY
+    corpus_id: ${MAWSUAH_VECTARA_CORPUS_KEY}
+    base_url: https://api.vectara.io
+    timeout: 30
+    default_top_k: 5
+
+  # Goodmem configuration
+  goodmem:
+    api_key_env: GOODMEM_API_KEY
+    base_url: ${GOODMEM_BASE_URL}
+    timeout: 30
+    default_top_k: 5
+    # Space IDs from the operational doc
+    space_ids:
+      - 2d1f3227-8331-46ee-9dc2-d9265bfc79f5  # Mawsuah
+
+# LLM evaluation configuration (optional - not yet implemented)
+# llm:
+#   model: claude-opus-4-1-20250805
+#   api_key_env: ANTHROPIC_API_KEY
+#   max_tokens: 4096
+#   temperature: 0.7

@@ -76,7 +76,8 @@ class Config:
                 customer_id=tool_dict.get("customer_id"),
                 timeout=tool_dict.get("timeout", 30),
                 max_retries=tool_dict.get("max_retries", 3),
-                default_top_k=tool_dict.get("default_top_k", 5)
+                default_top_k=tool_dict.get("default_top_k", 5),
+                space_ids=tool_dict.get("space_ids")
             )
 
         # Parse LLM config
@@ -133,24 +134,22 @@ class Config:
         Raises:
             ValueError: If configuration is invalid
         """
-        # Check required tools
-        for tool in ["goodmem", "mawsuah"]:
-            if tool not in self.tools:
-                raise ValueError(f"Missing required tool configuration: {tool}")
+        # Check that at least one tool is configured
+        if not self.tools:
+            raise ValueError("No tools configured")
 
-            config = self.tools[tool]
+        # Validate each configured tool
+        for tool_name, config in self.tools.items():
             # Check API key is set in environment
             if not os.getenv(config.api_key_env):
                 raise ValueError(
                     f"Missing required environment variable: {config.api_key_env}"
                 )
 
-        # Check LLM config
+        # Check LLM config if present (optional)
         llm_config = self.get_llm_config()
-        if not llm_config.get("api_key_env"):
-            raise ValueError("Missing LLM API key configuration")
-
-        if not os.getenv(llm_config["api_key_env"]):
-            raise ValueError(
-                f"Missing LLM API key environment variable: {llm_config['api_key_env']}"
-            )
+        if llm_config and llm_config.get("api_key_env"):
+            if not os.getenv(llm_config["api_key_env"]):
+                logger.warning(
+                    f"LLM evaluation configured but API key not set: {llm_config['api_key_env']}"
+                )

@@ -13,16 +13,20 @@ logger = logging.getLogger(__name__)
 
 
 class MawsuahAdapter(BaseRagTool):
-    """Adapter for Mawsuah (Vectara) search tool."""
+    """Adapter for Vectara-based search tool (Tafsirs/Mawsuah)."""
 
     def __init__(self, config: ToolConfig):
-        """Initialize Mawsuah adapter.
+        """Initialize Vectara adapter.
 
         Args:
             config: Tool configuration
         """
         super().__init__(config)
-        self.description = "Queries an encyclopedia of Islamic jurisprudence (fiqh)"
+        # Description can be customized based on corpus
+        if "tafsir" in str(self.corpus_id).lower():
+            self.description = "Queries Quranic commentaries (tafsirs)"
+        else:
+            self.description = "Queries an encyclopedia of Islamic jurisprudence (fiqh)"
 
     def search(self, query: str, top_k: int = 5) -> List[RagResult]:
         """Search Mawsuah/Vectara for relevant documents.
@@ -35,30 +39,29 @@ class MawsuahAdapter(BaseRagTool):
             List of normalized RagResult objects
         """
         try:
-            # Prepare Vectara API request
+            # Prepare Vectara v2 API request
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}"
+                "Accept": "application/json",
+                "x-api-key": self.api_key
             }
 
-            # Vectara query API format (v2 API doesn't require customer_id)
+            # Vectara v2 API format
             request_body = {
-                "query": [
-                    {
-                        "query": query,
-                        "num_results": top_k,
-                        "corpus_key": [
-                            {
-                                "corpus_id": self.corpus_id
-                            }
-                        ]
-                    }
-                ]
+                "query": query,
+                "search": {
+                    "corpora": [
+                        {
+                            "corpus_key": self.corpus_id
+                        }
+                    ],
+                    "limit": top_k
+                }
             }
 
             # Make API request
             response = requests.post(
-                f"{self.base_url}/v1/query",
+                f"{self.base_url}/v2/query",
                 headers=headers,
                 json=request_body,
                 timeout=self.timeout
@@ -67,47 +70,47 @@ class MawsuahAdapter(BaseRagTool):
             response.raise_for_status()
             data = response.json()
 
-            # Parse Vectara response
+            # Parse Vectara v2 response
             results = []
-            if "responseSet" in data and len(data["responseSet"]) > 0:
-                response_set = data["responseSet"][0]
+            for i, doc in enumerate(data.get("search_results", [])[:top_k]):
+                # Extract text and metadata
+                text = doc.get("text", "")
+                score = doc.get("score", 0.0)
 
-                for doc in response_set.get("response", [])[:top_k]:
-                    # Extract text from document
-                    text = doc.get("text", "")
+                # Combine part and document metadata
+                metadata = {}
+                if doc.get("part_metadata"):
+                    metadata.update(doc["part_metadata"])
+                if doc.get("document_metadata"):
+                    metadata.update(doc["document_metadata"])
 
-                    # Get metadata
-                    metadata = doc.get("metadata", [])
-                    doc_metadata = {}
-                    for item in metadata:
-                        if isinstance(item, dict):
-                            doc_metadata[item.get("name", "")] = item.get("value", "")
+                # Determine source from metadata
+                source = metadata.get("tafsir", "Tafsir")
+                if metadata.get("surah"):
+                    source = f"{source} - Surah {metadata['surah']}"
 
-                    # Create normalized result
-                    result = RagResult(
-                        id=doc.get("documentIndex", f"doc_{len(results)}"),
-                        text=text,
-                        score=self._normalize_score(doc.get("score", 0.0)),
-                        source=doc_metadata.get("source", "Mawsuah"),
-                        metadata=doc_metadata
+                # Create normalized result
+                result = RagResult(
+                    id=doc.get("document_id", f"doc_{i}"),
+                    text=text,
+                    score=self._normalize_score(score),
+                    source=source,
+                    metadata=metadata
+                )
+                results.append(result)
+
+            # Check for summary in v2 response
+            if data.get("summary"):
+                summary_text = data.get("summary", {}).get("text", "")
+                if summary_text:
+                    summary_result = RagResult(
+                        id="summary",
+                        text=summary_text,
+                        score=1.0,
+                        source="Summary",
+                        metadata={"type": "summary"}
                     )
-                    results.append(result)
-
-                # Add summary if available
-                if response_set.get("summary"):
-                    summary_text = " ".join(
-                        s.get("text", "") for s in response_set.get("summary", [])
-                    )
-                    if summary_text:
-                        # Add summary as first result
-                        summary_result = RagResult(
-                            id="summary",
-                            text=summary_text,
-                            score=1.0,  # Give summary highest score
-                            source="Mawsuah Summary",
-                            metadata={"type": "summary"}
-                        )
-                        results.insert(0, summary_result)
+                    results.insert(0, summary_result)
 
             return results
 
