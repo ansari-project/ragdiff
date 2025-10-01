@@ -2,7 +2,6 @@
 
 import os
 import json
-import time
 import subprocess
 from typing import List, Dict, Any, Optional
 import logging
@@ -123,10 +122,16 @@ class GoodmemAdapter(BaseRagTool):
         # Query all spaces in a single request
         try:
             # Build query parameters - pass all space IDs comma-separated
+            # Retrieve significantly more candidates than we display so the reranker can
+            # re-order a richer pool, then cap the emitted results to `top_k` without
+            # resorting chronologically (we trust the reranker scores).
+            requested_size = max(top_k, top_k * 10)
             params = {
                 "message": query,
                 "spaceIds": ",".join(self.space_ids),
-                "requestedSize": str(top_k),
+                "requestedSize": str(requested_size),
+                "pp_max_results": str(top_k),
+                "pp_chronological_resort": "false",
             }
 
             logger.info(f"Querying all spaces in single request: {params['spaceIds']}")
@@ -151,7 +156,6 @@ class GoodmemAdapter(BaseRagTool):
                 return results
 
             # Parse NDJSON response
-            line_count = 0
             space_names = {
                 "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
                 "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
@@ -160,12 +164,25 @@ class GoodmemAdapter(BaseRagTool):
 
             # Build mapping from memoryId to spaceId
             memory_to_space = {}
+            rerank_result_set_ids = set()
+            current_stage = None
+            encountered_rerank = False
 
             for line in response.text.strip().split('\n'):
                 if line:
-                    line_count += 1
                     try:
                         event = json.loads(line)
+                        boundary = event.get('resultSetBoundary')
+                        if boundary:
+                            stage = boundary.get('stageName')
+                            kind = boundary.get('kind')
+                            result_set_id = boundary.get('resultSetId')
+                            if stage:
+                                current_stage = stage
+                            if stage == 'rerank' and result_set_id:
+                                if kind == 'BEGIN':
+                                    rerank_result_set_ids.add(result_set_id)
+                                    encountered_rerank = True
 
                         # Extract memoryId -> spaceId mapping from memoryDefinition events
                         if event.get('memoryDefinition'):
@@ -174,13 +191,19 @@ class GoodmemAdapter(BaseRagTool):
                             space_id = mem_def.get('spaceId')
                             if memory_id and space_id:
                                 memory_to_space[memory_id] = space_id
-                                logger.debug(f"Mapped memory {memory_id} to space {space_names.get(space_id, space_id)}")
 
                         # Parse events similar to CLI response
                         if event and 'retrievedItem' in event and event['retrievedItem']:
                             item = event['retrievedItem']
-                            if item and 'chunk' in item and item['chunk']:
-                                chunk_ref = item['chunk']
+                            chunk_ref = item.get('chunk', {})
+                            result_set_id = chunk_ref.get('resultSetId')
+
+                            if rerank_result_set_ids:
+                                if result_set_id not in rerank_result_set_ids:
+                                    continue
+                            elif current_stage and current_stage != 'rerank':
+                                continue
+                            if chunk_ref:
                                 chunk = chunk_ref.get('chunk', {})
                                 text = chunk.get('chunkText', '')
                                 score = abs(chunk_ref.get('relevanceScore', 0.5))
@@ -195,14 +218,21 @@ class GoodmemAdapter(BaseRagTool):
                                         text=text,
                                         score=self._normalize_score(score),
                                         source=space_names.get(space_id, "GoodMem"),
-                                        metadata={'space_id': space_id}
+                                        metadata={
+                                            'space_id': space_id,
+                                            'result_set_id': result_set_id,
+                                            'stage': current_stage,
+                                        }
                                     )
                                     results.append(result)
-                                    logger.debug(f"Found result from {space_names.get(space_id, space_id)}: {text[:50]}...")
                     except json.JSONDecodeError:
                         continue
 
-            logger.info(f"Parsed {line_count} lines, found {len(results)} total results")
+            if not encountered_rerank:
+                logger.warning(
+                    "GoodMem stream did not include a rerank stage; returning 0 results from query '%s'",
+                    query,
+                )
 
         except Exception as e:
             logger.warning(f"Failed to search spaces: {e}")
