@@ -2,12 +2,12 @@
 
 tools:
   # Tafsir corpus - Quranic commentaries (temporarily disabled until Vectara key is available)
-  # tafsir:
-  #   api_key_env: VECTARA_API_KEY
-  #   corpus_id: ${TAFSIR_VECTARA_CORPUS_KEY}
-  #   base_url: https://api.vectara.io
-  #   timeout: 60
-  #   default_top_k: 10
+  tafsir:
+    api_key_env: VECTARA_API_KEY
+    corpus_id: ${TAFSIR_VECTARA_CORPUS_KEY}
+    base_url: https://api.vectara.io
+    timeout: 60
+    default_top_k: 10
 
   # Goodmem configuration
   goodmem:
