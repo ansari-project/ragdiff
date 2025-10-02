@@ -698,11 +698,8 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
             display_name = display_names.get(tool_name, tool_name)
             md_lines.append(f"- {display_name}: {score:.1f}/100\n")
 
-        # Analysis snippet (first 200 chars)
-        analysis_snippet = qinfo['analysis'][:200]
-        if len(qinfo['analysis']) > 200:
-            analysis_snippet += "..."
-        md_lines.append(f"\n**Analysis:** {analysis_snippet}\n")
+        # Full analysis (no truncation)
+        md_lines.append(f"\n**Analysis:**\n```\n{qinfo['analysis']}\n```\n")
 
     # Section 2: Common Themes
     md_lines.append("\n---\n\n## 2. Common Themes\n")
