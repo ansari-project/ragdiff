@@ -108,6 +108,48 @@ uv run python -m src.cli compare "Your query" --format summary
 uv run python -m src.cli compare "Your query" --output results.json --format json
 ```
 
+### Batch Comparison with LLM Evaluation
+
+Run multiple queries and get comprehensive analysis:
+
+```bash
+# Basic batch comparison
+uv run python -m src.cli batch inputs/tafsir-test-queries.txt \
+  --config configs/tafsir.yaml \
+  --top-k 10 \
+  --format json
+
+# With LLM evaluation (generates holistic summary)
+uv run python -m src.cli batch inputs/tafsir-test-queries.txt \
+  --config configs/tafsir.yaml \
+  --evaluate \
+  --top-k 10 \
+  --format json
+
+# Custom output directory
+uv run python -m src.cli batch inputs/tafsir-test-queries.txt \
+  --config configs/tafsir.yaml \
+  --evaluate \
+  --output-dir my-results \
+  --format jsonl
+```
+
+The batch command with `--evaluate` generates:
+- Individual query results in JSON/JSONL/CSV format
+- Latency statistics (P50, P95, P99)
+- LLM evaluation summary showing wins and quality scores
+- **Holistic summary** (markdown file) with:
+  - Query-by-query breakdown with winners and scores
+  - Common themes: win distribution, recurring issues
+  - Key differentiators: what makes winner better vs loser weaknesses
+  - Overall verdict with production recommendation
+
+Convert holistic summary to PDF:
+```bash
+# Generate PDF from markdown summary
+python md2pdf.py outputs/holistic_summary_TIMESTAMP.md
+```
+
 ### Other Commands
 
 ```bash
@@ -123,6 +165,7 @@ uv run python -m src.cli quick-test
 # Get help
 uv run python -m src.cli --help
 uv run python -m src.cli compare --help
+uv run python -m src.cli batch --help
 ```
 
 ## Project Structure
