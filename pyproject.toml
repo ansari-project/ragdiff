@@ -31,6 +31,7 @@ dependencies = [
     "anthropic>=0.25.0",
     "requests>=2.31.0",
     "goodmem-client>=1.5.5",
+    "markdown>=3.9",
 ]
 
 [project.optional-dependencies]
