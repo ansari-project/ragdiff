@@ -46,10 +46,7 @@ htmlcov/
 *~
 
 # Output files
-outputs/*.json
-outputs/*.jsonl
-outputs/*.html
-outputs/*.csv
+outputs/
 
 # Temporary files
 tmp/
