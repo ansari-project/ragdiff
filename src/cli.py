@@ -148,15 +148,14 @@ def compare(
             tool_names = list(result.tool_results.keys())
             header = ["query", "timestamp"]
             for tool_name in tool_names:
-                header.extend([f"{tool_name}_count", f"{tool_name}_avg_score", f"{tool_name}_latency_ms"])
+                header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
             writer.writerow(header)
             row = [result.query, result.timestamp.isoformat()]
             for tool_name in tool_names:
                 tool_results = result.tool_results.get(tool_name, [])
                 count = len(tool_results)
-                avg_score = sum(r.score for r in tool_results) / count if count > 0 else 0
                 latency = tool_results[0].latency_ms if tool_results else 0
-                row.extend([count, f"{avg_score:.3f}", f"{latency:.1f}"])
+                row.extend([count, f"{latency:.1f}"])
             writer.writerow(row)
             output = buf.getvalue()
         elif output_format == "markdown":
@@ -349,7 +348,7 @@ def batch(
                 # Header
                 header = ["query", "timestamp"]
                 for tool_name in tool_names:
-                    header.extend([f"{tool_name}_count", f"{tool_name}_avg_score", f"{tool_name}_latency_ms"])
+                    header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
                 if evaluate:
                     header.extend(["llm_winner"] + [f"llm_score_{name}" for name in tool_names])
                 writer.writerow(header)
@@ -360,9 +359,8 @@ def batch(
                     for tool_name in tool_names:
                         tool_results = result.tool_results.get(tool_name, [])
                         count = len(tool_results)
-                        avg_score = sum(r.score for r in tool_results) / count if count > 0 else 0
                         latency = tool_results[0].latency_ms if tool_results else 0
-                        row.extend([count, f"{avg_score:.3f}", f"{latency:.1f}"])
+                        row.extend([count, f"{latency:.1f}"])
 
                     if evaluate and result.llm_evaluation:
                         row.append(result.llm_evaluation.winner or "tie")
@@ -376,6 +374,14 @@ def batch(
 
         # Calculate and display percentile latencies
         _display_batch_latency_stats(results, tool_names)
+
+        # Display LLM evaluation summary if enabled
+        if evaluate:
+            _display_llm_evaluation_summary(results, tool_names)
+
+            # Generate and display holistic summary
+            summary_file = output_path / f"holistic_summary_{timestamp}.md"
+            _generate_and_display_holistic_summary(results, tool_names, summary_file)
 
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/red]")
@@ -527,17 +533,361 @@ def _display_batch_latency_stats(results: List[ComparisonResult], tool_names: Li
     console.print(table)
 
 
+def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
+    """Display summary of LLM evaluations across all queries."""
+    # Map internal names to display names
+    display_names = {
+        'tafsir': 'vectara',
+        'goodmem': 'goodmem'
+    }
+
+    # Collect evaluation data
+    total_scores = {name: 0 for name in tool_names}
+    win_counts = {name: 0 for name in tool_names}
+    tie_count = 0
+    evaluated_count = 0
+
+    for result in results:
+        if result.llm_evaluation:
+            evaluated_count += 1
+
+            # Count wins
+            winner = result.llm_evaluation.winner
+            if winner:
+                winner_lower = winner.lower()
+                matched = False
+                for name in tool_names:
+                    if name.lower() in winner_lower or display_names.get(name, name).lower() in winner_lower:
+                        win_counts[name] += 1
+                        matched = True
+                        break
+                if not matched:
+                    tie_count += 1
+            else:
+                tie_count += 1
+
+            # Sum scores
+            for name in tool_names:
+                score = result.llm_evaluation.quality_scores.get(name, 0)
+                # Normalize to 100 scale if needed
+                if score > 0 and score <= 10:
+                    score *= 10
+                total_scores[name] += score
+
+    if evaluated_count == 0:
+        console.print("\n[yellow]No LLM evaluations available[/yellow]")
+        return
+
+    # Create summary table
+    table = Table(title="LLM Evaluation Summary", show_header=True)
+    table.add_column("Tool", style="cyan")
+    table.add_column("Wins", justify="right", style="bold")
+    table.add_column("Avg Quality", justify="right")
+
+    for tool_name in tool_names:
+        avg_score = total_scores[tool_name] / evaluated_count
+        wins = win_counts[tool_name]
+
+        # Use display name
+        display_name = display_names.get(tool_name, tool_name)
+
+        # Style the row based on performance
+        if wins == max(win_counts.values()) and wins > 0:
+            tool_display = f"🏆 {display_name}"
+        else:
+            tool_display = display_name
+
+        table.add_row(
+            tool_display,
+            f"{wins}/{evaluated_count}",
+            f"{avg_score:.1f}/100"
+        )
+
+    if tie_count > 0:
+        table.add_row("TIE", f"{tie_count}/{evaluated_count}", "-")
+
+    console.print()
+    console.print(table)
+
+    # Determine overall winner
+    max_wins = max(win_counts.values())
+    winners = [display_names.get(name, name) for name, count in win_counts.items() if count == max_wins]
+
+    if len(winners) == 1 and max_wins > 0:
+        console.print(f"\n[bold green]Overall Winner: {winners[0].upper()}[/bold green]")
+    elif len(winners) > 1:
+        console.print(f"\n[yellow]Tie between: {', '.join(winners)}[/yellow]")
+
+
+def _generate_and_display_holistic_summary(results: List, tool_names: List[str], output_file: Path):
+    """Generate comprehensive holistic summary and save to file."""
+    from collections import Counter, defaultdict
+
+    # Map internal names to display names
+    display_names = {
+        'tafsir': 'vectara',
+        'goodmem': 'goodmem'
+    }
+
+    # Collect comprehensive statistics
+    query_details = []
+    issue_tracker = defaultdict(int)
+    theme_tracker = defaultdict(list)
+
+    for result in results:
+        if not result.llm_evaluation:
+            continue
+
+        query_info = {
+            'query': result.query,
+            'winner': result.llm_evaluation.winner,
+            'scores': {},
+            'analysis': result.llm_evaluation.analysis
+        }
+
+        # Extract scores
+        for tool_name in tool_names:
+            score = result.llm_evaluation.quality_scores.get(tool_name, 0)
+            # Normalize to 100 scale if needed
+            if score > 0 and score <= 10:
+                score *= 10
+            query_info['scores'][tool_name] = score
+
+        query_details.append(query_info)
+
+        # Track issues mentioned in analysis
+        analysis_lower = result.llm_evaluation.analysis.lower()
+        if 'duplicate' in analysis_lower or 'repetition' in analysis_lower:
+            issue_tracker['duplicates'] += 1
+            theme_tracker['duplicates'].append(result.query)
+        if 'fragment' in analysis_lower or 'incomplete' in analysis_lower or 'truncat' in analysis_lower:
+            issue_tracker['fragmentation'] += 1
+            theme_tracker['fragmentation'].append(result.query)
+        if 'citation' in analysis_lower:
+            issue_tracker['citation_issues'] += 1
+            theme_tracker['citation_issues'].append(result.query)
+        if 'coherent' in analysis_lower or 'cohesive' in analysis_lower:
+            issue_tracker['coherence_mentioned'] += 1
+            theme_tracker['coherence'].append(result.query)
+
+    # Generate markdown summary
+    md_lines = ["# RAG Comparison: Holistic Summary\n"]
+    md_lines.append(f"**Total Queries Evaluated:** {len(query_details)}\n")
+    md_lines.append(f"**Tools Compared:** {', '.join(display_names.get(n, n) for n in tool_names)}\n")
+    md_lines.append("\n---\n")
+
+    # Section 1: Query-by-Query Breakdown
+    md_lines.append("\n## 1. Query-by-Query Results\n")
+    for i, qinfo in enumerate(query_details, 1):
+        md_lines.append(f"\n### Query {i}: \"{qinfo['query']}\"\n")
+
+        # Winner
+        winner_display = qinfo['winner'] if qinfo['winner'] else 'TIE'
+        if qinfo['winner']:
+            for tool_name in tool_names:
+                winner_lower = qinfo['winner'].lower()
+                if tool_name.lower() in winner_lower or display_names.get(tool_name, tool_name).lower() in winner_lower:
+                    winner_display = f"🏆 {display_names.get(tool_name, tool_name)}"
+                    break
+        md_lines.append(f"**Winner:** {winner_display}\n")
+
+        # Scores
+        md_lines.append("**Quality Scores:**\n")
+        for tool_name in tool_names:
+            score = qinfo['scores'].get(tool_name, 0)
+            display_name = display_names.get(tool_name, tool_name)
+            md_lines.append(f"- {display_name}: {score:.1f}/100\n")
+
+        # Analysis snippet (first 200 chars)
+        analysis_snippet = qinfo['analysis'][:200]
+        if len(qinfo['analysis']) > 200:
+            analysis_snippet += "..."
+        md_lines.append(f"\n**Analysis:** {analysis_snippet}\n")
+
+    # Section 2: Common Themes
+    md_lines.append("\n---\n\n## 2. Common Themes\n")
+
+    # Calculate win distribution
+    win_counts = Counter()
+    for qinfo in query_details:
+        if qinfo['winner']:
+            winner_lower = qinfo['winner'].lower()
+            for tool_name in tool_names:
+                if tool_name.lower() in winner_lower or display_names.get(tool_name, tool_name).lower() in winner_lower:
+                    win_counts[tool_name] += 1
+                    break
+
+    md_lines.append("\n### Win Distribution\n")
+    for tool_name in tool_names:
+        display_name = display_names.get(tool_name, tool_name)
+        wins = win_counts.get(tool_name, 0)
+        percentage = (wins / len(query_details) * 100) if query_details else 0
+        md_lines.append(f"- **{display_name}**: {wins}/{len(query_details)} queries ({percentage:.1f}%)\n")
+
+    # Calculate average scores
+    md_lines.append("\n### Average Quality Scores\n")
+    for tool_name in tool_names:
+        display_name = display_names.get(tool_name, tool_name)
+        avg_score = sum(q['scores'].get(tool_name, 0) for q in query_details) / len(query_details) if query_details else 0
+        md_lines.append(f"- **{display_name}**: {avg_score:.1f}/100\n")
+
+    # Issue frequency
+    if issue_tracker:
+        md_lines.append("\n### Recurring Issues\n")
+        for issue_type, count in sorted(issue_tracker.items(), key=lambda x: x[1], reverse=True):
+            percentage = (count / len(query_details) * 100) if query_details else 0
+            issue_name = issue_type.replace('_', ' ').title()
+            md_lines.append(f"- **{issue_name}**: {count}/{len(query_details)} queries ({percentage:.1f}%)\n")
+            # List affected queries
+            if theme_tracker[issue_type]:
+                affected = theme_tracker[issue_type][:3]  # Show first 3
+                examples = ', '.join(f'"{q}"' for q in affected)
+                md_lines.append(f"  - Examples: {examples}\n")
+
+    # Section 3: Key Differentiators
+    md_lines.append("\n---\n\n## 3. Key Differentiators\n")
+
+    # Determine winner
+    max_wins = max(win_counts.values()) if win_counts else 0
+    overall_winner = None
+    for tool_name, wins in win_counts.items():
+        if wins == max_wins and max_wins > 0:
+            overall_winner = tool_name
+            break
+
+    if overall_winner:
+        winner_display = display_names.get(overall_winner, overall_winner)
+        loser_names = [display_names.get(n, n) for n in tool_names if n != overall_winner]
+        loser_display = loser_names[0] if loser_names else "other tools"
+
+        md_lines.append(f"\n### What makes {winner_display} better?\n")
+
+        # Analyze winning queries for patterns
+        winner_analyses = []
+        for qinfo in query_details:
+            if qinfo['winner']:
+                winner_lower = qinfo['winner'].lower()
+                if overall_winner.lower() in winner_lower or display_names.get(overall_winner, overall_winner).lower() in winner_lower:
+                    winner_analyses.append(qinfo['analysis'].lower())
+
+        # Look for common positive terms in winner
+        positive_terms = {
+            'complete': 0, 'comprehensive': 0, 'coherent': 0, 'cohesive': 0,
+            'structured': 0, 'organized': 0, 'clear': 0, 'relevant': 0,
+            'detailed': 0, 'thorough': 0, 'accurate': 0
+        }
+
+        for analysis in winner_analyses:
+            for term in positive_terms:
+                if term in analysis:
+                    positive_terms[term] += 1
+
+        # Show top 3 positive attributes
+        top_positives = sorted(positive_terms.items(), key=lambda x: x[1], reverse=True)[:3]
+        for term, count in top_positives:
+            if count > 0:
+                percentage = (count / len(winner_analyses) * 100) if winner_analyses else 0
+                md_lines.append(f"- **{term.title()}**: mentioned in {count}/{len(winner_analyses)} winning queries ({percentage:.1f}%)\n")
+
+        md_lines.append(f"\n### What's wrong with {loser_display}?\n")
+
+        # Analyze losing queries for patterns
+        loser_analyses = []
+        for qinfo in query_details:
+            if qinfo['winner']:
+                winner_lower = qinfo['winner'].lower()
+                is_loser = True
+                for tool_name in tool_names:
+                    if tool_name == overall_winner:
+                        continue
+                    if tool_name.lower() in winner_lower or display_names.get(tool_name, tool_name).lower() in winner_lower:
+                        loser_analyses.append(qinfo['analysis'].lower())
+                        break
+
+        # Look for common negative terms
+        negative_terms = {
+            'duplicate': 0, 'repetition': 0, 'fragment': 0, 'incomplete': 0,
+            'truncat': 0, 'disjointed': 0, 'confusing': 0, 'irrelevant': 0
+        }
+
+        for analysis in loser_analyses:
+            for term in negative_terms:
+                if term in analysis:
+                    negative_terms[term] += 1
+
+        # Show top 3 negative attributes
+        top_negatives = sorted(negative_terms.items(), key=lambda x: x[1], reverse=True)[:3]
+        for term, count in top_negatives:
+            if count > 0:
+                percentage = (count / len(query_details) * 100) if query_details else 0
+                md_lines.append(f"- **{term.title()}**: mentioned in {count}/{len(query_details)} queries ({percentage:.1f}%)\n")
+
+    # Section 4: Overall Verdict
+    md_lines.append("\n---\n\n## 4. Overall Verdict\n")
+
+    if overall_winner:
+        winner_display = display_names.get(overall_winner, overall_winner)
+        wins = win_counts.get(overall_winner, 0)
+        win_pct = (wins / len(query_details) * 100) if query_details else 0
+        avg_winner_score = sum(q['scores'].get(overall_winner, 0) for q in query_details) / len(query_details) if query_details else 0
+
+        md_lines.append(f"\n**🏆 Clear Winner: {winner_display.upper()}**\n")
+        md_lines.append(f"\n{winner_display} won {wins} out of {len(query_details)} queries ({win_pct:.1f}%) ")
+        md_lines.append(f"with an average quality score of {avg_winner_score:.1f}/100.\n")
+
+        # Recommendation
+        md_lines.append(f"\n**Recommendation:** Use {winner_display} for production queries based on superior ")
+        md_lines.append("result quality, coherence, and completeness.\n")
+    else:
+        md_lines.append("\n**Result:** No clear winner - further evaluation needed.\n")
+
+    # Write to file
+    summary_content = ''.join(md_lines)
+    output_file.write_text(summary_content)
+
+    # Display in terminal
+    console.print("\n" + "="*80)
+    console.print(Panel.fit(
+        "[bold cyan]Holistic Summary Generated[/bold cyan]",
+        border_style="cyan"
+    ))
+    console.print(f"[green]✓ Full summary saved to: {output_file}[/green]\n")
+
+    # Display condensed version in terminal
+    console.print("[bold]== Quick Summary ==[/bold]\n")
+
+    # Show win counts
+    for tool_name in tool_names:
+        display_name = display_names.get(tool_name, tool_name)
+        wins = win_counts.get(tool_name, 0)
+        percentage = (wins / len(query_details) * 100) if query_details else 0
+        avg_score = sum(q['scores'].get(tool_name, 0) for q in query_details) / len(query_details) if query_details else 0
+
+        if wins == max_wins and max_wins > 0:
+            console.print(f"🏆 [bold green]{display_name}[/bold green]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100")
+        else:
+            console.print(f"   [cyan]{display_name}[/cyan]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100")
+
+    # Show top issues
+    if issue_tracker:
+        console.print("\n[bold]Top Issues:[/bold]")
+        for issue_type, count in sorted(issue_tracker.items(), key=lambda x: x[1], reverse=True)[:3]:
+            percentage = (count / len(query_details) * 100) if query_details else 0
+            issue_name = issue_type.replace('_', ' ').title()
+            console.print(f"  • {issue_name}: {count}/{len(query_details)} queries ({percentage:.1f}%)")
+
+    console.print("\n" + "="*80 + "\n")
+
+
 def _display_stats_table(stats: dict):
     """Display statistics in a table format."""
     table = Table(title="Performance Statistics", show_header=True)
     table.add_column("Tool", style="cyan")
     table.add_column("Results", justify="right")
-    table.add_column("Avg Score", justify="right")
     table.add_column("Latency (ms)", justify="right")
 
     for tool_name in stats.get("tools_compared", []):
         count = stats["result_counts"].get(tool_name, 0)
-        avg_score = stats["average_scores"].get(tool_name, 0)
         latency = stats["latencies_ms"].get(tool_name, "N/A")
 
         if isinstance(latency, float):
@@ -548,7 +898,6 @@ def _display_stats_table(stats: dict):
         table.add_row(
             tool_name,
             str(count),
-            f"{avg_score:.3f}" if avg_score else "N/A",
             latency_str
         )
 
