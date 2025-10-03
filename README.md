@@ -1,6 +1,6 @@
-# RAG Tool Comparison Harness
+# RAGDiff
 
-A flexible framework for comparing Retrieval-Augmented Generation (RAG) tools side-by-side, with support for subjective quality evaluation using LLMs.
+A flexible framework for comparing Retrieval-Augmented Generation (RAG) systems side-by-side, with support for subjective quality evaluation using LLMs.
 
 ## Features
 
@@ -35,8 +35,8 @@ pip install uv
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd tool2
+git clone https://github.com/ansari-project/ragdiff.git
+cd ragdiff
 
 # Install dependencies with uv
 uv sync --all-extras  # Install all dependencies including dev tools
@@ -171,7 +171,7 @@ uv run python -m src.cli batch --help
 ## Project Structure
 
 ```
-tool2/
+ragdiff/
 ├── src/
 │   ├── core/           # Core models and configuration
 │   │   ├── models.py    # Data models (RagResult, ComparisonResult, etc.)

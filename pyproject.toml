@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "rag-comparison-harness"
+name = "ragdiff"
 version = "0.1.0"
-description = "A tool for comparing RAG systems side-by-side with subjective evaluation"
+description = "A flexible framework for comparing RAG systems side-by-side with LLM evaluation"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "Ansari Project"},
 ]
-keywords = ["rag", "comparison", "evaluation", "mawsuah", "goodmem"]
+keywords = ["rag", "comparison", "evaluation", "diff", "llm"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -51,8 +51,8 @@ dev = [
 rag-compare = "src.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/ansari-project/rag-comparison-harness"
-Issues = "https://github.com/ansari-project/rag-comparison-harness/issues"
+Homepage = "https://github.com/ansari-project/ragdiff"
+Issues = "https://github.com/ansari-project/ragdiff/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

@@ -77,7 +77,7 @@
 
 ### Architecture Overview
 ```
-rag-comparison-harness/
+ragdiff/
 ├── src/
 │   ├── adapters/
 │   │   ├── base.py          # BaseRagTool(SearchVectara)
