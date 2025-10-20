@@ -149,6 +149,23 @@ The batch command with `--evaluate` generates:
   - Key differentiators: what makes winner better vs loser weaknesses
   - Overall verdict with production recommendation
 
+**Example: 3-Way Tafsir Comparison (Vectara vs Goodmem vs Agentset)**
+
+```bash
+# Compare all three RAG systems with LLM evaluation
+uv run rag-compare batch inputs/tafsir-test-queries.txt \
+  --config configs/tafsir.yaml \
+  --evaluate \
+  --top-k 10
+```
+
+This runs 6 test queries across Vectara, Goodmem, and Agentset, evaluating:
+- Performance: Latency and response times
+- Quality: LLM-scored relevance and coherence (0-100)
+- Issues: Fragmentation, citations, completeness
+
+Results saved to `outputs/batch_results_TIMESTAMP.jsonl` and `outputs/holistic_summary_TIMESTAMP.md`
+
 Convert holistic summary to PDF:
 ```bash
 # Generate PDF from markdown summary
