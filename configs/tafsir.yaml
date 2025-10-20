@@ -9,15 +9,15 @@ tools:
     timeout: 60
     default_top_k: 10
 
-  # Goodmem configuration
-  goodmem:
-    api_key_env: GOODMEM_API_KEY
-    base_url: ${GOODMEM_BASE_URL}
-    timeout: 60
-    default_top_k: 10
-    # Space IDs from the operational doc
-    space_ids:
-      - efd91f05-87cf-4c4c-a04d-0a970f8d30a7  # Ibn Katheer
+  # Goodmem configuration (commented out - returning 0 results, needs investigation)
+  # goodmem:
+  #   api_key_env: GOODMEM_API_KEY
+  #   base_url: ${GOODMEM_BASE_URL}
+  #   timeout: 60
+  #   default_top_k: 10
+  #   # Space IDs from the operational doc
+  #   space_ids:
+  #     - efd91f05-87cf-4c4c-a04d-0a970f8d30a7  # Ibn Katheer
 
   # Agentset configuration
   agentset:
