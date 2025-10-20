@@ -4,8 +4,8 @@ import pytest
 import os
 from unittest.mock import patch, MagicMock, Mock
 
-from src.ragdiff.adapters.agentset import AgentsetAdapter
-from src.ragdiff.core.models import ToolConfig, RagResult
+from ragdiff.adapters.agentset import AgentsetAdapter
+from ragdiff.core.models import ToolConfig, RagResult
 
 
 class TestAgentsetAdapter:
@@ -54,7 +54,7 @@ class TestAgentsetAdapter:
         "AGENTSET_API_TOKEN": "test_token",
         "AGENTSET_NAMESPACE_ID": "test_namespace"
     })
-    @patch('src.ragdiff.adapters.agentset.Agentset')
+    @patch('ragdiff.adapters.agentset.Agentset')
     def test_initialization(self, mock_agentset_class, tool_config):
         """Test adapter initialization."""
         mock_client = Mock()
@@ -92,7 +92,7 @@ class TestAgentsetAdapter:
         "AGENTSET_API_TOKEN": "test_token",
         "AGENTSET_NAMESPACE_ID": "test_namespace"
     })
-    @patch('src.ragdiff.adapters.agentset.Agentset')
+    @patch('ragdiff.adapters.agentset.Agentset')
     def test_search_success(self, mock_agentset_class, tool_config, mock_search_data):
         """Test successful search."""
         # Setup mock client
@@ -136,7 +136,7 @@ class TestAgentsetAdapter:
         "AGENTSET_API_TOKEN": "test_token",
         "AGENTSET_NAMESPACE_ID": "test_namespace"
     })
-    @patch('src.ragdiff.adapters.agentset.Agentset')
+    @patch('ragdiff.adapters.agentset.Agentset')
     def test_search_empty_results(self, mock_agentset_class, tool_config):
         """Test search with no results."""
         mock_client = Mock()
@@ -154,7 +154,7 @@ class TestAgentsetAdapter:
         "AGENTSET_API_TOKEN": "test_token",
         "AGENTSET_NAMESPACE_ID": "test_namespace"
     })
-    @patch('src.ragdiff.adapters.agentset.Agentset')
+    @patch('ragdiff.adapters.agentset.Agentset')
     def test_search_with_missing_text(self, mock_agentset_class, tool_config):
         """Test search filters out results without text."""
         # Create mock result with no text
@@ -180,7 +180,7 @@ class TestAgentsetAdapter:
         "AGENTSET_API_TOKEN": "test_token",
         "AGENTSET_NAMESPACE_ID": "test_namespace"
     })
-    @patch('src.ragdiff.adapters.agentset.Agentset')
+    @patch('ragdiff.adapters.agentset.Agentset')
     def test_search_without_metadata(self, mock_agentset_class, tool_config):
         """Test search with results that have no metadata."""
         # Create mock result without metadata
@@ -208,7 +208,7 @@ class TestAgentsetAdapter:
         "AGENTSET_API_TOKEN": "test_token",
         "AGENTSET_NAMESPACE_ID": "test_namespace"
     })
-    @patch('src.ragdiff.adapters.agentset.Agentset')
+    @patch('ragdiff.adapters.agentset.Agentset')
     def test_search_api_error(self, mock_agentset_class, tool_config):
         """Test search with API error."""
         mock_client = Mock()
@@ -228,7 +228,7 @@ class TestAgentsetAdapter:
         "AGENTSET_API_TOKEN": "test_token",
         "AGENTSET_NAMESPACE_ID": "test_namespace"
     })
-    @patch('src.ragdiff.adapters.agentset.Agentset')
+    @patch('ragdiff.adapters.agentset.Agentset')
     def test_score_normalization(self, mock_agentset_class, tool_config):
         """Test that scores are properly normalized."""
         # Create mock with high score
