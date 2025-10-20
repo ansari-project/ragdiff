@@ -88,14 +88,18 @@ class AgentsetAdapter(BaseRagTool):
         """
         try:
             # Execute search using Agentset SDK
-            # The SDK returns List[SearchData] directly (not wrapped in .data)
-            search_results: List[SearchData] = self.client.search.execute(
+            # The SDK returns SearchResponse with .data containing List[SearchData]
+            # Note: include_metadata=False to avoid SDK validation errors
+            # The SDK expects all metadata fields but Agentset API returns partial metadata
+            search_response = self.client.search.execute(
                 query=query,
                 top_k=float(top_k),  # Agentset expects float
-                include_metadata=True,
+                include_metadata=False,  # Avoid strict validation errors
                 mode='semantic'  # Use semantic search by default
             )
 
+            # Extract data from response
+            search_results: List[SearchData] = search_response.data
             logger.info(f"Agentset returned {len(search_results)} results for query: {query}")
 
             # Convert SearchData objects to RagResult format

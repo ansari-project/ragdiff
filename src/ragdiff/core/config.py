@@ -74,6 +74,7 @@ class Config:
                 base_url=tool_dict.get("base_url"),
                 corpus_id=tool_dict.get("corpus_id"),
                 customer_id=tool_dict.get("customer_id"),
+                namespace_id_env=tool_dict.get("namespace_id_env"),
                 timeout=tool_dict.get("timeout", 30),
                 max_retries=tool_dict.get("max_retries", 3),
                 default_top_k=tool_dict.get("default_top_k", 5),
