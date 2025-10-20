@@ -7,7 +7,7 @@ name = "ragdiff"
 version = "0.1.0"
 description = "A flexible framework for comparing RAG systems side-by-side with LLM evaluation"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9.2"
 license = {text = "MIT"}
 authors = [
     {name = "Ansari Project"},
@@ -32,6 +32,7 @@ dependencies = [
     "requests>=2.31.0",
     "goodmem-client>=1.5.5",
     "markdown>=3.9",
+    "agentset>=0.4.0",
 ]
 
 [project.optional-dependencies]

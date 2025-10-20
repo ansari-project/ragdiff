@@ -19,9 +19,16 @@ tools:
     space_ids:
       - 2d1f3227-8331-46ee-9dc2-d9265bfc79f5  # Mawsuah
 
-# LLM evaluation configuration (optional - not yet implemented)
-# llm:
-#   model: claude-opus-4-1-20250805
-#   api_key_env: ANTHROPIC_API_KEY
-#   max_tokens: 4096
-#   temperature: 0.7
+  # Agentset configuration
+  agentset:
+    api_key_env: AGENTSET_API_TOKEN
+    namespace_id_env: AGENTSET_NAMESPACE_ID
+    timeout: 30
+    default_top_k: 5
+
+# LLM evaluation configuration (optional - used for quality scoring)
+llm:
+  model: claude-sonnet-4-5
+  api_key_env: ANTHROPIC_API_KEY
+  max_tokens: 16384
+  temperature: 0.1

@@ -69,6 +69,11 @@ tools:
     base_url: https://api.goodmem.ai
     timeout: 30
 
+  agentset:
+    api_key_env: AGENTSET_API_TOKEN
+    namespace_id_env: AGENTSET_NAMESPACE_ID
+    timeout: 60
+
 llm:
   model: claude-opus-4-1-20250805
   api_key_env: ANTHROPIC_API_KEY
@@ -80,32 +85,32 @@ llm:
 
 ```bash
 # Compare all configured tools
-uv run python -m src.cli compare "What is Islamic inheritance law?"
+uv run rag-compare compare "What is Islamic inheritance law?"
 
 # Compare specific tools
-uv run python -m src.cli compare "Your query" --tool mawsuah --tool goodmem
+uv run rag-compare compare "Your query" --tool mawsuah --tool goodmem --tool agentset
 
 # Adjust number of results
-uv run python -m src.cli compare "Your query" --top-k 10
+uv run rag-compare compare "Your query" --top-k 10
 ```
 
 ### Output Formats
 
 ```bash
 # Default display format (side-by-side)
-uv run python -m src.cli compare "Your query"
+uv run rag-compare compare "Your query"
 
 # JSON output
-uv run python -m src.cli compare "Your query" --format json
+uv run rag-compare compare "Your query" --format json
 
 # Markdown output
-uv run python -m src.cli compare "Your query" --format markdown
+uv run rag-compare compare "Your query" --format markdown
 
 # Summary output
-uv run python -m src.cli compare "Your query" --format summary
+uv run rag-compare compare "Your query" --format summary
 
 # Save to file
-uv run python -m src.cli compare "Your query" --output results.json --format json
+uv run rag-compare compare "Your query" --output results.json --format json
 ```
 
 ### Batch Comparison with LLM Evaluation
@@ -114,20 +119,20 @@ Run multiple queries and get comprehensive analysis:
 
 ```bash
 # Basic batch comparison
-uv run python -m src.cli batch inputs/tafsir-test-queries.txt \
+uv run rag-compare batch inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
   --top-k 10 \
   --format json
 
 # With LLM evaluation (generates holistic summary)
-uv run python -m src.cli batch inputs/tafsir-test-queries.txt \
+uv run rag-compare batch inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
   --evaluate \
   --top-k 10 \
   --format json
 
 # Custom output directory
-uv run python -m src.cli batch inputs/tafsir-test-queries.txt \
+uv run rag-compare batch inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
   --evaluate \
   --output-dir my-results \
@@ -154,18 +159,18 @@ python md2pdf.py outputs/holistic_summary_TIMESTAMP.md
 
 ```bash
 # List available tools
-uv run python -m src.cli list-tools
+uv run rag-compare list-tools
 
 # Validate configuration
-uv run python -m src.cli validate-config
+uv run rag-compare validate-config
 
 # Run quick test
-uv run python -m src.cli quick-test
+uv run rag-compare quick-test
 
 # Get help
-uv run python -m src.cli --help
-uv run python -m src.cli compare --help
-uv run python -m src.cli batch --help
+uv run rag-compare --help
+uv run rag-compare compare --help
+uv run rag-compare batch --help
 ```
 
 ## Project Structure
@@ -280,6 +285,8 @@ Required environment variables:
 - `VECTARA_API_KEY`: For Mawsuah/Vectara access
 - `VECTARA_CORPUS_ID`: Vectara corpus ID
 - `GOODMEM_API_KEY`: For Goodmem access (optional, uses mock if not set)
+- `AGENTSET_API_TOKEN`: For Agentset access
+- `AGENTSET_NAMESPACE_ID`: Agentset namespace ID
 - `ANTHROPIC_API_KEY`: For LLM evaluation (optional)
 
 ## License

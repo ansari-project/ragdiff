@@ -19,7 +19,14 @@ tools:
     space_ids:
       - efd91f05-87cf-4c4c-a04d-0a970f8d30a7  # Ibn Katheer
 
-# LLM evaluation configuration (optional - not yet implemented)
+  # Agentset configuration
+  agentset:
+    api_key_env: AGENTSET_API_TOKEN
+    namespace_id_env: AGENTSET_NAMESPACE_ID
+    timeout: 60
+    default_top_k: 10
+
+# LLM evaluation configuration (optional - used for quality scoring)
 llm:
    model: claude-sonnet-4-5
    api_key_env: ANTHROPIC_API_KEY
