@@ -29,11 +29,7 @@ class VectaraAdapter(BaseRagTool):
             config: Tool configuration
         """
         super().__init__(config)
-        # Description can be customized based on corpus
-        if "tafsir" in str(self.corpus_id).lower():
-            self.description = "Queries Quranic commentaries (tafsirs)"
-        else:
-            self.description = "Queries an encyclopedia of Islamic jurisprudence (fiqh)"
+        self.description = "Vectara RAG platform"
 
     def search(self, query: str, top_k: int = 5) -> List[RagResult]:
         """Search Vectara for relevant documents.
