@@ -60,6 +60,7 @@
 ---
 
 ### Phase 2: [Descriptive Name]
+**Duration**: [X days]
 **Dependencies**: Phase 1
 
 [Repeat structure for each phase]
@@ -67,6 +68,7 @@
 ---
 
 ### Phase 3: [Descriptive Name]
+**Duration**: [X days]
 **Dependencies**: Phase 2
 
 [Continue for all phases]
@@ -80,7 +82,8 @@ Phase 1 ──→ Phase 2 ──→ Phase 3
 
 ## Resource Requirements
 ### Development Resources
-- **Engineers**: [Expertise needed]
+- **Engineers**: [Number and expertise needed]
+- **Time Allocation**: [% dedication expected]
 - **Environment**: [Dev/staging requirements]
 
 ### Infrastructure
