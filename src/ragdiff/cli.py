@@ -699,7 +699,7 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
             md_lines.append(f"- {display_name}: {score:.1f}/100\n")
 
         # Full analysis (no truncation)
-        md_lines.append(f"\n**Analysis:**\n```\n{qinfo['analysis']}\n```\n")
+        md_lines.append(f"\n**Analysis:**\n\n{qinfo['analysis']}\n")
 
     # Section 2: Common Themes
     md_lines.append("\n---\n\n## 2. Common Themes\n")
