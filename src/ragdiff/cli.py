@@ -169,16 +169,16 @@ def compare(
             buf = StringIO()
             writer = csv.writer(buf)
             tool_names = list(result.tool_results.keys())
-            header = ["query", "timestamp"]
+            header: List[str] = ["query", "timestamp"]
             for tool_name in tool_names:
                 header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
             writer.writerow(header)
-            row = [result.query, result.timestamp.isoformat()]
+            row: List[str] = [result.query, result.timestamp.isoformat()]
             for tool_name in tool_names:
                 tool_results = result.tool_results.get(tool_name, [])
                 count = len(tool_results)
                 latency = tool_results[0].latency_ms if tool_results else 0
-                row.extend([count, f"{latency:.1f}"])
+                row.extend([str(count), f"{latency:.1f}"])
             writer.writerow(row)
             output = buf.getvalue()
         elif output_format == "markdown":
@@ -402,7 +402,7 @@ def batch(
             with open(output_file, "w", newline="") as f:
                 writer = csv.writer(f)
                 # Header
-                header = ["query", "timestamp"]
+                header: List[str] = ["query", "timestamp"]
                 for tool_name in tool_names:
                     header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
                 if evaluate:
@@ -413,19 +413,20 @@ def batch(
 
                 # Data rows
                 for result in results:
-                    row = [result.query, result.timestamp.isoformat()]
+                    row: List[str] = [result.query, result.timestamp.isoformat()]
                     for tool_name in tool_names:
                         tool_results = result.tool_results.get(tool_name, [])
                         count = len(tool_results)
                         latency = tool_results[0].latency_ms if tool_results else 0
-                        row.extend([count, f"{latency:.1f}"])
+                        row.extend([str(count), f"{latency:.1f}"])
 
                     if evaluate and result.llm_evaluation:
                         row.append(result.llm_evaluation.winner or "tie")
                         for tool_name in tool_names:
-                            row.append(
-                                result.llm_evaluation.quality_scores.get(tool_name, "")
+                            score = result.llm_evaluation.quality_scores.get(
+                                tool_name, ""
                             )
+                            row.append(str(score) if score else "")
 
                     writer.writerow(row)
 
@@ -463,7 +464,7 @@ def quick_test(
     # Run comparison with minimal settings
     compare(
         query=query,
-        tools=None,
+        tools=[],
         top_k=2,
         config_file=config_file,
         output_format="summary",
@@ -553,7 +554,9 @@ def _display_batch_latency_stats(
     import statistics
 
     # Collect latencies per tool
-    latencies_by_tool = {tool_name: [] for tool_name in tool_names}
+    latencies_by_tool: dict[str, List[float]] = {
+        tool_name: [] for tool_name in tool_names
+    }
 
     for result in results:
         for tool_name in tool_names:
@@ -608,8 +611,8 @@ def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
     display_names = {"tafsir": "vectara", "goodmem": "goodmem"}
 
     # Collect evaluation data
-    total_scores = {name: 0 for name in tool_names}
-    win_counts = {name: 0 for name in tool_names}
+    total_scores: dict[str, float] = {name: 0.0 for name in tool_names}
+    win_counts: dict[str, int] = {name: 0 for name in tool_names}
     tie_count = 0
     evaluated_count = 0
 
@@ -701,8 +704,8 @@ def _generate_and_display_holistic_summary(
 
     # Collect comprehensive statistics
     query_details = []
-    issue_tracker = defaultdict(int)
-    theme_tracker = defaultdict(list)
+    issue_tracker: dict[str, int] = defaultdict(int)
+    theme_tracker: dict[str, List[str]] = defaultdict(list)
 
     for result in results:
         if not result.llm_evaluation:
@@ -784,7 +787,7 @@ def _generate_and_display_holistic_summary(
     md_lines.append("\n---\n\n## 2. Common Themes\n")
 
     # Calculate win distribution
-    win_counts = Counter()
+    win_counts: Counter[str] = Counter()
     for qinfo in query_details:
         if qinfo["winner"]:
             winner_lower = qinfo["winner"].lower()

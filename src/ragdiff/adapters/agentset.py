@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import List
+from typing import Any, List, Optional
 
 from agentset import Agentset
 from agentset.models.searchop import SearchData
@@ -67,7 +67,7 @@ class AgentsetAdapter(BaseRagTool):
         # Store credentials for BaseRagTool compatibility
         self.api_key = api_token
         self.corpus_id = namespace_id  # Use namespace as corpus equivalent
-        self.base_url = getattr(config, "base_url", None)
+        self.base_url = getattr(config, "base_url", None) or ""
         self.customer_id = None  # Not used by Agentset
 
         # Parse adapter-specific options
@@ -104,8 +104,14 @@ class AgentsetAdapter(BaseRagTool):
                 mode="semantic",  # Use semantic search by default
             )
 
-            # Extract data from response
-            search_results: List[SearchData] = search_response.data
+            # Extract data from response - the SDK returns a list directly
+            if hasattr(search_response, "data") and isinstance(
+                search_response.data, list
+            ):
+                search_results: List[SearchData] = search_response.data
+            else:
+                search_results = []
+
             logger.info(
                 f"Agentset returned {len(search_results)} results for query: {query}"
             )
@@ -124,26 +130,28 @@ class AgentsetAdapter(BaseRagTool):
 
                 # Build source from metadata
                 source = "Agentset"
-                metadata_dict = {}
+                metadata_dict: dict[str, Any] = {}
 
                 if search_data.metadata:
                     # Extract filename as source
                     source = search_data.metadata.filename or "Agentset"
 
-                    # Build metadata dictionary
-                    metadata_dict = {
-                        "filename": search_data.metadata.filename,
-                        "filetype": search_data.metadata.filetype,
-                        "file_directory": search_data.metadata.file_directory,
-                    }
+                    # Build metadata dictionary with correct types
+                    metadata_dict["filename"] = search_data.metadata.filename
+                    metadata_dict["filetype"] = search_data.metadata.filetype
+                    metadata_dict["file_directory"] = search_data.metadata.file_directory
 
                     # Add optional metadata fields if present
                     if search_data.metadata.sequence_number is not None:
-                        metadata_dict["sequence_number"] = (
+                        metadata_dict["sequence_number"] = str(
                             search_data.metadata.sequence_number
                         )
                     if search_data.metadata.languages:
-                        metadata_dict["languages"] = search_data.metadata.languages
+                        metadata_dict["languages"] = (
+                            search_data.metadata.languages
+                            if isinstance(search_data.metadata.languages, str)
+                            else str(search_data.metadata.languages)
+                        )
 
                 # Add document ID to metadata
                 metadata_dict["document_id"] = search_data.id

@@ -17,15 +17,15 @@ repos:
       - id: ruff
         args: [--fix]  # Auto-fix without blocking
 
-  # Type checking with MyPy (disabled for now due to existing type issues)
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.13.0
-  #   hooks:
-  #     - id: mypy
-  #       additional_dependencies:
-  #         - types-pyyaml
-  #         - types-requests
-  #       args: [--ignore-missing-imports]
+  # Type checking with MyPy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-pyyaml
+          - types-requests
+        args: [--ignore-missing-imports]
 
   # Run tests with pytest
   - repo: local

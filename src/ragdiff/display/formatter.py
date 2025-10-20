@@ -29,20 +29,22 @@ class ComparisonFormatter:
         Returns:
             Formatted string for display
         """
-        output = []
+        output: List[str] = []
         output.append(self._format_header(result))
-        output.append(self._format_errors(result))
+        errors_section = self._format_errors(result)
+        if errors_section:
+            output.append(errors_section)
         output.append(self._format_results_comparison(result))
         output.append(self._format_performance(result))
 
         if result.llm_evaluation:
             output.append(self._format_llm_evaluation(result))
 
-        return "\n".join(filter(None, output))
+        return "\n".join(output)
 
     def _format_header(self, result: ComparisonResult) -> str:
         """Format header section."""
-        lines = [
+        lines: List[str] = [
             "=" * self.width,
             "RAG TOOL COMPARISON RESULTS",
             "=" * self.width,
@@ -138,6 +140,9 @@ class ComparisonFormatter:
     def _format_llm_evaluation(self, result: ComparisonResult) -> str:
         """Format LLM evaluation section."""
         eval_data = result.llm_evaluation
+        if eval_data is None:
+            return ""
+
         lines = [
             "",
             "-" * self.width,

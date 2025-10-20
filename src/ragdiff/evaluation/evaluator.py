@@ -59,7 +59,12 @@ class LLMEvaluator:
             )
 
             # Parse response
-            analysis_text = response.content[0].text
+            # Extract text from content blocks
+            analysis_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    analysis_text = block.text
+                    break
             evaluation = self._parse_evaluation(analysis_text, result)
 
             # Add metadata

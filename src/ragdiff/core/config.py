@@ -1,5 +1,6 @@
 """Configuration management for the RAG comparison harness."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -8,6 +9,8 @@ import yaml
 from dotenv import load_dotenv
 
 from .models import ToolConfig
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -40,7 +43,8 @@ class Config:
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
 
         with open(self.config_path) as f:
-            return yaml.safe_load(f)
+            config = yaml.safe_load(f)
+            return config if isinstance(config, dict) else {}
 
     def _process_env_vars(self) -> None:
         """Process environment variable references in config."""
@@ -121,7 +125,8 @@ class Config:
         Returns:
             LLM configuration dictionary
         """
-        return self._raw_config.get("llm", {})
+        result = self._raw_config.get("llm", {})
+        return result if isinstance(result, dict) else {}
 
     def get_output_config(self) -> Dict[str, Any]:
         """Get output configuration.
@@ -129,7 +134,8 @@ class Config:
         Returns:
             Output configuration dictionary
         """
-        return self._raw_config.get("output", {})
+        result = self._raw_config.get("output", {})
+        return result if isinstance(result, dict) else {}
 
     def get_display_config(self) -> Dict[str, Any]:
         """Get display configuration.
@@ -137,7 +143,8 @@ class Config:
         Returns:
             Display configuration dictionary
         """
-        return self._raw_config.get("display", {})
+        result = self._raw_config.get("display", {})
+        return result if isinstance(result, dict) else {}
 
     def validate(self) -> None:
         """Validate the configuration.

@@ -1,6 +1,5 @@
 """Tests for data models."""
 
-
 import pytest
 
 from src.core.models import (

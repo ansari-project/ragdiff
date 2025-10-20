@@ -23,12 +23,16 @@ try:
     from goodmem_client.streaming import MemoryStreamClient
 
     GOODMEM_AVAILABLE = True
+    ApiClient_type = ApiClient
+    Configuration_type = Configuration
+    MemoryStreamClient_type = MemoryStreamClient
+    ApiException_type = ApiException
 except ImportError:
     GOODMEM_AVAILABLE = False
-    ApiClient = None
-    Configuration = None
-    MemoryStreamClient = None
-    ApiException = None
+    ApiClient_type = None  # type: ignore
+    Configuration_type = None  # type: ignore
+    MemoryStreamClient_type = None  # type: ignore
+    ApiException_type = None  # type: ignore
     logger.warning("goodmem-client not installed. Using mock implementation.")
 
 
@@ -74,10 +78,10 @@ class GoodmemAdapter(BaseRagTool):
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize GoodMem client: {e}")
-                self.stream_client = None
+                self.stream_client = None  # type: ignore
                 self.space_ids = []
         else:
-            self.stream_client = None
+            self.stream_client = None  # type: ignore
             # Still use configured space_ids even in mock mode
             self.space_ids = getattr(config, "space_ids", None) or [
                 "efd91f05-87cf-4c4c-a04d-0a970f8d30a7",  # Ibn Katheer
@@ -118,7 +122,7 @@ class GoodmemAdapter(BaseRagTool):
         Returns:
             List of RagResult objects
         """
-        results = []
+        results: List[RagResult] = []
 
         logger.info(f"Searching {len(self.space_ids)} Goodmem spaces: {self.space_ids}")
 
@@ -428,7 +432,7 @@ class GoodmemAdapter(BaseRagTool):
         Returns:
             List of normalized RagResult objects
         """
-        results = []
+        results: List[RagResult] = []
 
         try:
             # The batch response should contain results for our single query

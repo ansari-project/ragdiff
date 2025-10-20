@@ -70,4 +70,5 @@ class SearchVectara(ABC):
             List of reference documents
         """
         # Default implementation
-        return results.get("documents", [])
+        documents = results.get("documents", [])
+        return documents if isinstance(documents, list) else []

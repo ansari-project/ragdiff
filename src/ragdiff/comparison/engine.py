@@ -42,8 +42,8 @@ class ComparisonEngine:
         logger.info(f"Running comparison for query: '{query}' with top_k={top_k}")
 
         # Initialize result container
-        tool_results = {}
-        errors = {}
+        tool_results: Dict[str, List[RagResult]] = {}
+        errors: Dict[str, str] = {}
 
         # Run searches
         if parallel:
@@ -177,7 +177,7 @@ class ComparisonEngine:
         Returns:
             Dictionary with summary statistics
         """
-        stats = {
+        stats: Dict[str, Any] = {
             "query": result.query,
             "tools_compared": list(result.tool_results.keys()),
             "tools_with_errors": list(result.errors.keys()),
