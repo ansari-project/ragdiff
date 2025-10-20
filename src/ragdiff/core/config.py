@@ -71,6 +71,8 @@ class Config:
             self.tools[tool_name] = ToolConfig(
                 name=tool_name,
                 api_key_env=tool_dict.get("api_key_env"),
+                adapter=tool_dict.get("adapter"),  # Optional: which adapter class to use
+                options=tool_dict.get("options"),  # Optional: custom adapter options
                 base_url=tool_dict.get("base_url"),
                 corpus_id=tool_dict.get("corpus_id"),
                 customer_id=tool_dict.get("customer_id"),

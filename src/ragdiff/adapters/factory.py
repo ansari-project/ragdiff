@@ -25,23 +25,28 @@ def create_adapter(tool_name: str, config: ToolConfig) -> BaseRagTool:
     """Create a RAG tool adapter.
 
     Args:
-        tool_name: Name of the tool
+        tool_name: Name of the tool (display name from YAML key)
         config: Tool configuration
 
     Returns:
         Initialized adapter instance
 
     Raises:
-        ValueError: If tool_name is not registered
+        ValueError: If adapter is not registered
     """
-    if tool_name not in ADAPTER_REGISTRY:
+    # Use config.adapter field if available, otherwise default to tool_name
+    # This enables variants like "agentset-rerank" and "agentset-no-rerank"
+    # to both use the "agentset" adapter class
+    adapter_name = config.adapter or tool_name
+
+    if adapter_name not in ADAPTER_REGISTRY:
         available = ", ".join(ADAPTER_REGISTRY.keys())
         raise ValueError(
-            f"Unknown tool: {tool_name}. Available tools: {available}"
+            f"Unknown adapter: {adapter_name}. Available adapters: {available}"
         )
 
-    adapter_class = ADAPTER_REGISTRY[tool_name]
-    logger.info(f"Creating adapter for {tool_name}")
+    adapter_class = ADAPTER_REGISTRY[adapter_name]
+    logger.info(f"Creating {adapter_name} adapter for tool '{tool_name}'")
 
     try:
         adapter = adapter_class(config)

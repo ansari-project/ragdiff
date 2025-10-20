@@ -80,6 +80,75 @@ llm:
   api_key_env: ANTHROPIC_API_KEY
 ```
 
+### Adapter Variants
+
+RAGDiff supports adapter variants, allowing you to compare different configurations of the same RAG tool. This is useful for A/B testing different settings (e.g., reranking on vs off) without code changes.
+
+**Configuration Format:**
+
+```yaml
+tools:
+  # Variant 1: Agentset with reranking enabled
+  agentset-rerank-on:
+    adapter: agentset           # Which adapter class to use
+    api_key_env: AGENTSET_API_TOKEN
+    namespace_id_env: AGENTSET_NAMESPACE_ID
+    options:                    # Custom adapter-specific options
+      rerank: true
+    timeout: 60
+    default_top_k: 10
+
+  # Variant 2: Agentset with reranking disabled
+  agentset-rerank-off:
+    adapter: agentset           # Same adapter, different config
+    api_key_env: AGENTSET_API_TOKEN
+    namespace_id_env: AGENTSET_NAMESPACE_ID
+    options:
+      rerank: false
+    timeout: 60
+    default_top_k: 10
+
+  # Variant 3: Vectara with different corpus
+  tafsir-corpus:
+    adapter: vectara            # Use vectara adapter
+    api_key_env: VECTARA_API_KEY
+    corpus_id: tafsir_v1
+    timeout: 30
+
+  mawsuah-corpus:
+    adapter: vectara            # Same adapter, different corpus
+    api_key_env: VECTARA_API_KEY
+    corpus_id: mawsuah_v1
+    timeout: 30
+```
+
+**Key Concepts:**
+
+- **YAML key**: Becomes the display name in results (e.g., `agentset-rerank-on`)
+- **adapter field**: Specifies which adapter class to use (defaults to YAML key if omitted)
+- **options dict**: Custom configuration passed to the adapter
+
+**Usage Example:**
+
+```bash
+# Compare two agentset variants
+uv run rag-compare compare "Your query" \
+  --tool agentset-rerank-on \
+  --tool agentset-rerank-off \
+  --config configs/my-variants.yaml
+```
+
+**Backward Compatibility:**
+
+Existing configurations without the `adapter` field continue to work. The adapter name defaults to the YAML key:
+
+```yaml
+# This still works - adapter defaults to "vectara"
+vectara:
+  api_key_env: VECTARA_API_KEY
+  corpus_id: my_corpus
+```
+
 ## Usage
 
 ### Basic Comparison

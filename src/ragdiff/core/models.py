@@ -154,6 +154,8 @@ class ToolConfig:
 
     name: str
     api_key_env: str
+    adapter: Optional[str] = None  # Which adapter class to use (defaults to name)
+    options: Optional[Dict[str, Any]] = None  # Custom adapter-specific options
     base_url: Optional[str] = None
     corpus_id: Optional[str] = None
     customer_id: Optional[str] = None

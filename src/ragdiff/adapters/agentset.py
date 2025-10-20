@@ -73,6 +73,12 @@ class AgentsetAdapter(BaseRagTool):
         self.base_url = getattr(config, 'base_url', None)
         self.customer_id = None  # Not used by Agentset
 
+        # Parse adapter-specific options
+        self.rerank = True  # Default to True
+        if config.options:
+            self.rerank = config.options.get('rerank', True)
+            logger.info(f"Agentset rerank option set to: {self.rerank}")
+
     def search(self, query: str, top_k: int = 5) -> List[RagResult]:
         """Search Agentset for relevant documents.
 
@@ -91,6 +97,9 @@ class AgentsetAdapter(BaseRagTool):
             # The SDK returns SearchResponse with .data containing List[SearchData]
             # Note: include_metadata=False to avoid SDK validation errors
             # The SDK expects all metadata fields but Agentset API returns partial metadata
+
+            # TODO: Add rerank parameter once Agentset SDK support is verified
+            # If supported, add: rerank=self.rerank to the execute() call below
             search_response = self.client.search.execute(
                 query=query,
                 top_k=float(top_k),  # Agentset expects float
