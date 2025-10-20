@@ -15,8 +15,9 @@ logger = logging.getLogger(__name__)
 class LLMEvaluator:
     """Uses Claude to provide qualitative evaluation of RAG results."""
 
-    # Map internal tool names to display names
-    DISPLAY_NAMES = {"tafsir": "vectara", "goodmem": "goodmem"}
+    # Map internal tool names to display names (if needed)
+    # Empty dict means tool names are used as-is
+    DISPLAY_NAMES: dict[str, str] = {}
 
     def __init__(
         self, model: str = "claude-sonnet-4-20250514", api_key: Optional[str] = None
