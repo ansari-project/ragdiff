@@ -50,6 +50,7 @@ outputs/
 
 # Temporary files
 tmp/
+.claude-task
 
 # OS
 .DS_Store
