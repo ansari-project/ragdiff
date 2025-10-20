@@ -4,7 +4,7 @@ from typing import Dict, Type, List
 import logging
 
 from .base import BaseRagTool
-from .mawsuah import MawsuahAdapter
+from .vectara import VectaraAdapter
 from .goodmem import GoodmemAdapter
 from .agentset import AgentsetAdapter
 from ..core.models import ToolConfig
@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 
 # Registry of available adapters
 ADAPTER_REGISTRY: Dict[str, Type[BaseRagTool]] = {
-    "mawsuah": MawsuahAdapter,
-    "tafsir": MawsuahAdapter,  # Same adapter, different name for clarity
+    "vectara": VectaraAdapter,  # Vectara platform adapter
+    "tafsir": VectaraAdapter,   # Vectara with Tafsir corpus
+    "mawsuah": VectaraAdapter,  # Vectara with Mawsuah corpus
     "goodmem": GoodmemAdapter,
     "agentset": AgentsetAdapter,
 }

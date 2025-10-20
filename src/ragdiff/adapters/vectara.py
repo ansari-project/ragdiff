@@ -1,4 +1,8 @@
-"""Mawsuah adapter for Vectara-based search."""
+"""Vectara adapter for RAG search.
+
+This adapter connects to the Vectara platform and can be used with different
+corpora (e.g., Tafsir, Mawsuah) by configuring the corpus_id.
+"""
 
 import json
 import time
@@ -12,8 +16,11 @@ from ..core.models import RagResult, ToolConfig
 logger = logging.getLogger(__name__)
 
 
-class MawsuahAdapter(BaseRagTool):
-    """Adapter for Vectara-based search tool (Tafsirs/Mawsuah)."""
+class VectaraAdapter(BaseRagTool):
+    """Adapter for Vectara RAG platform.
+
+    Can be configured for different corpora (Tafsir, Mawsuah) via corpus_id.
+    """
 
     def __init__(self, config: ToolConfig):
         """Initialize Vectara adapter.
@@ -29,7 +36,7 @@ class MawsuahAdapter(BaseRagTool):
             self.description = "Queries an encyclopedia of Islamic jurisprudence (fiqh)"
 
     def search(self, query: str, top_k: int = 5) -> List[RagResult]:
-        """Search Mawsuah/Vectara for relevant documents.
+        """Search Vectara for relevant documents.
 
         Args:
             query: Search query
@@ -115,10 +122,10 @@ class MawsuahAdapter(BaseRagTool):
             return results
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Mawsuah API request failed: {str(e)}")
+            logger.error(f"Vectara API request failed: {str(e)}")
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in Mawsuah search: {str(e)}")
+            logger.error(f"Unexpected error in Vectara search: {str(e)}")
             raise
 
     def format_as_ref_list(self, results: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -137,7 +144,7 @@ class MawsuahAdapter(BaseRagTool):
                 if isinstance(result, RagResult):
                     ref = {
                         "text": result.text,
-                        "source": result.source or "Mawsuah",
+                        "source": result.source or "Vectara",
                         "score": result.score,
                         "metadata": result.metadata or {}
                     }

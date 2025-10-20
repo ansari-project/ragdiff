@@ -7,7 +7,7 @@ from unittest.mock import patch, Mock
 
 from src.core.config import Config
 from src.core.models import RagResult, ComparisonResult
-from src.adapters.factory import create_adapter
+from ragdiff.adapters.factory import create_adapter
 from src.comparison.engine import ComparisonEngine
 from src.display.formatter import ComparisonFormatter
 
@@ -88,12 +88,12 @@ llm:
         with pytest.raises(ValueError, match="Missing required environment"):
             config.validate()
 
-    @patch("src.adapters.mawsuah.requests.post")
+    @patch("ragdiff.adapters.vectara.requests.post")
     @patch.dict("os.environ", {"VECTARA_API_KEY": "test_key"})
     def test_adapter_integration(self, mock_post):
         """Test adapter integration with engine."""
         from src.core.models import ToolConfig
-        from src.adapters.mawsuah import MawsuahAdapter
+        from ragdiff.adapters.vectara import VectaraAdapter
 
         # Setup mock response
         mock_response = Mock()
@@ -115,7 +115,7 @@ llm:
             api_key_env="VECTARA_API_KEY",
             corpus_id="test_corpus"
         )
-        adapter = MawsuahAdapter(config)
+        adapter = VectaraAdapter(config)
 
         # Test search
         results = adapter.search("test query", top_k=1)
@@ -189,12 +189,12 @@ llm:
         assert "tool1: 1" in summary
         assert "tool2: 1" in summary
 
-    @patch("src.adapters.goodmem.GOODMEM_AVAILABLE", False)
+    @patch("ragdiff.adapters.goodmem.GOODMEM_AVAILABLE", False)
     @patch.dict("os.environ", {"GOODMEM_API_KEY": "test_key"})
     def test_goodmem_mock_mode_integration(self):
         """Test Goodmem adapter in mock mode."""
         from src.core.models import ToolConfig
-        from src.adapters.goodmem import GoodmemAdapter
+        from ragdiff.adapters.goodmem import GoodmemAdapter
 
         config = ToolConfig(
             name="goodmem",

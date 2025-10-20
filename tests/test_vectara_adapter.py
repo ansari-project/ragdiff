@@ -1,4 +1,4 @@
-"""Tests for Mawsuah adapter."""
+"""Tests for Vectara adapter."""
 
 import pytest
 import os
@@ -6,12 +6,12 @@ from unittest.mock import patch, MagicMock, Mock
 import requests
 import json
 
-from src.adapters.mawsuah import MawsuahAdapter
-from src.core.models import ToolConfig, RagResult
+from ragdiff.adapters.vectara import VectaraAdapter
+from ragdiff.core.models import ToolConfig, RagResult
 
 
-class TestMawsuahAdapter:
-    """Test Mawsuah adapter."""
+class TestVectaraAdapter:
+    """Test Vectara adapter."""
 
     @pytest.fixture
     def tool_config(self):
@@ -60,7 +60,7 @@ class TestMawsuahAdapter:
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
     def test_initialization(self, tool_config):
         """Test adapter initialization."""
-        adapter = MawsuahAdapter(tool_config)
+        adapter = VectaraAdapter(tool_config)
         assert adapter.name == "mawsuah"
         assert adapter.corpus_id == "test_corpus"
         assert "jurisprudence" in adapter.description.lower()
@@ -75,7 +75,7 @@ class TestMawsuahAdapter:
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
 
-        adapter = MawsuahAdapter(tool_config)
+        adapter = VectaraAdapter(tool_config)
         results = adapter.search("Islamic inheritance law", top_k=3)
 
         # Verify API call
@@ -121,7 +121,7 @@ class TestMawsuahAdapter:
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
 
-        adapter = MawsuahAdapter(tool_config)
+        adapter = VectaraAdapter(tool_config)
         results = adapter.search("very obscure query")
 
         assert len(results) == 0
@@ -132,7 +132,7 @@ class TestMawsuahAdapter:
         """Test search with API error."""
         mock_post.side_effect = requests.exceptions.RequestException("API Error")
 
-        adapter = MawsuahAdapter(tool_config)
+        adapter = VectaraAdapter(tool_config)
         with pytest.raises(requests.exceptions.RequestException):
             adapter.search("test query")
 
@@ -160,7 +160,7 @@ class TestMawsuahAdapter:
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
 
-        adapter = MawsuahAdapter(tool_config)
+        adapter = VectaraAdapter(tool_config)
         results = adapter.search("test")
 
         assert len(results) == 1
@@ -170,7 +170,7 @@ class TestMawsuahAdapter:
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
     def test_format_as_ref_list(self, tool_config):
         """Test formatting results as reference list."""
-        adapter = MawsuahAdapter(tool_config)
+        adapter = VectaraAdapter(tool_config)
 
         # Create test results
         test_results = {

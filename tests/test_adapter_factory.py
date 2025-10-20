@@ -4,14 +4,14 @@ import pytest
 import os
 from unittest.mock import patch, Mock
 
-from src.adapters.factory import (
+from ragdiff.adapters.factory import (
     create_adapter,
     register_adapter,
     get_available_adapters,
     ADAPTER_REGISTRY
 )
-from src.adapters.base import BaseRagTool
-from src.core.models import ToolConfig
+from ragdiff.adapters.base import BaseRagTool
+from ragdiff.core.models import ToolConfig
 
 
 class TestAdapterFactory:
@@ -28,18 +28,18 @@ class TestAdapterFactory:
         )
 
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
-    def test_create_mawsuah_adapter(self, tool_config):
-        """Test creating Mawsuah adapter."""
+    def test_create_vectara_adapter(self, tool_config):
+        """Test creating Vectara adapter (with mawsuah corpus)."""
         tool_config.name = "mawsuah"
         tool_config.api_key_env = "VECTARA_API_KEY"
         tool_config.corpus_id = "test_corpus"
 
         adapter = create_adapter("mawsuah", tool_config)
         assert adapter.name == "mawsuah"
-        assert adapter.__class__.__name__ == "MawsuahAdapter"
+        assert adapter.__class__.__name__ == "VectaraAdapter"
 
     @patch.dict(os.environ, {"GOODMEM_API_KEY": "test_key"})
-    @patch('src.adapters.goodmem.GOODMEM_AVAILABLE', False)
+    @patch('ragdiff.adapters.goodmem.GOODMEM_AVAILABLE', False)
     def test_create_goodmem_adapter(self, tool_config):
         """Test creating Goodmem adapter."""
         tool_config.name = "goodmem"
