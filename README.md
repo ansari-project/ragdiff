@@ -58,7 +58,8 @@ Create a `configs/tools.yaml` file:
 
 ```yaml
 tools:
-  mawsuah:
+  # Vectara platform (can use different corpus names: vectara, tafsir, mawsuah)
+  vectara:
     api_key_env: VECTARA_API_KEY
     corpus_id: ${VECTARA_CORPUS_ID}
     base_url: https://api.vectara.io
@@ -88,7 +89,7 @@ llm:
 uv run rag-compare compare "What is Islamic inheritance law?"
 
 # Compare specific tools
-uv run rag-compare compare "Your query" --tool mawsuah --tool goodmem --tool agentset
+uv run rag-compare compare "Your query" --tool vectara --tool goodmem --tool agentset
 
 # Adjust number of results
 uv run rag-compare compare "Your query" --top-k 10
@@ -200,8 +201,9 @@ ragdiff/
 │   │   └── config.py    # Configuration management
 │   ├── adapters/        # Tool adapters
 │   │   ├── base.py      # Base adapter implementing SearchVectara interface
-│   │   ├── mawsuah.py   # Vectara/Mawsuah adapter
+│   │   ├── vectara.py   # Vectara platform adapter
 │   │   ├── goodmem.py   # Goodmem adapter with mock fallback
+│   │   ├── agentset.py  # Agentset adapter
 │   │   └── factory.py   # Adapter factory
 │   ├── comparison/      # Comparison engine
 │   │   └── engine.py    # Parallel/sequential search execution
@@ -227,7 +229,7 @@ The tool follows the SPIDER protocol for systematic development:
 ### Key Components
 
 - **BaseRagTool**: Abstract base implementing SearchVectara interface
-- **Adapters**: Tool-specific implementations (Mawsuah, Goodmem)
+- **Adapters**: Tool-specific implementations (Vectara, Goodmem, Agentset)
 - **ComparisonEngine**: Orchestrates parallel/sequential searches
 - **ComparisonFormatter**: Handles multiple output formats
 - **Config**: Manages YAML configuration with environment variables
@@ -299,8 +301,8 @@ uv run mypy src/
 
 Required environment variables:
 
-- `VECTARA_API_KEY`: For Mawsuah/Vectara access
-- `VECTARA_CORPUS_ID`: Vectara corpus ID
+- `VECTARA_API_KEY`: For Vectara platform access
+- `VECTARA_CORPUS_ID`: Vectara corpus ID (or use corpus key)
 - `GOODMEM_API_KEY`: For Goodmem access (optional, uses mock if not set)
 - `AGENTSET_API_TOKEN`: For Agentset access
 - `AGENTSET_NAMESPACE_ID`: Agentset namespace ID
