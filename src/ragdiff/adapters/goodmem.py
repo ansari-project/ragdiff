@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import requests
 import urllib3
@@ -29,10 +29,10 @@ try:
     ApiException_type = ApiException
 except ImportError:
     GOODMEM_AVAILABLE = False
-    ApiClient_type = None  # type: ignore
-    Configuration_type = None  # type: ignore
-    MemoryStreamClient_type = None  # type: ignore
-    ApiException_type = None  # type: ignore
+    ApiClient_type = None  # type: ignore[assignment,misc]
+    Configuration_type = None  # type: ignore[assignment,misc]
+    MemoryStreamClient_type = None  # type: ignore[assignment,misc]
+    ApiException_type = None  # type: ignore[assignment,misc]
     logger.warning("goodmem-client not installed. Using mock implementation.")
 
 
@@ -78,10 +78,10 @@ class GoodmemAdapter(BaseRagTool):
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize GoodMem client: {e}")
-                self.stream_client = None  # type: ignore
+                self.stream_client = None  # type: ignore[assignment]
                 self.space_ids = []
         else:
-            self.stream_client = None  # type: ignore
+            self.stream_client = None  # type: ignore[assignment]
             # Still use configured space_ids even in mock mode
             self.space_ids = getattr(config, "space_ids", None) or [
                 "efd91f05-87cf-4c4c-a04d-0a970f8d30a7",  # Ibn Katheer
@@ -92,7 +92,7 @@ class GoodmemAdapter(BaseRagTool):
                 "Running in mock mode - install goodmem-client for real functionality"
             )
 
-    def search(self, query: str, top_k: int = 5) -> List[RagResult]:
+    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
         """Search Goodmem for relevant documents.
 
         Args:
@@ -112,7 +112,7 @@ class GoodmemAdapter(BaseRagTool):
         # Fall back to CLI-based implementation
         return self._search_via_cli(query, top_k)
 
-    def _search_via_streaming(self, query: str, top_k: int) -> List[RagResult]:
+    def _search_via_streaming(self, query: str, top_k: int) -> list[RagResult]:
         """Search GoodMem using HTTP API.
 
         Args:
@@ -122,7 +122,7 @@ class GoodmemAdapter(BaseRagTool):
         Returns:
             List of RagResult objects
         """
-        results: List[RagResult] = []
+        results: list[RagResult] = []
 
         logger.info(f"Searching {len(self.space_ids)} Goodmem spaces: {self.space_ids}")
 
@@ -244,7 +244,7 @@ class GoodmemAdapter(BaseRagTool):
         results.sort(key=lambda x: x.score, reverse=True)
         return results[:top_k]
 
-    def _search_via_cli(self, query: str, top_k: int) -> List[RagResult]:
+    def _search_via_cli(self, query: str, top_k: int) -> list[RagResult]:
         """Search GoodMem using the CLI tool.
 
         Args:
@@ -314,8 +314,8 @@ class GoodmemAdapter(BaseRagTool):
         return results[:top_k]
 
     def _parse_cli_response(
-        self, data: Dict[str, Any], space_id: str, query: str
-    ) -> List[RagResult]:
+        self, data: dict[str, Any], space_id: str, query: str
+    ) -> list[RagResult]:
         """Parse CLI JSON response into RagResult objects.
 
         Args:
@@ -422,7 +422,7 @@ class GoodmemAdapter(BaseRagTool):
             logger.warning(f"Failed to parse stream item: {e}")
             return None
 
-    def _parse_goodmem_response(self, response: Any, query: str) -> List[RagResult]:
+    def _parse_goodmem_response(self, response: Any, query: str) -> list[RagResult]:
         """Parse Goodmem API response into normalized results.
 
         Args:
@@ -432,7 +432,7 @@ class GoodmemAdapter(BaseRagTool):
         Returns:
             List of normalized RagResult objects
         """
-        results: List[RagResult] = []
+        results: list[RagResult] = []
 
         try:
             # The batch response should contain results for our single query
@@ -506,7 +506,7 @@ class GoodmemAdapter(BaseRagTool):
 
         return results
 
-    def _mock_search(self, query: str, top_k: int) -> List[RagResult]:
+    def _mock_search(self, query: str, top_k: int) -> list[RagResult]:
         """Mock search for testing without Goodmem client.
 
         Args:

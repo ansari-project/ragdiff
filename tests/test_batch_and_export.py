@@ -182,7 +182,6 @@ class TestCSVExport:
         lines = csv_text.strip().split("\n")
 
         assert len(lines) == 2  # Header + data
-        data_line = lines[1]
 
         # Parse the CSV
         reader = csv.reader(StringIO(csv_text))
@@ -232,7 +231,7 @@ class TestCSVExport:
 
         # Data with LLM scores
         row = [result.query, result.timestamp.isoformat()]
-        for tool_name in tool_names:
+        for _ in tool_names:
             row.extend([0, "0.000", "0.0"])
         row.append(result.llm_evaluation.winner)
         for tool_name in tool_names:
@@ -288,7 +287,7 @@ class TestLatencyStatistics:
 
     def test_latency_stats_empty_list(self):
         """Test latency stats with empty results."""
-        latencies = []
+        latencies: list[float] = []
 
         # Should handle empty gracefully
         if latencies:
@@ -330,7 +329,7 @@ class TestLatencyStatistics:
         ]
 
         # Collect latencies
-        latencies_by_tool = {"goodmem": [], "mawsuah": []}
+        latencies_by_tool: dict[str, list[float]] = {"goodmem": [], "mawsuah": []}
         for result in results:
             for tool_name in ["goodmem", "mawsuah"]:
                 tool_results = result.tool_results.get(tool_name, [])

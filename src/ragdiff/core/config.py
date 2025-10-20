@@ -3,7 +3,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import yaml
 from dotenv import load_dotenv
@@ -33,7 +33,7 @@ class Config:
         self._process_env_vars()
         self._parse_config()
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load configuration from YAML file.
 
         Returns:
@@ -119,7 +119,7 @@ class Config:
 
         return self.tools[tool_name]
 
-    def get_llm_config(self) -> Dict[str, Any]:
+    def get_llm_config(self) -> dict[str, Any]:
         """Get LLM configuration.
 
         Returns:
@@ -128,7 +128,7 @@ class Config:
         result = self._raw_config.get("llm", {})
         return result if isinstance(result, dict) else {}
 
-    def get_output_config(self) -> Dict[str, Any]:
+    def get_output_config(self) -> dict[str, Any]:
         """Get output configuration.
 
         Returns:
@@ -137,7 +137,7 @@ class Config:
         result = self._raw_config.get("output", {})
         return result if isinstance(result, dict) else {}
 
-    def get_display_config(self) -> Dict[str, Any]:
+    def get_display_config(self) -> dict[str, Any]:
         """Get display configuration.
 
         Returns:
@@ -157,7 +157,7 @@ class Config:
             raise ValueError("No tools configured")
 
         # Validate each configured tool
-        for tool_name, config in self.tools.items():
+        for _tool_name, config in self.tools.items():
             # Check API key is set in environment
             if not os.getenv(config.api_key_env):
                 raise ValueError(

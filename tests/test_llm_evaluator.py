@@ -59,7 +59,7 @@ class TestLLMEvaluator:
 
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
             evaluator = LLMEvaluator()
-            evaluation = evaluator.evaluate(result)
+            _evaluation = evaluator.evaluate(result)
 
             # Verify API was called
             mock_client.messages.create.assert_called_once()

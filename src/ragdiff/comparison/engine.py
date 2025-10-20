@@ -3,7 +3,7 @@
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List
+from typing import Any
 
 from ..adapters.base import BaseRagTool
 from ..core.models import ComparisonResult, RagResult
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class ComparisonEngine:
     """Engine for comparing multiple RAG tools."""
 
-    def __init__(self, tools: Dict[str, BaseRagTool]):
+    def __init__(self, tools: dict[str, BaseRagTool]):
         """Initialize comparison engine.
 
         Args:
@@ -42,8 +42,8 @@ class ComparisonEngine:
         logger.info(f"Running comparison for query: '{query}' with top_k={top_k}")
 
         # Initialize result container
-        tool_results: Dict[str, List[RagResult]] = {}
-        errors: Dict[str, str] = {}
+        tool_results: dict[str, list[RagResult]] = {}
+        errors: dict[str, str] = {}
 
         # Run searches
         if parallel:
@@ -68,7 +68,7 @@ class ComparisonEngine:
 
     def _run_parallel(
         self, query: str, top_k: int
-    ) -> tuple[Dict[str, List[RagResult]], Dict[str, str]]:
+    ) -> tuple[dict[str, list[RagResult]], dict[str, str]]:
         """Run searches in parallel using ThreadPoolExecutor.
 
         Args:
@@ -105,7 +105,7 @@ class ComparisonEngine:
 
     def _run_sequential(
         self, query: str, top_k: int
-    ) -> tuple[Dict[str, List[RagResult]], Dict[str, str]]:
+    ) -> tuple[dict[str, list[RagResult]], dict[str, str]]:
         """Run searches sequentially.
 
         Args:
@@ -131,7 +131,7 @@ class ComparisonEngine:
 
     def _run_single_search(
         self, tool_name: str, tool: BaseRagTool, query: str, top_k: int
-    ) -> List[RagResult]:
+    ) -> list[RagResult]:
         """Run a single search with timing.
 
         Args:
@@ -168,7 +168,7 @@ class ComparisonEngine:
             logger.error(f"Error in {tool_name} search: {str(e)}")
             raise
 
-    def get_summary_stats(self, result: ComparisonResult) -> Dict[str, Any]:
+    def get_summary_stats(self, result: ComparisonResult) -> dict[str, Any]:
         """Get summary statistics for a comparison.
 
         Args:
@@ -177,7 +177,7 @@ class ComparisonEngine:
         Returns:
             Dictionary with summary statistics
         """
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "query": result.query,
             "tools_compared": list(result.tool_results.keys()),
             "tools_with_errors": list(result.errors.keys()),

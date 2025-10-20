@@ -1,7 +1,6 @@
 """Factory for creating RAG tool adapters."""
 
 import logging
-from typing import Dict, List, Type
 
 from ..core.models import ToolConfig
 from .agentset import AgentsetAdapter
@@ -12,7 +11,7 @@ from .vectara import VectaraAdapter
 logger = logging.getLogger(__name__)
 
 # Registry of available adapters
-ADAPTER_REGISTRY: Dict[str, Type[BaseRagTool]] = {
+ADAPTER_REGISTRY: dict[str, type[BaseRagTool]] = {
     "vectara": VectaraAdapter,  # Vectara platform adapter
     "tafsir": VectaraAdapter,  # Vectara with Tafsir corpus
     "mawsuah": VectaraAdapter,  # Vectara with Mawsuah corpus
@@ -56,7 +55,7 @@ def create_adapter(tool_name: str, config: ToolConfig) -> BaseRagTool:
         raise
 
 
-def register_adapter(name: str, adapter_class: Type[BaseRagTool]) -> None:
+def register_adapter(name: str, adapter_class: type[BaseRagTool]) -> None:
     """Register a new adapter type.
 
     Args:
@@ -78,7 +77,7 @@ def register_adapter(name: str, adapter_class: Type[BaseRagTool]) -> None:
     logger.info(f"Registered adapter: {name}")
 
 
-def get_available_adapters() -> List[str]:
+def get_available_adapters() -> list[str]:
     """Get list of available adapter names.
 
     Returns:

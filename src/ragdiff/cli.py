@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 from dotenv import load_dotenv
@@ -47,7 +47,7 @@ def setup_logging(verbose: bool = False):
 @app.command()
 def compare(
     query: str = typer.Argument(..., help="Search query to run against all tools"),
-    tools: List[str] = typer.Option(
+    tools: list[str] = typer.Option(
         None,
         "--tool",
         "-t",
@@ -119,7 +119,7 @@ def compare(
             except Exception as e:
                 console.print(f"  ✗ {tool_name}: {str(e)}")
                 if not typer.confirm("Continue without this tool?"):
-                    raise typer.Exit(1)
+                    raise typer.Exit(1) from e
 
         if not adapters:
             console.print("[red]No tools available for comparison[/red]")
@@ -169,11 +169,11 @@ def compare(
             buf = StringIO()
             writer = csv.writer(buf)
             tool_names = list(result.tool_results.keys())
-            header: List[str] = ["query", "timestamp"]
+            header: list[str] = ["query", "timestamp"]
             for tool_name in tool_names:
                 header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
             writer.writerow(header)
-            row: List[str] = [result.query, result.timestamp.isoformat()]
+            row: list[str] = [result.query, result.timestamp.isoformat()]
             for tool_name in tool_names:
                 tool_results = result.tool_results.get(tool_name, [])
                 count = len(tool_results)
@@ -214,7 +214,7 @@ def compare(
         console.print(f"[red]Error: {str(e)}[/red]")
         if verbose:
             console.print_exception()
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -272,7 +272,7 @@ def validate_config(
 
     except Exception as e:
         console.print(f"[red]Configuration validation failed: {str(e)}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -280,7 +280,7 @@ def batch(
     queries_file: str = typer.Argument(
         ..., help="Path to file with queries (one per line)"
     ),
-    tools: List[str] = typer.Option(
+    tools: list[str] = typer.Option(
         None,
         "--tool",
         "-t",
@@ -402,7 +402,7 @@ def batch(
             with open(output_file, "w", newline="") as f:
                 writer = csv.writer(f)
                 # Header
-                header: List[str] = ["query", "timestamp"]
+                header: list[str] = ["query", "timestamp"]
                 for tool_name in tool_names:
                     header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
                 if evaluate:
@@ -413,7 +413,7 @@ def batch(
 
                 # Data rows
                 for result in results:
-                    row: List[str] = [result.query, result.timestamp.isoformat()]
+                    row: list[str] = [result.query, result.timestamp.isoformat()]
                     for tool_name in tool_names:
                         tool_results = result.tool_results.get(tool_name, [])
                         count = len(tool_results)
@@ -448,7 +448,7 @@ def batch(
         console.print(f"[red]Error: {str(e)}[/red]")
         if verbose:
             console.print_exception()
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
@@ -548,13 +548,13 @@ def _display_llm_evaluation(evaluation):
 
 
 def _display_batch_latency_stats(
-    results: List[ComparisonResult], tool_names: List[str]
+    results: list[ComparisonResult], tool_names: list[str]
 ):
     """Display latency percentile statistics for batch processing."""
     import statistics
 
     # Collect latencies per tool
-    latencies_by_tool: dict[str, List[float]] = {
+    latencies_by_tool: dict[str, list[float]] = {
         tool_name: [] for tool_name in tool_names
     }
 
@@ -605,7 +605,7 @@ def _display_batch_latency_stats(
     console.print(table)
 
 
-def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
+def _display_llm_evaluation_summary(results: list, tool_names: list[str]):
     """Display summary of LLM evaluations across all queries."""
     # Map internal names to display names
     display_names = {"tafsir": "vectara", "goodmem": "goodmem"}
@@ -694,7 +694,7 @@ def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
 
 
 def _generate_and_display_holistic_summary(
-    results: List, tool_names: List[str], output_file: Path
+    results: list, tool_names: list[str], output_file: Path
 ):
     """Generate comprehensive holistic summary and save to file."""
     from collections import Counter, defaultdict
@@ -705,7 +705,7 @@ def _generate_and_display_holistic_summary(
     # Collect comprehensive statistics
     query_details = []
     issue_tracker: dict[str, int] = defaultdict(int)
-    theme_tracker: dict[str, List[str]] = defaultdict(list)
+    theme_tracker: dict[str, list[str]] = defaultdict(list)
 
     for result in results:
         if not result.llm_evaluation:
@@ -909,7 +909,6 @@ def _generate_and_display_holistic_summary(
         for qinfo in query_details:
             if qinfo["winner"]:
                 winner_lower = qinfo["winner"].lower()
-                is_loser = True
                 for tool_name in tool_names:
                     if tool_name == overall_winner:
                         continue

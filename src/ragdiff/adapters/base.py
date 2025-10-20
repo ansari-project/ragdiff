@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from abc import abstractmethod
-from typing import Any, Dict, List
+from typing import Any
 
 from ..core.models import RagResult, ToolConfig
 
@@ -60,7 +60,7 @@ class BaseRagTool(SearchVectara):
                 f"Please set it with your {self.config.name} API key."
             )
 
-    def run(self, query: str, **kwargs) -> Dict[str, Any]:
+    def run(self, query: str, **kwargs) -> dict[str, Any]:
         """Execute search matching SearchVectara interface.
 
         Args:
@@ -102,7 +102,7 @@ class BaseRagTool(SearchVectara):
                 "error": str(e),
             }
 
-    def format_as_tool_result(self, results: Dict[str, Any]) -> str:
+    def format_as_tool_result(self, results: dict[str, Any]) -> str:
         """Format results for tool display.
 
         Args:
@@ -129,7 +129,7 @@ class BaseRagTool(SearchVectara):
         return "\n".join(formatted)
 
     @abstractmethod
-    def search(self, query: str, top_k: int = 5) -> List[RagResult]:
+    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
         """Search implementation to be overridden by subclasses.
 
         Args:

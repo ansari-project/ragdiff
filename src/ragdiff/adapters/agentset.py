@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Any, List, Optional
+from typing import Any
 
 from agentset import Agentset
 from agentset.models.searchop import SearchData
@@ -51,7 +51,7 @@ class AgentsetAdapter(BaseRagTool):
             logger.info(f"Agentset client initialized for namespace: {namespace_id}")
         except Exception as e:
             logger.error(f"Failed to initialize Agentset client: {e}")
-            raise ValueError(f"Failed to initialize Agentset client: {e}")
+            raise ValueError(f"Failed to initialize Agentset client: {e}") from e
 
         # Set config attributes needed by BaseRagTool
         self.name = config.name
@@ -76,7 +76,7 @@ class AgentsetAdapter(BaseRagTool):
             self.rerank = config.options.get("rerank", True)
             logger.info(f"Agentset rerank option set to: {self.rerank}")
 
-    def search(self, query: str, top_k: int = 5) -> List[RagResult]:
+    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
         """Search Agentset for relevant documents.
 
         Args:
@@ -108,7 +108,7 @@ class AgentsetAdapter(BaseRagTool):
             if hasattr(search_response, "data") and isinstance(
                 search_response.data, list
             ):
-                search_results: List[SearchData] = search_response.data
+                search_results: list[SearchData] = search_response.data
             else:
                 search_results = []
 
@@ -139,7 +139,9 @@ class AgentsetAdapter(BaseRagTool):
                     # Build metadata dictionary with correct types
                     metadata_dict["filename"] = search_data.metadata.filename
                     metadata_dict["filetype"] = search_data.metadata.filetype
-                    metadata_dict["file_directory"] = search_data.metadata.file_directory
+                    metadata_dict["file_directory"] = (
+                        search_data.metadata.file_directory
+                    )
 
                     # Add optional metadata fields if present
                     if search_data.metadata.sequence_number is not None:

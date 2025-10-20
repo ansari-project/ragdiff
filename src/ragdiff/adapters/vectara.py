@@ -5,7 +5,7 @@ corpora (e.g., Tafsir, Mawsuah) by configuring the corpus_id.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 import requests
 
@@ -30,7 +30,7 @@ class VectaraAdapter(BaseRagTool):
         super().__init__(config)
         self.description = "Vectara RAG platform"
 
-    def search(self, query: str, top_k: int = 5) -> List[RagResult]:
+    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
         """Search Vectara for relevant documents.
 
         Args:
@@ -116,7 +116,7 @@ class VectaraAdapter(BaseRagTool):
             logger.error(f"Unexpected error in Vectara search: {str(e)}")
             raise
 
-    def format_as_ref_list(self, results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def format_as_ref_list(self, results: dict[str, Any]) -> list[dict[str, Any]]:
         """Format results as reference list for Claude.
 
         Args:

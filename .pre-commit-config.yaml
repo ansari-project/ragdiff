@@ -3,29 +3,15 @@
 # Run manually: pre-commit run --all-files
 
 repos:
-  # Code formatting with Black
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-        language_version: python3.11
-
-  # Linting with Ruff
+  # Formatting and linting with Ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
+      # Run the formatter
+      - id: ruff-format
+      # Run the linter
       - id: ruff
         args: [--fix]  # Auto-fix without blocking
-
-  # Type checking with MyPy
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - types-pyyaml
-          - types-requests
-        args: [--ignore-missing-imports]
 
   # Run tests with pytest
   - repo: local

@@ -266,7 +266,7 @@ class TestCLI:
         """Test quick-test command."""
         mock_compare.return_value = None
 
-        result = runner.invoke(app, ["quick-test"])
+        _result = runner.invoke(app, ["quick-test"])
 
         # Should call compare with test query
         mock_compare.assert_called_once()

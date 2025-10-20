@@ -2,7 +2,7 @@
 
 import json
 from textwrap import wrap
-from typing import List, Optional
+from typing import Optional
 
 from ..core.models import ComparisonResult, RagResult
 
@@ -29,7 +29,7 @@ class ComparisonFormatter:
         Returns:
             Formatted string for display
         """
-        output: List[str] = []
+        output: list[str] = []
         output.append(self._format_header(result))
         errors_section = self._format_errors(result)
         if errors_section:
@@ -44,7 +44,7 @@ class ComparisonFormatter:
 
     def _format_header(self, result: ComparisonResult) -> str:
         """Format header section."""
-        lines: List[str] = [
+        lines: list[str] = [
             "=" * self.width,
             "RAG TOOL COMPARISON RESULTS",
             "=" * self.width,
@@ -93,7 +93,7 @@ class ComparisonFormatter:
 
     def _format_single_result(
         self, result: RagResult, indent_level: int = 2
-    ) -> List[str]:
+    ) -> list[str]:
         """Format a single search result."""
         indent = self.indent_str * indent_level
         lines = []

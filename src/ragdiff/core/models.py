@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -14,7 +14,7 @@ class RagResult:
     text: str
     score: float
     source: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None
     latency_ms: Optional[float] = None
 
     def __post_init__(self):
@@ -49,18 +49,18 @@ class LLMEvaluation:
     llm_model: str  # e.g., "claude-opus-4-1"
     winner: Optional[str] = None  # Tool name that won, or None for tie
     analysis: str = ""  # Analysis text
-    quality_scores: Dict[str, int] = field(default_factory=dict)  # Tool -> score (0-10)
-    metadata: Dict[str, Any] = field(default_factory=dict)  # Additional metadata
+    quality_scores: dict[str, int] = field(default_factory=dict)  # Tool -> score (0-10)
+    metadata: dict[str, Any] = field(default_factory=dict)  # Additional metadata
 
     # Legacy fields for backward compatibility
     summary: Optional[str] = None
     confidence: Optional[str] = None  # high, medium, low
-    key_differences: List[str] = field(default_factory=list)
+    key_differences: list[str] = field(default_factory=list)
     recommendations: Optional[str] = None
     raw_response: Optional[str] = None
     evaluation_time_ms: Optional[float] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "llm_model": self.llm_model,
@@ -77,19 +77,19 @@ class ComparisonResult:
     """Complete comparison result for a query."""
 
     query: str
-    tool_results: Dict[str, List[RagResult]]
-    errors: Dict[str, str]
+    tool_results: dict[str, list[RagResult]]
+    errors: dict[str, str]
     timestamp: datetime = field(default_factory=datetime.now)
     llm_evaluation: Optional[LLMEvaluation] = None
 
     # Legacy properties for backward compatibility
     @property
-    def goodmem_results(self) -> List[RagResult]:
+    def goodmem_results(self) -> list[RagResult]:
         """Get Goodmem results for backward compatibility."""
         return self.tool_results.get("goodmem", [])
 
     @property
-    def mawsuah_results(self) -> List[RagResult]:
+    def mawsuah_results(self) -> list[RagResult]:
         """Get Mawsuah results for backward compatibility."""
         return self.tool_results.get("mawsuah", [])
 
@@ -119,13 +119,13 @@ class ComparisonResult:
         """Check if any system had errors."""
         return bool(self.errors)
 
-    def get_result_counts(self) -> Dict[str, int]:
+    def get_result_counts(self) -> dict[str, int]:
         """Get count of results from each system."""
         return {
             tool_name: len(results) for tool_name, results in self.tool_results.items()
         }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "query": self.query,
@@ -157,7 +157,7 @@ class ToolConfig:
     name: str
     api_key_env: str
     adapter: Optional[str] = None  # Which adapter class to use (defaults to name)
-    options: Optional[Dict[str, Any]] = None  # Custom adapter-specific options
+    options: Optional[dict[str, Any]] = None  # Custom adapter-specific options
     base_url: Optional[str] = None
     corpus_id: Optional[str] = None
     customer_id: Optional[str] = None
@@ -165,7 +165,7 @@ class ToolConfig:
     timeout: int = 30
     max_retries: int = 3
     default_top_k: int = 5
-    space_ids: Optional[List[str]] = None
+    space_ids: Optional[list[str]] = None
 
     def validate(self) -> None:
         """Validate configuration."""

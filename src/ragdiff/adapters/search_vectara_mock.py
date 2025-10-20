@@ -5,7 +5,7 @@ In production, this would be imported from ansari.tools.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 class SearchVectara(ABC):
@@ -36,7 +36,7 @@ class SearchVectara(ABC):
         self.base_url = base_url or "https://api.vectara.io"
 
     @abstractmethod
-    def run(self, query: str, **kwargs) -> Dict[str, Any]:
+    def run(self, query: str, **kwargs) -> dict[str, Any]:
         """Execute search query.
 
         Args:
@@ -49,7 +49,7 @@ class SearchVectara(ABC):
         pass
 
     @abstractmethod
-    def format_as_tool_result(self, results: Dict[str, Any]) -> str:
+    def format_as_tool_result(self, results: dict[str, Any]) -> str:
         """Format results for tool usage.
 
         Args:
@@ -60,7 +60,7 @@ class SearchVectara(ABC):
         """
         pass
 
-    def format_as_ref_list(self, results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def format_as_ref_list(self, results: dict[str, Any]) -> list[dict[str, Any]]:
         """Format results as reference list.
 
         Args:

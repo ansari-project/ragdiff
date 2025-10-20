@@ -298,7 +298,7 @@ llm:
         }
 
         # Verify all formats contain expected content
-        for format_name, output in outputs.items():
+        for _format_name, output in outputs.items():
             assert "end to end test" in output or "tool0" in output
 
         # Save to file
