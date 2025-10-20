@@ -1,11 +1,12 @@
 """Tests for Agentset adapter."""
 
-import pytest
 import os
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import Mock, patch
+
+import pytest
 
 from ragdiff.adapters.agentset import AgentsetAdapter
-from ragdiff.core.models import ToolConfig, RagResult
+from ragdiff.core.models import ToolConfig
 
 
 class TestAgentsetAdapter:
@@ -19,7 +20,7 @@ class TestAgentsetAdapter:
             api_key_env="AGENTSET_API_TOKEN",
             namespace_id_env="AGENTSET_NAMESPACE_ID",
             timeout=60,
-            default_top_k=10
+            default_top_k=10,
         )
 
     @pytest.fixture
@@ -50,11 +51,11 @@ class TestAgentsetAdapter:
 
         return [mock_data_1, mock_data_2]
 
-    @patch.dict(os.environ, {
-        "AGENTSET_API_TOKEN": "test_token",
-        "AGENTSET_NAMESPACE_ID": "test_namespace"
-    })
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_namespace"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_initialization(self, mock_agentset_class, tool_config):
         """Test adapter initialization."""
         mock_client = Mock()
@@ -64,8 +65,7 @@ class TestAgentsetAdapter:
 
         # Verify Agentset client was initialized
         mock_agentset_class.assert_called_once_with(
-            token="test_token",
-            namespace_id="test_namespace"
+            token="test_token", namespace_id="test_namespace"
         )
 
         assert adapter.name == "agentset"
@@ -88,11 +88,11 @@ class TestAgentsetAdapter:
 
         assert "AGENTSET_NAMESPACE_ID" in str(exc_info.value)
 
-    @patch.dict(os.environ, {
-        "AGENTSET_API_TOKEN": "test_token",
-        "AGENTSET_NAMESPACE_ID": "test_namespace"
-    })
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_namespace"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_search_success(self, mock_agentset_class, tool_config, mock_search_data):
         """Test successful search."""
         # Setup mock client
@@ -110,7 +110,7 @@ class TestAgentsetAdapter:
             query="tafsir of Al-Fatiha",
             top_k=5.0,  # Agentset expects float
             include_metadata=True,
-            mode='semantic'
+            mode="semantic",
         )
 
         # Verify results
@@ -132,11 +132,11 @@ class TestAgentsetAdapter:
         assert results[1].score == 0.85
         assert results[1].metadata["filename"] == "section-1-8-to-1-10.txt"
 
-    @patch.dict(os.environ, {
-        "AGENTSET_API_TOKEN": "test_token",
-        "AGENTSET_NAMESPACE_ID": "test_namespace"
-    })
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_namespace"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_search_empty_results(self, mock_agentset_class, tool_config):
         """Test search with no results."""
         mock_client = Mock()
@@ -150,11 +150,11 @@ class TestAgentsetAdapter:
 
         assert len(results) == 0
 
-    @patch.dict(os.environ, {
-        "AGENTSET_API_TOKEN": "test_token",
-        "AGENTSET_NAMESPACE_ID": "test_namespace"
-    })
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_namespace"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_search_with_missing_text(self, mock_agentset_class, tool_config):
         """Test search filters out results without text."""
         # Create mock result with no text
@@ -176,11 +176,11 @@ class TestAgentsetAdapter:
         # Should filter out result with no text
         assert len(results) == 0
 
-    @patch.dict(os.environ, {
-        "AGENTSET_API_TOKEN": "test_token",
-        "AGENTSET_NAMESPACE_ID": "test_namespace"
-    })
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_namespace"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_search_without_metadata(self, mock_agentset_class, tool_config):
         """Test search with results that have no metadata."""
         # Create mock result without metadata
@@ -204,11 +204,11 @@ class TestAgentsetAdapter:
         assert results[0].source == "Agentset"  # Default source
         assert results[0].metadata["document_id"] == "doc_no_meta"
 
-    @patch.dict(os.environ, {
-        "AGENTSET_API_TOKEN": "test_token",
-        "AGENTSET_NAMESPACE_ID": "test_namespace"
-    })
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_namespace"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_search_api_error(self, mock_agentset_class, tool_config):
         """Test search with API error."""
         mock_client = Mock()
@@ -224,11 +224,11 @@ class TestAgentsetAdapter:
 
         assert "API Error" in str(exc_info.value)
 
-    @patch.dict(os.environ, {
-        "AGENTSET_API_TOKEN": "test_token",
-        "AGENTSET_NAMESPACE_ID": "test_namespace"
-    })
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_namespace"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_score_normalization(self, mock_agentset_class, tool_config):
         """Test that scores are properly normalized."""
         # Create mock with high score

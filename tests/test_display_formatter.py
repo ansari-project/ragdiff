@@ -1,11 +1,11 @@
 """Tests for display formatter."""
 
-import pytest
 import json
-from datetime import datetime
 
+import pytest
+
+from src.core.models import ComparisonResult, LLMEvaluation, RagResult
 from src.display.formatter import ComparisonFormatter
-from src.core.models import ComparisonResult, RagResult, LLMEvaluation
 
 
 class TestComparisonFormatter:
@@ -23,14 +23,14 @@ class TestComparisonFormatter:
                         text="Islamic inheritance law, or Mirath, is a set of rules...",
                         score=0.95,
                         source="Fiqh Handbook",
-                        latency_ms=125.5
+                        latency_ms=125.5,
                     ),
                     RagResult(
                         id="g2",
                         text="The Quran provides specific guidance on inheritance...",
                         score=0.87,
-                        source="Quran Commentary"
-                    )
+                        source="Quran Commentary",
+                    ),
                 ],
                 "mawsuah": [
                     RagResult(
@@ -38,11 +38,11 @@ class TestComparisonFormatter:
                         text="In Islamic jurisprudence, inheritance follows strict rules...",
                         score=0.92,
                         source="Mawsuah Fiqhiyyah",
-                        latency_ms=98.3
+                        latency_ms=98.3,
                     )
-                ]
+                ],
             },
-            errors={}
+            errors={},
         )
 
     @pytest.fixture
@@ -50,14 +50,8 @@ class TestComparisonFormatter:
         """Create result with errors."""
         return ComparisonResult(
             query="test query",
-            tool_results={
-                "goodmem": [
-                    RagResult(id="1", text="Result", score=0.9)
-                ]
-            },
-            errors={
-                "mawsuah": "Connection timeout"
-            }
+            tool_results={"goodmem": [RagResult(id="1", text="Result", score=0.9)]},
+            errors={"mawsuah": "Connection timeout"},
         )
 
     @pytest.fixture
@@ -67,16 +61,16 @@ class TestComparisonFormatter:
             query="test query",
             tool_results={
                 "goodmem": [RagResult(id="1", text="Good result", score=0.9)],
-                "mawsuah": [RagResult(id="2", text="Better result", score=0.95)]
+                "mawsuah": [RagResult(id="2", text="Better result", score=0.95)],
             },
-            errors={}
+            errors={},
         )
         result.llm_evaluation = LLMEvaluation(
             llm_model="claude-opus-4-1",
             winner="mawsuah",
             analysis="Mawsuah provides more comprehensive and accurate information.",
             quality_scores={"goodmem": 7, "mawsuah": 9},
-            metadata={}
+            metadata={},
         )
         return result
 
@@ -184,12 +178,8 @@ class TestComparisonFormatter:
         long_text = "This is a very long text that should be wrapped " * 10
         result = ComparisonResult(
             query="test",
-            tool_results={
-                "tool1": [
-                    RagResult(id="1", text=long_text, score=0.9)
-                ]
-            },
-            errors={}
+            tool_results={"tool1": [RagResult(id="1", text=long_text, score=0.9)]},
+            errors={},
         )
 
         output = formatter.format_side_by_side(result)
@@ -203,9 +193,7 @@ class TestComparisonFormatter:
     def test_empty_results(self, formatter):
         """Test formatting with empty results."""
         result = ComparisonResult(
-            query="test",
-            tool_results={"tool1": [], "tool2": []},
-            errors={}
+            query="test", tool_results={"tool1": [], "tool2": []}, errors={}
         )
 
         output = formatter.format_side_by_side(result)
@@ -223,12 +211,8 @@ class TestComparisonFormatter:
         """Test formatting when latency data is missing."""
         result = ComparisonResult(
             query="test",
-            tool_results={
-                "tool1": [
-                    RagResult(id="1", text="Result", score=0.9)
-                ]
-            },
-            errors={}
+            tool_results={"tool1": [RagResult(id="1", text="Result", score=0.9)]},
+            errors={},
         )
 
         output = formatter.format_side_by_side(result)

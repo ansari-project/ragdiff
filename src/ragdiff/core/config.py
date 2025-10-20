@@ -1,9 +1,10 @@
 """Configuration management for the RAG comparison harness."""
 
 import os
-import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import yaml
 from dotenv import load_dotenv
 
 from .models import ToolConfig
@@ -38,11 +39,12 @@ class Config:
         if not self.config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
 
-        with open(self.config_path, "r") as f:
+        with open(self.config_path) as f:
             return yaml.safe_load(f)
 
     def _process_env_vars(self) -> None:
         """Process environment variable references in config."""
+
         def replace_env_vars(obj):
             """Recursively replace ${ENV_VAR} with actual values."""
             if isinstance(obj, str):
@@ -71,7 +73,9 @@ class Config:
             self.tools[tool_name] = ToolConfig(
                 name=tool_name,
                 api_key_env=tool_dict.get("api_key_env"),
-                adapter=tool_dict.get("adapter"),  # Optional: which adapter class to use
+                adapter=tool_dict.get(
+                    "adapter"
+                ),  # Optional: which adapter class to use
                 options=tool_dict.get("options"),  # Optional: custom adapter options
                 base_url=tool_dict.get("base_url"),
                 corpus_id=tool_dict.get("corpus_id"),
@@ -80,16 +84,20 @@ class Config:
                 timeout=tool_dict.get("timeout", 30),
                 max_retries=tool_dict.get("max_retries", 3),
                 default_top_k=tool_dict.get("default_top_k", 5),
-                space_ids=tool_dict.get("space_ids")
+                space_ids=tool_dict.get("space_ids"),
             )
 
         # Parse LLM config
         llm_config = self._raw_config.get("llm", {})
         if llm_config:
-            self.llm = type('LLMConfig', (), {
-                'model': llm_config.get("model"),
-                'api_key_env': llm_config.get("api_key_env")
-            })()
+            self.llm = type(
+                "LLMConfig",
+                (),
+                {
+                    "model": llm_config.get("model"),
+                    "api_key_env": llm_config.get("api_key_env"),
+                },
+            )()
         else:
             self.llm = None
 

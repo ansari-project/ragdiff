@@ -1,13 +1,13 @@
 """Tests for Vectara adapter."""
 
-import pytest
 import os
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import Mock, patch
+
+import pytest
 import requests
-import json
 
 from ragdiff.adapters.vectara import VectaraAdapter
-from ragdiff.core.models import ToolConfig, RagResult
+from ragdiff.core.models import RagResult, ToolConfig
 
 
 class TestVectaraAdapter:
@@ -22,7 +22,7 @@ class TestVectaraAdapter:
             corpus_id="test_corpus",
             base_url="https://api.vectara.io",
             timeout=30,
-            default_top_k=5
+            default_top_k=5,
         )
 
     @pytest.fixture
@@ -38,21 +38,17 @@ class TestVectaraAdapter:
                             "documentIndex": "doc_1",
                             "metadata": [
                                 {"name": "source", "value": "Fiqh Book 1"},
-                                {"name": "author", "value": "Scholar A"}
-                            ]
+                                {"name": "author", "value": "Scholar A"},
+                            ],
                         },
                         {
                             "text": "Second result text about jurisprudence",
                             "score": 0.85,
                             "documentIndex": "doc_2",
-                            "metadata": [
-                                {"name": "source", "value": "Fiqh Book 2"}
-                            ]
-                        }
+                            "metadata": [{"name": "source", "value": "Fiqh Book 2"}],
+                        },
                     ],
-                    "summary": [
-                        {"text": "This is a summary of the search results."}
-                    ]
+                    "summary": [{"text": "This is a summary of the search results."}],
                 }
             ]
         }
@@ -66,7 +62,7 @@ class TestVectaraAdapter:
         assert "jurisprudence" in adapter.description.lower()
 
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
-    @patch('requests.post')
+    @patch("requests.post")
     def test_search_success(self, mock_post, tool_config, mock_vectara_response):
         """Test successful search."""
         # Setup mock response
@@ -113,7 +109,7 @@ class TestVectaraAdapter:
         assert results[1].metadata["author"] == "Scholar A"
 
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
-    @patch('requests.post')
+    @patch("requests.post")
     def test_search_empty_response(self, mock_post, tool_config):
         """Test search with empty response."""
         mock_response = Mock()
@@ -127,7 +123,7 @@ class TestVectaraAdapter:
         assert len(results) == 0
 
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
-    @patch('requests.post')
+    @patch("requests.post")
     def test_search_api_error(self, mock_post, tool_config):
         """Test search with API error."""
         mock_post.side_effect = requests.exceptions.RequestException("API Error")
@@ -137,7 +133,7 @@ class TestVectaraAdapter:
             adapter.search("test query")
 
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
-    @patch('requests.post')
+    @patch("requests.post")
     def test_search_without_summary(self, mock_post, tool_config):
         """Test search response without summary."""
         response = {
@@ -148,7 +144,7 @@ class TestVectaraAdapter:
                             "text": "Result without summary",
                             "score": 0.75,
                             "documentIndex": "doc_1",
-                            "metadata": []
+                            "metadata": [],
                         }
                     ]
                 }
@@ -181,9 +177,9 @@ class TestVectaraAdapter:
                     text="Test text",
                     score=0.9,
                     source="Test Source",
-                    metadata={"key": "value"}
+                    metadata={"key": "value"},
                 )
-            ]
+            ],
         }
 
         ref_list = adapter.format_as_ref_list(test_results)

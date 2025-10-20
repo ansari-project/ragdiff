@@ -1,24 +1,22 @@
 """Command-line interface for RAG comparison tool."""
 
-import sys
+import json
+import logging
 import os
 from pathlib import Path
-from typing import Optional, List
-import logging
-import json
+from typing import List, Optional
 
-from dotenv import load_dotenv
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
-from rich import print as rprint
 
-from .core.config import Config
-from .core.models import ComparisonResult
 from .adapters.factory import create_adapter, get_available_adapters
 from .comparison.engine import ComparisonEngine
+from .core.config import Config
+from .core.models import ComparisonResult
 from .display.formatter import ComparisonFormatter
 from .evaluation.evaluator import LLMEvaluator
 
@@ -29,7 +27,7 @@ load_dotenv()
 app = typer.Typer(
     name="rag-compare",
     help="Compare RAG tool results side-by-side",
-    add_completion=False
+    add_completion=False,
 )
 
 console = Console()
@@ -42,7 +40,7 @@ def setup_logging(verbose: bool = False):
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%H:%M:%S"
+        datefmt="%H:%M:%S",
     )
 
 
@@ -51,20 +49,34 @@ def compare(
     query: str = typer.Argument(..., help="Search query to run against all tools"),
     tools: List[str] = typer.Option(
         None,
-        "--tool", "-t",
-        help="Tools to compare (can specify multiple). If not specified, uses all configured tools."
+        "--tool",
+        "-t",
+        help="Tools to compare (can specify multiple). If not specified, uses all configured tools.",
     ),
-    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results to retrieve from each tool"),
-    config_file: str = typer.Option("configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"),
+    top_k: int = typer.Option(
+        5, "--top-k", "-k", help="Number of results to retrieve from each tool"
+    ),
+    config_file: str = typer.Option(
+        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
+    ),
     output_format: str = typer.Option(
         "display",
-        "--format", "-f",
-        help="Output format: display, json, jsonl, csv, markdown, summary"
+        "--format",
+        "-f",
+        help="Output format: display, json, jsonl, csv, markdown, summary",
     ),
-    output_file: Optional[str] = typer.Option(None, "--output", "-o", help="Save output to file"),
-    parallel: bool = typer.Option(True, "--parallel/--sequential", help="Run searches in parallel or sequential"),
-    evaluate: bool = typer.Option(False, "--evaluate/--no-evaluate", help="Enable LLM evaluation using Claude"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging"),
+    output_file: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Save output to file"
+    ),
+    parallel: bool = typer.Option(
+        True, "--parallel/--sequential", help="Run searches in parallel or sequential"
+    ),
+    evaluate: bool = typer.Option(
+        False, "--evaluate/--no-evaluate", help="Enable LLM evaluation using Claude"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose logging"
+    ),
 ):
     """Run a comparison query against configured RAG tools."""
     setup_logging(verbose)
@@ -87,14 +99,18 @@ def compare(
             tool_names = list(config.tools.keys())
 
         if len(tool_names) < 2:
-            console.print("[yellow]Warning: Comparison works best with 2 or more tools[/yellow]")
+            console.print(
+                "[yellow]Warning: Comparison works best with 2 or more tools[/yellow]"
+            )
 
         # Create adapters for selected tools
         console.print(f"[cyan]Initializing {len(tool_names)} tools...[/cyan]")
         adapters = {}
         for tool_name in tool_names:
             if tool_name not in config.tools:
-                console.print(f"[red]Tool '{tool_name}' not found in configuration[/red]")
+                console.print(
+                    f"[red]Tool '{tool_name}' not found in configuration[/red]"
+                )
                 raise typer.Exit(1)
 
             try:
@@ -124,14 +140,20 @@ def compare(
                     try:
                         evaluator = LLMEvaluator(
                             model=llm_config.get("model", "claude-sonnet-4-20250514"),
-                            api_key=os.getenv(llm_config.get("api_key_env", "ANTHROPIC_API_KEY"))
+                            api_key=os.getenv(
+                                llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
+                            ),
                         )
                         result.llm_evaluation = evaluator.evaluate(result)
                         console.print("[green]✓ LLM evaluation complete[/green]")
                     except Exception as e:
-                        console.print(f"[yellow]Warning: LLM evaluation failed: {e}[/yellow]")
+                        console.print(
+                            f"[yellow]Warning: LLM evaluation failed: {e}[/yellow]"
+                        )
             else:
-                console.print("[yellow]LLM evaluation requested but not configured[/yellow]")
+                console.print(
+                    "[yellow]LLM evaluation requested but not configured[/yellow]"
+                )
 
         # Format output
         formatter = ComparisonFormatter(width=console.width)
@@ -143,6 +165,7 @@ def compare(
         elif output_format == "csv":
             import csv
             from io import StringIO
+
             buf = StringIO()
             writer = csv.writer(buf)
             tool_names = list(result.tool_results.keys())
@@ -196,7 +219,9 @@ def compare(
 
 @app.command()
 def list_tools(
-    config_file: str = typer.Option("configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"),
+    config_file: str = typer.Option(
+        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
+    ),
 ):
     """List all available and configured tools."""
     console.print("[bold]Available Tool Adapters:[/bold]")
@@ -207,13 +232,19 @@ def list_tools(
         config = Config(Path(config_file))
         console.print("\n[bold]Configured Tools:[/bold]")
         for tool_name, tool_config in config.tools.items():
-            status = "[green]✓[/green]" if os.getenv(tool_config.api_key_env) else "[red]✗ (missing API key)[/red]"
+            status = (
+                "[green]✓[/green]"
+                if os.getenv(tool_config.api_key_env)
+                else "[red]✗ (missing API key)[/red]"
+            )
             console.print(f"  {status} {tool_name} - {tool_config.api_key_env}")
 
 
 @app.command()
 def validate_config(
-    config_file: str = typer.Option("configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"),
+    config_file: str = typer.Option(
+        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
+    ),
 ):
     """Validate the configuration file."""
     try:
@@ -231,7 +262,7 @@ def validate_config(
         for tool_name in config.tools:
             console.print(f"  • {tool_name}")
 
-        console.print(f"\n[bold]LLM configuration:[/bold]")
+        console.print("\n[bold]LLM configuration:[/bold]")
         if config.llm:
             console.print(f"  • Model: {config.llm.model}")
             api_key_status = "✓" if os.getenv(config.llm.api_key_env) else "✗ (not set)"
@@ -246,18 +277,33 @@ def validate_config(
 
 @app.command()
 def batch(
-    queries_file: str = typer.Argument(..., help="Path to file with queries (one per line)"),
+    queries_file: str = typer.Argument(
+        ..., help="Path to file with queries (one per line)"
+    ),
     tools: List[str] = typer.Option(
         None,
-        "--tool", "-t",
-        help="Tools to compare (can specify multiple). If not specified, uses all configured tools."
+        "--tool",
+        "-t",
+        help="Tools to compare (can specify multiple). If not specified, uses all configured tools.",
     ),
-    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results to retrieve from each tool"),
-    config_file: str = typer.Option("configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"),
-    output_dir: str = typer.Option("outputs", "--output-dir", "-o", help="Directory to save batch results"),
-    output_format: str = typer.Option("jsonl", "--format", "-f", help="Output format: json, jsonl, csv"),
-    evaluate: bool = typer.Option(False, "--evaluate/--no-evaluate", help="Enable LLM evaluation using Claude"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging"),
+    top_k: int = typer.Option(
+        5, "--top-k", "-k", help="Number of results to retrieve from each tool"
+    ),
+    config_file: str = typer.Option(
+        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
+    ),
+    output_dir: str = typer.Option(
+        "outputs", "--output-dir", "-o", help="Directory to save batch results"
+    ),
+    output_format: str = typer.Option(
+        "jsonl", "--format", "-f", help="Output format: json, jsonl, csv"
+    ),
+    evaluate: bool = typer.Option(
+        False, "--evaluate/--no-evaluate", help="Enable LLM evaluation using Claude"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose logging"
+    ),
 ):
     """Run batch comparison on multiple queries from a file."""
     setup_logging(verbose)
@@ -269,7 +315,11 @@ def batch(
             console.print(f"[red]Queries file not found: {queries_file}[/red]")
             raise typer.Exit(1)
 
-        queries = [line.strip() for line in queries_path.read_text().split('\n') if line.strip()]
+        queries = [
+            line.strip()
+            for line in queries_path.read_text().split("\n")
+            if line.strip()
+        ]
         console.print(f"[cyan]Loaded {len(queries)} queries from {queries_file}[/cyan]")
 
         # Load configuration
@@ -292,7 +342,9 @@ def batch(
         adapters = {}
         for tool_name in tool_names:
             if tool_name not in config.tools:
-                console.print(f"[red]Tool '{tool_name}' not found in configuration[/red]")
+                console.print(
+                    f"[red]Tool '{tool_name}' not found in configuration[/red]"
+                )
                 raise typer.Exit(1)
             adapters[tool_name] = create_adapter(tool_name, config.tools[tool_name])
             console.print(f"  ✓ {tool_name}")
@@ -307,7 +359,9 @@ def batch(
             if llm_config:
                 evaluator = LLMEvaluator(
                     model=llm_config.get("model", "claude-sonnet-4-20250514"),
-                    api_key=os.getenv(llm_config.get("api_key_env", "ANTHROPIC_API_KEY"))
+                    api_key=os.getenv(
+                        llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
+                    ),
                 )
 
         # Process queries
@@ -320,7 +374,9 @@ def batch(
 
         with console.status("[bold cyan]Processing queries...[/bold cyan]") as status:
             for idx, query in enumerate(queries, 1):
-                status.update(f"[bold cyan]Processing query {idx}/{len(queries)}: {query[:50]}...[/bold cyan]")
+                status.update(
+                    f"[bold cyan]Processing query {idx}/{len(queries)}: {query[:50]}...[/bold cyan]"
+                )
 
                 result = engine.run_comparison(query, top_k=top_k, parallel=True)
 
@@ -335,22 +391,24 @@ def batch(
 
         # Save results
         if output_format == "json":
-            with open(output_file, 'w') as f:
+            with open(output_file, "w") as f:
                 json.dump([result.to_dict() for result in results], f, indent=2)
         elif output_format == "jsonl":
-            with open(output_file, 'w') as f:
+            with open(output_file, "w") as f:
                 for result in results:
                     json.dump(result.to_dict(), f)
-                    f.write('\n')
+                    f.write("\n")
         elif output_format == "csv":
-            with open(output_file, 'w', newline='') as f:
+            with open(output_file, "w", newline="") as f:
                 writer = csv.writer(f)
                 # Header
                 header = ["query", "timestamp"]
                 for tool_name in tool_names:
                     header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
                 if evaluate:
-                    header.extend(["llm_winner"] + [f"llm_score_{name}" for name in tool_names])
+                    header.extend(
+                        ["llm_winner"] + [f"llm_score_{name}" for name in tool_names]
+                    )
                 writer.writerow(header)
 
                 # Data rows
@@ -365,7 +423,9 @@ def batch(
                     if evaluate and result.llm_evaluation:
                         row.append(result.llm_evaluation.winner or "tie")
                         for tool_name in tool_names:
-                            row.append(result.llm_evaluation.quality_scores.get(tool_name, ""))
+                            row.append(
+                                result.llm_evaluation.quality_scores.get(tool_name, "")
+                            )
 
                     writer.writerow(row)
 
@@ -392,7 +452,9 @@ def batch(
 
 @app.command()
 def quick_test(
-    config_file: str = typer.Option("configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"),
+    config_file: str = typer.Option(
+        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
+    ),
 ):
     """Run a quick test query to verify setup."""
     query = "What is the ruling on prayer times?"
@@ -408,17 +470,19 @@ def quick_test(
         output_file=None,
         parallel=True,
         evaluate=False,
-        verbose=False
+        verbose=False,
     )
 
 
 def _display_rich_results(result: ComparisonResult):
     """Display results using rich formatting."""
     # Header
-    console.print(Panel.fit(
-        f"[bold cyan]Query:[/bold cyan] {result.query}",
-        title="RAG Comparison Results"
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold cyan]Query:[/bold cyan] {result.query}",
+            title="RAG Comparison Results",
+        )
+    )
 
     # Errors if any
     if result.has_errors():
@@ -443,22 +507,23 @@ def _display_rich_results(result: ComparisonResult):
                 if res.source:
                     panel_content.append(f"\nSource: {res.source}", style="dim")
 
-                console.print(Panel(
-                    panel_content,
-                    title=f"[bold]{tool_name.upper()}[/bold]",
-                    border_style="cyan"
-                ))
+                console.print(
+                    Panel(
+                        panel_content,
+                        title=f"[bold]{tool_name.upper()}[/bold]",
+                        border_style="cyan",
+                    )
+                )
 
 
 def _display_llm_evaluation(evaluation):
     """Display LLM evaluation results."""
-    from .core.models import LLMEvaluation
 
     eval_text = Text()
 
     # Winner
     if evaluation.winner:
-        eval_text.append(f"🏆 Winner: ", style="bold")
+        eval_text.append("🏆 Winner: ", style="bold")
         eval_text.append(f"{evaluation.winner.upper()}\n\n", style="bold green")
     else:
         eval_text.append("🏆 Winner: ", style="bold")
@@ -476,10 +541,14 @@ def _display_llm_evaluation(evaluation):
     eval_text.append("Analysis:\n", style="bold")
     eval_text.append(evaluation.analysis)
 
-    console.print(Panel(eval_text, title="[bold]LLM Evaluation[/bold]", border_style="green"))
+    console.print(
+        Panel(eval_text, title="[bold]LLM Evaluation[/bold]", border_style="green")
+    )
 
 
-def _display_batch_latency_stats(results: List[ComparisonResult], tool_names: List[str]):
+def _display_batch_latency_stats(
+    results: List[ComparisonResult], tool_names: List[str]
+):
     """Display latency percentile statistics for batch processing."""
     import statistics
 
@@ -525,7 +594,7 @@ def _display_batch_latency_stats(results: List[ComparisonResult], tool_names: Li
                 f"{p95:.1f}",
                 f"{p99:.1f}",
                 f"{max_lat:.1f}",
-                f"{mean_lat:.1f}"
+                f"{mean_lat:.1f}",
             )
         else:
             table.add_row(tool_name, "0", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A")
@@ -536,10 +605,7 @@ def _display_batch_latency_stats(results: List[ComparisonResult], tool_names: Li
 def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
     """Display summary of LLM evaluations across all queries."""
     # Map internal names to display names
-    display_names = {
-        'tafsir': 'vectara',
-        'goodmem': 'goodmem'
-    }
+    display_names = {"tafsir": "vectara", "goodmem": "goodmem"}
 
     # Collect evaluation data
     total_scores = {name: 0 for name in tool_names}
@@ -557,7 +623,10 @@ def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
                 winner_lower = winner.lower()
                 matched = False
                 for name in tool_names:
-                    if name.lower() in winner_lower or display_names.get(name, name).lower() in winner_lower:
+                    if (
+                        name.lower() in winner_lower
+                        or display_names.get(name, name).lower() in winner_lower
+                    ):
                         win_counts[name] += 1
                         matched = True
                         break
@@ -597,11 +666,7 @@ def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
         else:
             tool_display = display_name
 
-        table.add_row(
-            tool_display,
-            f"{wins}/{evaluated_count}",
-            f"{avg_score:.1f}/100"
-        )
+        table.add_row(tool_display, f"{wins}/{evaluated_count}", f"{avg_score:.1f}/100")
 
     if tie_count > 0:
         table.add_row("TIE", f"{tie_count}/{evaluated_count}", "-")
@@ -611,23 +676,28 @@ def _display_llm_evaluation_summary(results: List, tool_names: List[str]):
 
     # Determine overall winner
     max_wins = max(win_counts.values())
-    winners = [display_names.get(name, name) for name, count in win_counts.items() if count == max_wins]
+    winners = [
+        display_names.get(name, name)
+        for name, count in win_counts.items()
+        if count == max_wins
+    ]
 
     if len(winners) == 1 and max_wins > 0:
-        console.print(f"\n[bold green]Overall Winner: {winners[0].upper()}[/bold green]")
+        console.print(
+            f"\n[bold green]Overall Winner: {winners[0].upper()}[/bold green]"
+        )
     elif len(winners) > 1:
         console.print(f"\n[yellow]Tie between: {', '.join(winners)}[/yellow]")
 
 
-def _generate_and_display_holistic_summary(results: List, tool_names: List[str], output_file: Path):
+def _generate_and_display_holistic_summary(
+    results: List, tool_names: List[str], output_file: Path
+):
     """Generate comprehensive holistic summary and save to file."""
     from collections import Counter, defaultdict
 
     # Map internal names to display names
-    display_names = {
-        'tafsir': 'vectara',
-        'goodmem': 'goodmem'
-    }
+    display_names = {"tafsir": "vectara", "goodmem": "goodmem"}
 
     # Collect comprehensive statistics
     query_details = []
@@ -639,10 +709,10 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
             continue
 
         query_info = {
-            'query': result.query,
-            'winner': result.llm_evaluation.winner,
-            'scores': {},
-            'analysis': result.llm_evaluation.analysis
+            "query": result.query,
+            "winner": result.llm_evaluation.winner,
+            "scores": {},
+            "analysis": result.llm_evaluation.analysis,
         }
 
         # Extract scores
@@ -651,29 +721,35 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
             # Normalize to 100 scale if needed
             if score > 0 and score <= 10:
                 score *= 10
-            query_info['scores'][tool_name] = score
+            query_info["scores"][tool_name] = score
 
         query_details.append(query_info)
 
         # Track issues mentioned in analysis
         analysis_lower = result.llm_evaluation.analysis.lower()
-        if 'duplicate' in analysis_lower or 'repetition' in analysis_lower:
-            issue_tracker['duplicates'] += 1
-            theme_tracker['duplicates'].append(result.query)
-        if 'fragment' in analysis_lower or 'incomplete' in analysis_lower or 'truncat' in analysis_lower:
-            issue_tracker['fragmentation'] += 1
-            theme_tracker['fragmentation'].append(result.query)
-        if 'citation' in analysis_lower:
-            issue_tracker['citation_issues'] += 1
-            theme_tracker['citation_issues'].append(result.query)
-        if 'coherent' in analysis_lower or 'cohesive' in analysis_lower:
-            issue_tracker['coherence_mentioned'] += 1
-            theme_tracker['coherence'].append(result.query)
+        if "duplicate" in analysis_lower or "repetition" in analysis_lower:
+            issue_tracker["duplicates"] += 1
+            theme_tracker["duplicates"].append(result.query)
+        if (
+            "fragment" in analysis_lower
+            or "incomplete" in analysis_lower
+            or "truncat" in analysis_lower
+        ):
+            issue_tracker["fragmentation"] += 1
+            theme_tracker["fragmentation"].append(result.query)
+        if "citation" in analysis_lower:
+            issue_tracker["citation_issues"] += 1
+            theme_tracker["citation_issues"].append(result.query)
+        if "coherent" in analysis_lower or "cohesive" in analysis_lower:
+            issue_tracker["coherence_mentioned"] += 1
+            theme_tracker["coherence"].append(result.query)
 
     # Generate markdown summary
     md_lines = ["# RAG Comparison: Holistic Summary\n"]
     md_lines.append(f"**Total Queries Evaluated:** {len(query_details)}\n")
-    md_lines.append(f"**Tools Compared:** {', '.join(display_names.get(n, n) for n in tool_names)}\n")
+    md_lines.append(
+        f"**Tools Compared:** {', '.join(display_names.get(n, n) for n in tool_names)}\n"
+    )
     md_lines.append("\n---\n")
 
     # Section 1: Query-by-Query Breakdown
@@ -682,11 +758,14 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
         md_lines.append(f"\n### Query {i}: \"{qinfo['query']}\"\n")
 
         # Winner
-        winner_display = qinfo['winner'] if qinfo['winner'] else 'TIE'
-        if qinfo['winner']:
+        winner_display = qinfo["winner"] if qinfo["winner"] else "TIE"
+        if qinfo["winner"]:
             for tool_name in tool_names:
-                winner_lower = qinfo['winner'].lower()
-                if tool_name.lower() in winner_lower or display_names.get(tool_name, tool_name).lower() in winner_lower:
+                winner_lower = qinfo["winner"].lower()
+                if (
+                    tool_name.lower() in winner_lower
+                    or display_names.get(tool_name, tool_name).lower() in winner_lower
+                ):
                     winner_display = f"🏆 {display_names.get(tool_name, tool_name)}"
                     break
         md_lines.append(f"**Winner:** {winner_display}\n")
@@ -694,7 +773,7 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
         # Scores
         md_lines.append("**Quality Scores:**\n")
         for tool_name in tool_names:
-            score = qinfo['scores'].get(tool_name, 0)
+            score = qinfo["scores"].get(tool_name, 0)
             display_name = display_names.get(tool_name, tool_name)
             md_lines.append(f"- {display_name}: {score:.1f}/100\n")
 
@@ -707,10 +786,13 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
     # Calculate win distribution
     win_counts = Counter()
     for qinfo in query_details:
-        if qinfo['winner']:
-            winner_lower = qinfo['winner'].lower()
+        if qinfo["winner"]:
+            winner_lower = qinfo["winner"].lower()
             for tool_name in tool_names:
-                if tool_name.lower() in winner_lower or display_names.get(tool_name, tool_name).lower() in winner_lower:
+                if (
+                    tool_name.lower() in winner_lower
+                    or display_names.get(tool_name, tool_name).lower() in winner_lower
+                ):
                     win_counts[tool_name] += 1
                     break
 
@@ -719,26 +801,37 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
         display_name = display_names.get(tool_name, tool_name)
         wins = win_counts.get(tool_name, 0)
         percentage = (wins / len(query_details) * 100) if query_details else 0
-        md_lines.append(f"- **{display_name}**: {wins}/{len(query_details)} queries ({percentage:.1f}%)\n")
+        md_lines.append(
+            f"- **{display_name}**: {wins}/{len(query_details)} queries ({percentage:.1f}%)\n"
+        )
 
     # Calculate average scores
     md_lines.append("\n### Average Quality Scores\n")
     for tool_name in tool_names:
         display_name = display_names.get(tool_name, tool_name)
-        avg_score = sum(q['scores'].get(tool_name, 0) for q in query_details) / len(query_details) if query_details else 0
+        avg_score = (
+            sum(q["scores"].get(tool_name, 0) for q in query_details)
+            / len(query_details)
+            if query_details
+            else 0
+        )
         md_lines.append(f"- **{display_name}**: {avg_score:.1f}/100\n")
 
     # Issue frequency
     if issue_tracker:
         md_lines.append("\n### Recurring Issues\n")
-        for issue_type, count in sorted(issue_tracker.items(), key=lambda x: x[1], reverse=True):
+        for issue_type, count in sorted(
+            issue_tracker.items(), key=lambda x: x[1], reverse=True
+        ):
             percentage = (count / len(query_details) * 100) if query_details else 0
-            issue_name = issue_type.replace('_', ' ').title()
-            md_lines.append(f"- **{issue_name}**: {count}/{len(query_details)} queries ({percentage:.1f}%)\n")
+            issue_name = issue_type.replace("_", " ").title()
+            md_lines.append(
+                f"- **{issue_name}**: {count}/{len(query_details)} queries ({percentage:.1f}%)\n"
+            )
             # List affected queries
             if theme_tracker[issue_type]:
                 affected = theme_tracker[issue_type][:3]  # Show first 3
-                examples = ', '.join(f'"{q}"' for q in affected)
+                examples = ", ".join(f'"{q}"' for q in affected)
                 md_lines.append(f"  - Examples: {examples}\n")
 
     # Section 3: Key Differentiators
@@ -754,7 +847,9 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
 
     if overall_winner:
         winner_display = display_names.get(overall_winner, overall_winner)
-        loser_names = [display_names.get(n, n) for n in tool_names if n != overall_winner]
+        loser_names = [
+            display_names.get(n, n) for n in tool_names if n != overall_winner
+        ]
         loser_display = loser_names[0] if loser_names else "other tools"
 
         md_lines.append(f"\n### What makes {winner_display} better?\n")
@@ -762,16 +857,28 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
         # Analyze winning queries for patterns
         winner_analyses = []
         for qinfo in query_details:
-            if qinfo['winner']:
-                winner_lower = qinfo['winner'].lower()
-                if overall_winner.lower() in winner_lower or display_names.get(overall_winner, overall_winner).lower() in winner_lower:
-                    winner_analyses.append(qinfo['analysis'].lower())
+            if qinfo["winner"]:
+                winner_lower = qinfo["winner"].lower()
+                if (
+                    overall_winner.lower() in winner_lower
+                    or display_names.get(overall_winner, overall_winner).lower()
+                    in winner_lower
+                ):
+                    winner_analyses.append(qinfo["analysis"].lower())
 
         # Look for common positive terms in winner
         positive_terms = {
-            'complete': 0, 'comprehensive': 0, 'coherent': 0, 'cohesive': 0,
-            'structured': 0, 'organized': 0, 'clear': 0, 'relevant': 0,
-            'detailed': 0, 'thorough': 0, 'accurate': 0
+            "complete": 0,
+            "comprehensive": 0,
+            "coherent": 0,
+            "cohesive": 0,
+            "structured": 0,
+            "organized": 0,
+            "clear": 0,
+            "relevant": 0,
+            "detailed": 0,
+            "thorough": 0,
+            "accurate": 0,
         }
 
         for analysis in winner_analyses:
@@ -780,31 +887,47 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
                     positive_terms[term] += 1
 
         # Show top 3 positive attributes
-        top_positives = sorted(positive_terms.items(), key=lambda x: x[1], reverse=True)[:3]
+        top_positives = sorted(
+            positive_terms.items(), key=lambda x: x[1], reverse=True
+        )[:3]
         for term, count in top_positives:
             if count > 0:
-                percentage = (count / len(winner_analyses) * 100) if winner_analyses else 0
-                md_lines.append(f"- **{term.title()}**: mentioned in {count}/{len(winner_analyses)} winning queries ({percentage:.1f}%)\n")
+                percentage = (
+                    (count / len(winner_analyses) * 100) if winner_analyses else 0
+                )
+                md_lines.append(
+                    f"- **{term.title()}**: mentioned in {count}/{len(winner_analyses)} winning queries ({percentage:.1f}%)\n"
+                )
 
         md_lines.append(f"\n### What's wrong with {loser_display}?\n")
 
         # Analyze losing queries for patterns
         loser_analyses = []
         for qinfo in query_details:
-            if qinfo['winner']:
-                winner_lower = qinfo['winner'].lower()
+            if qinfo["winner"]:
+                winner_lower = qinfo["winner"].lower()
                 is_loser = True
                 for tool_name in tool_names:
                     if tool_name == overall_winner:
                         continue
-                    if tool_name.lower() in winner_lower or display_names.get(tool_name, tool_name).lower() in winner_lower:
-                        loser_analyses.append(qinfo['analysis'].lower())
+                    if (
+                        tool_name.lower() in winner_lower
+                        or display_names.get(tool_name, tool_name).lower()
+                        in winner_lower
+                    ):
+                        loser_analyses.append(qinfo["analysis"].lower())
                         break
 
         # Look for common negative terms
         negative_terms = {
-            'duplicate': 0, 'repetition': 0, 'fragment': 0, 'incomplete': 0,
-            'truncat': 0, 'disjointed': 0, 'confusing': 0, 'irrelevant': 0
+            "duplicate": 0,
+            "repetition": 0,
+            "fragment": 0,
+            "incomplete": 0,
+            "truncat": 0,
+            "disjointed": 0,
+            "confusing": 0,
+            "irrelevant": 0,
         }
 
         for analysis in loser_analyses:
@@ -813,11 +936,15 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
                     negative_terms[term] += 1
 
         # Show top 3 negative attributes
-        top_negatives = sorted(negative_terms.items(), key=lambda x: x[1], reverse=True)[:3]
+        top_negatives = sorted(
+            negative_terms.items(), key=lambda x: x[1], reverse=True
+        )[:3]
         for term, count in top_negatives:
             if count > 0:
                 percentage = (count / len(query_details) * 100) if query_details else 0
-                md_lines.append(f"- **{term.title()}**: mentioned in {count}/{len(query_details)} queries ({percentage:.1f}%)\n")
+                md_lines.append(
+                    f"- **{term.title()}**: mentioned in {count}/{len(query_details)} queries ({percentage:.1f}%)\n"
+                )
 
     # Section 4: Overall Verdict
     md_lines.append("\n---\n\n## 4. Overall Verdict\n")
@@ -826,28 +953,40 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
         winner_display = display_names.get(overall_winner, overall_winner)
         wins = win_counts.get(overall_winner, 0)
         win_pct = (wins / len(query_details) * 100) if query_details else 0
-        avg_winner_score = sum(q['scores'].get(overall_winner, 0) for q in query_details) / len(query_details) if query_details else 0
+        avg_winner_score = (
+            sum(q["scores"].get(overall_winner, 0) for q in query_details)
+            / len(query_details)
+            if query_details
+            else 0
+        )
 
         md_lines.append(f"\n**🏆 Clear Winner: {winner_display.upper()}**\n")
-        md_lines.append(f"\n{winner_display} won {wins} out of {len(query_details)} queries ({win_pct:.1f}%) ")
-        md_lines.append(f"with an average quality score of {avg_winner_score:.1f}/100.\n")
+        md_lines.append(
+            f"\n{winner_display} won {wins} out of {len(query_details)} queries ({win_pct:.1f}%) "
+        )
+        md_lines.append(
+            f"with an average quality score of {avg_winner_score:.1f}/100.\n"
+        )
 
         # Recommendation
-        md_lines.append(f"\n**Recommendation:** Use {winner_display} for production queries based on superior ")
+        md_lines.append(
+            f"\n**Recommendation:** Use {winner_display} for production queries based on superior "
+        )
         md_lines.append("result quality, coherence, and completeness.\n")
     else:
         md_lines.append("\n**Result:** No clear winner - further evaluation needed.\n")
 
     # Write to file
-    summary_content = ''.join(md_lines)
+    summary_content = "".join(md_lines)
     output_file.write_text(summary_content)
 
     # Display in terminal
-    console.print("\n" + "="*80)
-    console.print(Panel.fit(
-        "[bold cyan]Holistic Summary Generated[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print("\n" + "=" * 80)
+    console.print(
+        Panel.fit(
+            "[bold cyan]Holistic Summary Generated[/bold cyan]", border_style="cyan"
+        )
+    )
     console.print(f"[green]✓ Full summary saved to: {output_file}[/green]\n")
 
     # Display condensed version in terminal
@@ -858,22 +997,35 @@ def _generate_and_display_holistic_summary(results: List, tool_names: List[str],
         display_name = display_names.get(tool_name, tool_name)
         wins = win_counts.get(tool_name, 0)
         percentage = (wins / len(query_details) * 100) if query_details else 0
-        avg_score = sum(q['scores'].get(tool_name, 0) for q in query_details) / len(query_details) if query_details else 0
+        avg_score = (
+            sum(q["scores"].get(tool_name, 0) for q in query_details)
+            / len(query_details)
+            if query_details
+            else 0
+        )
 
         if wins == max_wins and max_wins > 0:
-            console.print(f"🏆 [bold green]{display_name}[/bold green]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100")
+            console.print(
+                f"🏆 [bold green]{display_name}[/bold green]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100"
+            )
         else:
-            console.print(f"   [cyan]{display_name}[/cyan]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100")
+            console.print(
+                f"   [cyan]{display_name}[/cyan]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100"
+            )
 
     # Show top issues
     if issue_tracker:
         console.print("\n[bold]Top Issues:[/bold]")
-        for issue_type, count in sorted(issue_tracker.items(), key=lambda x: x[1], reverse=True)[:3]:
+        for issue_type, count in sorted(
+            issue_tracker.items(), key=lambda x: x[1], reverse=True
+        )[:3]:
             percentage = (count / len(query_details) * 100) if query_details else 0
-            issue_name = issue_type.replace('_', ' ').title()
-            console.print(f"  • {issue_name}: {count}/{len(query_details)} queries ({percentage:.1f}%)")
+            issue_name = issue_type.replace("_", " ").title()
+            console.print(
+                f"  • {issue_name}: {count}/{len(query_details)} queries ({percentage:.1f}%)"
+            )
 
-    console.print("\n" + "="*80 + "\n")
+    console.print("\n" + "=" * 80 + "\n")
 
 
 def _display_stats_table(stats: dict):
@@ -892,11 +1044,7 @@ def _display_stats_table(stats: dict):
         else:
             latency_str = str(latency)
 
-        table.add_row(
-            tool_name,
-            str(count),
-            latency_str
-        )
+        table.add_row(tool_name, str(count), latency_str)
 
     console.print(table)
 

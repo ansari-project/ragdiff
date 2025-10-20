@@ -1,29 +1,27 @@
 """Goodmem adapter for RAG search."""
 
-import os
 import json
-import subprocess
-from typing import List, Dict, Any, Optional
 import logging
+import os
+import subprocess
+from typing import Any, Dict, List, Optional
+
 import requests
 import urllib3
 
 # Disable SSL warnings for self-signed certificate
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from .base import BaseRagTool
 from ..core.models import RagResult, ToolConfig
+from .base import BaseRagTool
 
 logger = logging.getLogger(__name__)
 
 # Import will be conditional based on availability
 try:
-    from goodmem_client import (
-        ApiClient,
-        Configuration,
-        ApiException
-    )
+    from goodmem_client import ApiClient, ApiException, Configuration
     from goodmem_client.streaming import MemoryStreamClient
+
     GOODMEM_AVAILABLE = True
 except ImportError:
     GOODMEM_AVAILABLE = False
@@ -53,24 +51,27 @@ class GoodmemAdapter(BaseRagTool):
                 configuration = Configuration(
                     host=self.base_url or "http://ansari.hosted.pairsys.ai:8080",
                 )
-                configuration.api_key['ApiKeyAuth'] = self.api_key
+                configuration.api_key["ApiKeyAuth"] = self.api_key
 
                 # Create API client and streaming client
                 self.api_client = ApiClient(configuration)
                 self.stream_client = MemoryStreamClient(self.api_client)
 
                 # Ensure the REST client is initialized with proper SSL settings
-                if not hasattr(self.api_client, 'rest_client'):
+                if not hasattr(self.api_client, "rest_client"):
                     from goodmem_client.rest import RESTClientObject
+
                     self.api_client.rest_client = RESTClientObject(configuration)
 
                 # Get space IDs from config, with fallback to defaults
-                self.space_ids = getattr(config, 'space_ids', None) or [
+                self.space_ids = getattr(config, "space_ids", None) or [
                     "efd91f05-87cf-4c4c-a04d-0a970f8d30a7",  # Ibn Katheer
                     "2d1f3227-8331-46ee-9dc2-d9265bfc79f5",  # Mawsuah
                     "d04d8032-3a9b-4b83-b906-e48458715a7a",  # Qurtubi
                 ]
-                logger.info(f"GoodMem client initialized with host: {configuration.host}, spaces: {self.space_ids}")
+                logger.info(
+                    f"GoodMem client initialized with host: {configuration.host}, spaces: {self.space_ids}"
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize GoodMem client: {e}")
                 self.stream_client = None
@@ -78,12 +79,14 @@ class GoodmemAdapter(BaseRagTool):
         else:
             self.stream_client = None
             # Still use configured space_ids even in mock mode
-            self.space_ids = getattr(config, 'space_ids', None) or [
+            self.space_ids = getattr(config, "space_ids", None) or [
                 "efd91f05-87cf-4c4c-a04d-0a970f8d30a7",  # Ibn Katheer
                 "2d1f3227-8331-46ee-9dc2-d9265bfc79f5",  # Mawsuah
                 "d04d8032-3a9b-4b83-b906-e48458715a7a",  # Qurtubi
             ]
-            logger.warning("Running in mock mode - install goodmem-client for real functionality")
+            logger.warning(
+                "Running in mock mode - install goodmem-client for real functionality"
+            )
 
     def search(self, query: str, top_k: int = 5) -> List[RagResult]:
         """Search Goodmem for relevant documents.
@@ -138,18 +141,10 @@ class GoodmemAdapter(BaseRagTool):
 
             # Use requests directly for better streaming support
             url = f"{self.api_client.configuration.host}/v1/memories:retrieve"
-            headers = {
-                "Accept": "application/x-ndjson",
-                "x-api-key": self.api_key
-            }
+            headers = {"Accept": "application/x-ndjson", "x-api-key": self.api_key}
 
             # Make HTTP request
-            response = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=30
-            )
+            response = requests.get(url, params=params, headers=headers, timeout=30)
 
             if response.status_code != 200:
                 logger.warning(f"Failed to search spaces: HTTP {response.status_code}")
@@ -159,7 +154,7 @@ class GoodmemAdapter(BaseRagTool):
             space_names = {
                 "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
                 "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-                "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi"
+                "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
             }
 
             # Build mapping from memoryId to spaceId
@@ -168,49 +163,53 @@ class GoodmemAdapter(BaseRagTool):
             current_stage = None
             encountered_rerank = False
 
-            for line in response.text.strip().split('\n'):
+            for line in response.text.strip().split("\n"):
                 if line:
                     try:
                         event = json.loads(line)
-                        boundary = event.get('resultSetBoundary')
+                        boundary = event.get("resultSetBoundary")
                         if boundary:
-                            stage = boundary.get('stageName')
-                            kind = boundary.get('kind')
-                            result_set_id = boundary.get('resultSetId')
+                            stage = boundary.get("stageName")
+                            kind = boundary.get("kind")
+                            result_set_id = boundary.get("resultSetId")
                             if stage:
                                 current_stage = stage
-                            if stage == 'rerank' and result_set_id:
-                                if kind == 'BEGIN':
+                            if stage == "rerank" and result_set_id:
+                                if kind == "BEGIN":
                                     rerank_result_set_ids.add(result_set_id)
                                     encountered_rerank = True
 
                         # Extract memoryId -> spaceId mapping from memoryDefinition events
-                        if event.get('memoryDefinition'):
-                            mem_def = event['memoryDefinition']
-                            memory_id = mem_def.get('memoryId')
-                            space_id = mem_def.get('spaceId')
+                        if event.get("memoryDefinition"):
+                            mem_def = event["memoryDefinition"]
+                            memory_id = mem_def.get("memoryId")
+                            space_id = mem_def.get("spaceId")
                             if memory_id and space_id:
                                 memory_to_space[memory_id] = space_id
 
                         # Parse events similar to CLI response
-                        if event and 'retrievedItem' in event and event['retrievedItem']:
-                            item = event['retrievedItem']
-                            chunk_ref = item.get('chunk', {})
-                            result_set_id = chunk_ref.get('resultSetId')
+                        if (
+                            event
+                            and "retrievedItem" in event
+                            and event["retrievedItem"]
+                        ):
+                            item = event["retrievedItem"]
+                            chunk_ref = item.get("chunk", {})
+                            result_set_id = chunk_ref.get("resultSetId")
 
                             if rerank_result_set_ids:
                                 if result_set_id not in rerank_result_set_ids:
                                     continue
-                            elif current_stage and current_stage != 'rerank':
+                            elif current_stage and current_stage != "rerank":
                                 continue
                             if chunk_ref:
-                                chunk = chunk_ref.get('chunk', {})
-                                text = chunk.get('chunkText', '')
-                                score = abs(chunk_ref.get('relevanceScore', 0.5))
+                                chunk = chunk_ref.get("chunk", {})
+                                text = chunk.get("chunkText", "")
+                                score = abs(chunk_ref.get("relevanceScore", 0.5))
 
                                 # Get space_id by looking up memoryId in our mapping
-                                memory_id = chunk.get('memoryId')
-                                space_id = memory_to_space.get(memory_id, 'unknown')
+                                memory_id = chunk.get("memoryId")
+                                space_id = memory_to_space.get(memory_id, "unknown")
 
                                 if text:
                                     result = RagResult(
@@ -219,10 +218,10 @@ class GoodmemAdapter(BaseRagTool):
                                         score=self._normalize_score(score),
                                         source=space_names.get(space_id, "GoodMem"),
                                         metadata={
-                                            'space_id': space_id,
-                                            'result_set_id': result_set_id,
-                                            'stage': current_stage,
-                                        }
+                                            "space_id": space_id,
+                                            "result_set_id": result_set_id,
+                                            "stage": current_stage,
+                                        },
                                     )
                                     results.append(result)
                     except json.JSONDecodeError:
@@ -258,12 +257,18 @@ class GoodmemAdapter(BaseRagTool):
             try:
                 # Build CLI command - CLI still uses gRPC port 9090
                 cmd = [
-                    "goodmem", "memory", "retrieve",
+                    "goodmem",
+                    "memory",
+                    "retrieve",
                     query,
-                    "--space-id", space_id,
-                    "--server", "https://ansari.hosted.pairsys.ai:9090",  # CLI uses gRPC
-                    "--max-results", str(top_k),
-                    "--format", "json"
+                    "--space-id",
+                    space_id,
+                    "--server",
+                    "https://ansari.hosted.pairsys.ai:9090",  # CLI uses gRPC
+                    "--max-results",
+                    str(top_k),
+                    "--format",
+                    "json",
                 ]
 
                 # Set environment with API key
@@ -273,15 +278,13 @@ class GoodmemAdapter(BaseRagTool):
                 # Execute command
                 logger.info(f"Searching GoodMem space {space_id} via CLI")
                 result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    timeout=30
+                    cmd, capture_output=True, text=True, env=env, timeout=30
                 )
 
                 if result.returncode != 0:
-                    logger.warning(f"CLI search failed for space {space_id}: {result.stderr}")
+                    logger.warning(
+                        f"CLI search failed for space {space_id}: {result.stderr}"
+                    )
                     continue
 
                 # Parse JSON output
@@ -290,7 +293,9 @@ class GoodmemAdapter(BaseRagTool):
                     parsed = self._parse_cli_response(data, space_id, query)
                     results.extend(parsed)
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse CLI JSON for space {space_id}: {e}")
+                    logger.warning(
+                        f"Failed to parse CLI JSON for space {space_id}: {e}"
+                    )
                     continue
 
             except subprocess.TimeoutExpired:
@@ -304,7 +309,9 @@ class GoodmemAdapter(BaseRagTool):
         results.sort(key=lambda x: x.score, reverse=True)
         return results[:top_k]
 
-    def _parse_cli_response(self, data: Dict[str, Any], space_id: str, query: str) -> List[RagResult]:
+    def _parse_cli_response(
+        self, data: Dict[str, Any], space_id: str, query: str
+    ) -> List[RagResult]:
         """Parse CLI JSON response into RagResult objects.
 
         Args:
@@ -321,23 +328,23 @@ class GoodmemAdapter(BaseRagTool):
         space_names = {
             "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
             "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-            "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi"
+            "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
         }
         source = space_names.get(space_id, "GoodMem")
 
         # Parse retrieved chunks
-        retrieved = data.get('retrieved', [])
+        retrieved = data.get("retrieved", [])
         for idx, item in enumerate(retrieved):
             try:
                 # Extract chunk data
-                result_data = item.get('Result', {})
-                chunk_data = result_data.get('Chunk', {})
-                chunk = chunk_data.get('chunk', {})
+                result_data = item.get("Result", {})
+                chunk_data = result_data.get("Chunk", {})
+                chunk = chunk_data.get("chunk", {})
 
                 # Get text and score
-                text = chunk.get('chunk_text', '')
+                text = chunk.get("chunk_text", "")
                 # GoodMem uses negative scores, normalize them
-                score = abs(chunk_data.get('relevance_score', 0.5))
+                score = abs(chunk_data.get("relevance_score", 0.5))
 
                 if text:
                     result = RagResult(
@@ -346,10 +353,10 @@ class GoodmemAdapter(BaseRagTool):
                         score=self._normalize_score(score),
                         source=source,
                         metadata={
-                            'space_id': space_id,
-                            'chunk_id': chunk.get('chunk_id', ''),
-                            'memory_id': chunk.get('memory_id', '')
-                        }
+                            "space_id": space_id,
+                            "chunk_id": chunk.get("chunk_id", ""),
+                            "memory_id": chunk.get("memory_id", ""),
+                        },
                     )
                     results.append(result)
 
@@ -359,7 +366,9 @@ class GoodmemAdapter(BaseRagTool):
 
         return results
 
-    def _parse_stream_item(self, item: Any, space_id: str, index: int) -> Optional[RagResult]:
+    def _parse_stream_item(
+        self, item: Any, space_id: str, index: int
+    ) -> Optional[RagResult]:
         """Parse a single streaming item into a RagResult.
 
         Args:
@@ -372,38 +381,38 @@ class GoodmemAdapter(BaseRagTool):
         """
         try:
             # Extract text content
-            if hasattr(item, 'content'):
+            if hasattr(item, "content"):
                 text = str(item.content)
-            elif hasattr(item, 'text'):
+            elif hasattr(item, "text"):
                 text = str(item.text)
-            elif hasattr(item, 'chunk'):
+            elif hasattr(item, "chunk"):
                 text = str(item.chunk)
             else:
                 text = str(item)
 
             # Extract score if available
-            score = float(getattr(item, 'score', 0.5))
+            score = float(getattr(item, "score", 0.5))
 
             # Map space IDs to source names
             space_names = {
                 "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
                 "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-                "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi"
+                "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
             }
             source = space_names.get(space_id, "GoodMem")
 
             # Extract metadata if available
             metadata = {}
-            if hasattr(item, 'metadata') and item.metadata:
+            if hasattr(item, "metadata") and item.metadata:
                 metadata = item.metadata if isinstance(item.metadata, dict) else {}
-            metadata['space_id'] = space_id
+            metadata["space_id"] = space_id
 
             return RagResult(
                 id=f"goodmem_{space_id[:8]}_{index}",
                 text=text,
                 score=self._normalize_score(score),
                 source=source,
-                metadata=metadata
+                metadata=metadata,
             )
         except Exception as e:
             logger.warning(f"Failed to parse stream item: {e}")
@@ -423,15 +432,15 @@ class GoodmemAdapter(BaseRagTool):
 
         try:
             # The batch response should contain results for our single query
-            if hasattr(response, 'results'):
+            if hasattr(response, "results"):
                 # Response might be a list of results per query
                 if isinstance(response.results, list) and len(response.results) > 0:
                     query_results = response.results[0]  # First query's results
                 else:
                     query_results = response.results
-            elif hasattr(response, 'memories'):
+            elif hasattr(response, "memories"):
                 query_results = response.memories
-            elif hasattr(response, 'items'):
+            elif hasattr(response, "items"):
                 query_results = response.items
             else:
                 logger.warning(f"Unknown GoodMem response structure: {type(response)}")
@@ -441,42 +450,46 @@ class GoodmemAdapter(BaseRagTool):
             for idx, item in enumerate(query_results):
                 try:
                     # Extract text content
-                    if hasattr(item, 'content'):
+                    if hasattr(item, "content"):
                         text = str(item.content)
-                    elif hasattr(item, 'text'):
+                    elif hasattr(item, "text"):
                         text = str(item.text)
-                    elif hasattr(item, 'chunk'):
+                    elif hasattr(item, "chunk"):
                         text = str(item.chunk)
                     else:
                         text = str(item)
 
                     # Extract score
-                    score = float(getattr(item, 'score', 0.5))
+                    score = float(getattr(item, "score", 0.5))
 
                     # Extract metadata and source
-                    if hasattr(item, 'metadata') and item.metadata:
-                        metadata = item.metadata if isinstance(item.metadata, dict) else {}
-                        source = metadata.get('space_name', metadata.get('source', f"GoodMem Space"))
+                    if hasattr(item, "metadata") and item.metadata:
+                        metadata = (
+                            item.metadata if isinstance(item.metadata, dict) else {}
+                        )
+                        source = metadata.get(
+                            "space_name", metadata.get("source", "GoodMem Space")
+                        )
                     else:
                         metadata = {}
                         source = "GoodMem"
 
                     # Add space information if available
-                    if hasattr(item, 'space_id'):
+                    if hasattr(item, "space_id"):
                         space_names = {
                             "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
                             "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-                            "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi"
+                            "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
                         }
                         source = space_names.get(item.space_id, source)
-                        metadata['space_id'] = item.space_id
+                        metadata["space_id"] = item.space_id
 
                     result = RagResult(
                         id=f"goodmem_{idx}",
                         text=text,
                         score=self._normalize_score(score),
                         source=source,
-                        metadata=metadata
+                        metadata=metadata,
                     )
                     results.append(result)
 
@@ -505,15 +518,11 @@ class GoodmemAdapter(BaseRagTool):
                 RagResult(
                     id=f"goodmem_mock_{i}",
                     text=f"Mock Goodmem result {i+1} for query: {query}. "
-                         f"This is a placeholder result for testing purposes. "
-                         f"Install goodmem-client to get real results.",
+                    f"This is a placeholder result for testing purposes. "
+                    f"Install goodmem-client to get real results.",
                     score=0.9 - (i * 0.15),
                     source=f"Goodmem Mock Source {i+1}",
-                    metadata={
-                        "mock": True,
-                        "index": i,
-                        "query": query
-                    }
+                    metadata={"mock": True, "index": i, "query": query},
                 )
             )
         return mock_results

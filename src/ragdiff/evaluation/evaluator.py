@@ -1,12 +1,13 @@
 """LLM-based evaluation using Claude for qualitative comparison."""
 
+import logging
 import os
 import time
-import logging
-from typing import Dict, List, Optional
+from typing import Optional
+
 from anthropic import Anthropic
 
-from ..core.models import ComparisonResult, LLMEvaluation, RagResult
+from ..core.models import ComparisonResult, LLMEvaluation
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +16,11 @@ class LLMEvaluator:
     """Uses Claude to provide qualitative evaluation of RAG results."""
 
     # Map internal tool names to display names
-    DISPLAY_NAMES = {
-        'tafsir': 'vectara',
-        'goodmem': 'goodmem'
-    }
+    DISPLAY_NAMES = {"tafsir": "vectara", "goodmem": "goodmem"}
 
-    def __init__(self, model: str = "claude-sonnet-4-20250514", api_key: Optional[str] = None):
+    def __init__(
+        self, model: str = "claude-sonnet-4-20250514", api_key: Optional[str] = None
+    ):
         """Initialize LLM evaluator.
 
         Args:
@@ -55,9 +55,7 @@ class LLMEvaluator:
                 model=self.model,
                 max_tokens=4096,
                 temperature=0.1,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                messages=[{"role": "user", "content": prompt}],
             )
 
             # Parse response
@@ -79,7 +77,7 @@ class LLMEvaluator:
                 winner=None,
                 analysis=f"Evaluation failed: {str(e)}",
                 quality_scores={},
-                evaluation_time_ms=(time.time() - start_time) * 1000
+                evaluation_time_ms=(time.time() - start_time) * 1000,
             )
 
     def _build_evaluation_prompt(self, result: ComparisonResult) -> str:
@@ -100,7 +98,7 @@ class LLMEvaluator:
             "You are an expert evaluator of RAG (Retrieval Augmented Generation) systems.",
             f"\nQuery: {result.query}",
             "\n\nI need you to compare the quality of results from different RAG systems.",
-            "\n\n---RESULTS---\n"
+            "\n\n---RESULTS---\n",
         ]
 
         # Add results from each tool using display names
@@ -111,37 +109,43 @@ class LLMEvaluator:
                 prompt_parts.append("(No results returned)\n")
             else:
                 for idx, res in enumerate(results[:5], 1):  # Limit to top 5
-                    prompt_parts.append(f"\n{idx}. [Score: {res.score:.3f}] [{res.source}]\n")
+                    prompt_parts.append(
+                        f"\n{idx}. [Score: {res.score:.3f}] [{res.source}]\n"
+                    )
                     prompt_parts.append(f"{res.text}\n")
 
         # Add evaluation criteria with display names
-        prompt_parts.extend([
-            "\n---EVALUATION TASK---",
-            "\nCompare these results on the following dimensions:",
-            "1. **Relevance**: How well do results match the query intent?",
-            "2. **Completeness**: How comprehensive is the information?",
-            "3. **Accuracy**: Are the results factually correct (where verifiable)?",
-            "4. **Coherence**: Is the text clear and well-structured?",
-            "5. **Source Quality**: Are sources credible and authoritative?",
-            "\nProvide your analysis in this format:",
-            "\nWINNER: [tool_name or 'TIE']",
-            f"\nQUALITY SCORES (0-100): {', '.join(f'{name}=X' for name in display_names)}",
-            "\nIMPORTANT: Quality scores MUST be on a 0-100 scale where 0=completely irrelevant and 100=perfect results.",
-            "\nANALYSIS:",
-            "• Relevance: [comparison]",
-            "• Completeness: [comparison]",
-            "• Accuracy: [comparison]",
-            "• Coherence: [comparison]",
-            "• Source Quality: [comparison]",
-            "\nKEY DIFFERENCES:",
-            "• [difference 1]",
-            "• [difference 2]",
-            "\nRECOMMENDATION: [your recommendation]"
-        ])
+        prompt_parts.extend(
+            [
+                "\n---EVALUATION TASK---",
+                "\nCompare these results on the following dimensions:",
+                "1. **Relevance**: How well do results match the query intent?",
+                "2. **Completeness**: How comprehensive is the information?",
+                "3. **Accuracy**: Are the results factually correct (where verifiable)?",
+                "4. **Coherence**: Is the text clear and well-structured?",
+                "5. **Source Quality**: Are sources credible and authoritative?",
+                "\nProvide your analysis in this format:",
+                "\nWINNER: [tool_name or 'TIE']",
+                f"\nQUALITY SCORES (0-100): {', '.join(f'{name}=X' for name in display_names)}",
+                "\nIMPORTANT: Quality scores MUST be on a 0-100 scale where 0=completely irrelevant and 100=perfect results.",
+                "\nANALYSIS:",
+                "• Relevance: [comparison]",
+                "• Completeness: [comparison]",
+                "• Accuracy: [comparison]",
+                "• Coherence: [comparison]",
+                "• Source Quality: [comparison]",
+                "\nKEY DIFFERENCES:",
+                "• [difference 1]",
+                "• [difference 2]",
+                "\nRECOMMENDATION: [your recommendation]",
+            ]
+        )
 
         return "".join(prompt_parts)
 
-    def _parse_evaluation(self, analysis_text: str, result: ComparisonResult) -> LLMEvaluation:
+    def _parse_evaluation(
+        self, analysis_text: str, result: ComparisonResult
+    ) -> LLMEvaluation:
         """Parse Claude's response into structured evaluation.
 
         Args:
@@ -159,10 +163,14 @@ class LLMEvaluator:
         # Parse winner
         winner = None
         if "WINNER:" in analysis_text:
-            winner_line = [line for line in analysis_text.split('\n') if line.strip().startswith('WINNER:')]
+            winner_line = [
+                line
+                for line in analysis_text.split("\n")
+                if line.strip().startswith("WINNER:")
+            ]
             if winner_line:
-                winner_text = winner_line[0].split(':', 1)[1].strip().lower()
-                if winner_text != 'tie':
+                winner_text = winner_line[0].split(":", 1)[1].strip().lower()
+                if winner_text != "tie":
                     # Try to match display name first, then internal name
                     if winner_text in reverse_mapping:
                         winner = reverse_mapping[winner_text]
@@ -176,18 +184,25 @@ class LLMEvaluator:
         # Parse quality scores
         quality_scores = {}
         if "QUALITY SCORES" in analysis_text:
-            score_line = [line for line in analysis_text.split('\n') if 'QUALITY SCORES' in line]
+            score_line = [
+                line for line in analysis_text.split("\n") if "QUALITY SCORES" in line
+            ]
             if score_line:
                 # Extract scores like "vectara=78" or "goodmem: 65"
-                score_text = score_line[0].split(':', 1)[1] if ':' in score_line[0] else ""
+                score_text = (
+                    score_line[0].split(":", 1)[1] if ":" in score_line[0] else ""
+                )
                 for tool_name in tool_names:
                     display_name = self.DISPLAY_NAMES.get(tool_name, tool_name)
-                    for part in score_text.split(','):
+                    for part in score_text.split(","):
                         part_lower = part.lower()
                         # Check for both display name and internal name
-                        if display_name.lower() in part_lower or tool_name.lower() in part_lower:
+                        if (
+                            display_name.lower() in part_lower
+                            or tool_name.lower() in part_lower
+                        ):
                             try:
-                                score = int(''.join(c for c in part if c.isdigit()))
+                                score = int("".join(c for c in part if c.isdigit()))
                                 quality_scores[tool_name] = score
                                 break
                             except ValueError:
@@ -197,5 +212,5 @@ class LLMEvaluator:
             llm_model=self.model,
             winner=winner,
             analysis=analysis_text,
-            quality_scores=quality_scores
+            quality_scores=quality_scores,
         )

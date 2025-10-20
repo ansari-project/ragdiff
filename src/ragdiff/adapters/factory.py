@@ -1,20 +1,20 @@
 """Factory for creating RAG tool adapters."""
 
-from typing import Dict, Type, List
 import logging
+from typing import Dict, List, Type
 
-from .base import BaseRagTool
-from .vectara import VectaraAdapter
-from .goodmem import GoodmemAdapter
-from .agentset import AgentsetAdapter
 from ..core.models import ToolConfig
+from .agentset import AgentsetAdapter
+from .base import BaseRagTool
+from .goodmem import GoodmemAdapter
+from .vectara import VectaraAdapter
 
 logger = logging.getLogger(__name__)
 
 # Registry of available adapters
 ADAPTER_REGISTRY: Dict[str, Type[BaseRagTool]] = {
     "vectara": VectaraAdapter,  # Vectara platform adapter
-    "tafsir": VectaraAdapter,   # Vectara with Tafsir corpus
+    "tafsir": VectaraAdapter,  # Vectara with Tafsir corpus
     "mawsuah": VectaraAdapter,  # Vectara with Mawsuah corpus
     "goodmem": GoodmemAdapter,
     "agentset": AgentsetAdapter,

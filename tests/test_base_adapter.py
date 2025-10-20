@@ -1,10 +1,12 @@
 """Tests for base adapter."""
 
-import pytest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
+
 from src.adapters.base import BaseRagTool
-from src.core.models import ToolConfig, RagResult
+from src.core.models import RagResult, ToolConfig
 
 
 class ConcreteRagTool(BaseRagTool):
@@ -16,7 +18,7 @@ class ConcreteRagTool(BaseRagTool):
             RagResult(
                 id=f"doc{i}",
                 text=f"Result {i} for query: {query}",
-                score=0.9 - (i * 0.1)
+                score=0.9 - (i * 0.1),
             )
             for i in range(min(top_k, 3))
         ]
@@ -35,7 +37,7 @@ class TestBaseRagTool:
             base_url="https://test.api.com",
             timeout=30,
             max_retries=3,
-            default_top_k=5
+            default_top_k=5,
         )
 
     @patch.dict(os.environ, {"TEST_API_KEY": "test_key_123"})
@@ -49,7 +51,9 @@ class TestBaseRagTool:
     def test_missing_api_key(self, tool_config):
         """Test error when API key is missing."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="Missing required environment variable"):
+            with pytest.raises(
+                ValueError, match="Missing required environment variable"
+            ):
                 ConcreteRagTool(tool_config)
 
     @patch.dict(os.environ, {"TEST_API_KEY": "test_key_123"})
@@ -70,7 +74,7 @@ class TestBaseRagTool:
         tool = ConcreteRagTool(tool_config)
 
         # Mock search to raise an exception
-        with patch.object(tool, 'search', side_effect=Exception("API Error")):
+        with patch.object(tool, "search", side_effect=Exception("API Error")):
             result = tool.run("test query")
 
             assert result["success"] is False
@@ -85,9 +89,13 @@ class TestBaseRagTool:
         results = {
             "success": True,
             "results": [
-                RagResult(id="1", text="First result text that is quite long and should be truncated", score=0.95),
-                RagResult(id="2", text="Second result", score=0.85)
-            ]
+                RagResult(
+                    id="1",
+                    text="First result text that is quite long and should be truncated",
+                    score=0.95,
+                ),
+                RagResult(id="2", text="Second result", score=0.85),
+            ],
         }
 
         formatted = tool.format_as_tool_result(results)
@@ -99,10 +107,7 @@ class TestBaseRagTool:
     def test_format_as_tool_result_error(self, tool_config):
         """Test formatting error results."""
         tool = ConcreteRagTool(tool_config)
-        results = {
-            "success": False,
-            "error": "Connection timeout"
-        }
+        results = {"success": False, "error": "Connection timeout"}
 
         formatted = tool.format_as_tool_result(results)
         assert "Error:" in formatted
@@ -112,10 +117,7 @@ class TestBaseRagTool:
     def test_format_as_tool_result_empty(self, tool_config):
         """Test formatting empty results."""
         tool = ConcreteRagTool(tool_config)
-        results = {
-            "success": True,
-            "results": []
-        }
+        results = {"success": True, "results": []}
 
         formatted = tool.format_as_tool_result(results)
         assert formatted == "No results found."

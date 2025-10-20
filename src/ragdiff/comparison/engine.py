@@ -1,12 +1,12 @@
 """Comparison engine for running parallel RAG searches."""
 
-import time
 import logging
-from typing import Dict, Any, List, Optional
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List
 
-from ..core.models import RagResult, ComparisonResult, LLMEvaluation
 from ..adapters.base import BaseRagTool
+from ..core.models import ComparisonResult, RagResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +27,7 @@ class ComparisonEngine:
         logger.info(f"Initialized comparison engine with tools: {list(tools.keys())}")
 
     def run_comparison(
-        self,
-        query: str,
-        top_k: int = 5,
-        parallel: bool = True
+        self, query: str, top_k: int = 5, parallel: bool = True
     ) -> ComparisonResult:
         """Run the same query against all tools and compare results.
 
@@ -59,7 +56,7 @@ class ComparisonEngine:
             query=query,
             tool_results=tool_results,
             errors=errors,
-            llm_evaluation=None  # Will be added in Phase 5
+            llm_evaluation=None,  # Will be added in Phase 5
         )
 
         logger.info(
@@ -70,9 +67,7 @@ class ComparisonEngine:
         return result
 
     def _run_parallel(
-        self,
-        query: str,
-        top_k: int
+        self, query: str, top_k: int
     ) -> tuple[Dict[str, List[RagResult]], Dict[str, str]]:
         """Run searches in parallel using ThreadPoolExecutor.
 
@@ -90,11 +85,7 @@ class ComparisonEngine:
             # Submit all tasks
             future_to_tool = {
                 executor.submit(
-                    self._run_single_search,
-                    tool_name,
-                    tool,
-                    query,
-                    top_k
+                    self._run_single_search, tool_name, tool, query, top_k
                 ): tool_name
                 for tool_name, tool in self.tools.items()
             }
@@ -113,9 +104,7 @@ class ComparisonEngine:
         return tool_results, errors
 
     def _run_sequential(
-        self,
-        query: str,
-        top_k: int
+        self, query: str, top_k: int
     ) -> tuple[Dict[str, List[RagResult]], Dict[str, str]]:
         """Run searches sequentially.
 
@@ -141,11 +130,7 @@ class ComparisonEngine:
         return tool_results, errors
 
     def _run_single_search(
-        self,
-        tool_name: str,
-        tool: BaseRagTool,
-        query: str,
-        top_k: int
+        self, tool_name: str, tool: BaseRagTool, query: str, top_k: int
     ) -> List[RagResult]:
         """Run a single search with timing.
 
@@ -174,8 +159,7 @@ class ComparisonEngine:
                     result.latency_ms = latency_ms
 
             logger.debug(
-                f"{tool_name} returned {len(results)} results "
-                f"in {latency_ms:.2f}ms"
+                f"{tool_name} returned {len(results)} results " f"in {latency_ms:.2f}ms"
             )
 
             return results
@@ -199,7 +183,7 @@ class ComparisonEngine:
             "tools_with_errors": list(result.errors.keys()),
             "result_counts": {},
             "average_scores": {},
-            "latencies_ms": {}
+            "latencies_ms": {},
         }
 
         for tool_name, results in result.tool_results.items():

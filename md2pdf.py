@@ -6,9 +6,10 @@ Usage:
     python md2pdf.py input.md  # Creates input.pdf
 """
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
+
 import markdown
 
 
@@ -146,7 +147,7 @@ def main():
         sys.exit(1)
 
     if not md_file.suffix == ".md":
-        print(f"Warning: Input file doesn't have .md extension")
+        print("Warning: Input file doesn't have .md extension")
 
     # Determine output PDF file
     if len(sys.argv) >= 3:

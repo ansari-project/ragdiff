@@ -1,13 +1,12 @@
 """Tests for Goodmem adapter."""
 
-import pytest
 import os
-from unittest.mock import patch, MagicMock, Mock, AsyncMock
-import asyncio
-import sys
+from unittest.mock import Mock, patch
+
+import pytest
 
 from src.adapters.goodmem import GoodmemAdapter
-from src.core.models import ToolConfig, RagResult
+from src.core.models import RagResult, ToolConfig
 
 
 class TestGoodmemAdapter:
@@ -21,13 +20,13 @@ class TestGoodmemAdapter:
             api_key_env="GOODMEM_API_KEY",
             base_url=None,
             timeout=30,
-            default_top_k=5
+            default_top_k=5,
         )
 
     @patch.dict(os.environ, {"GOODMEM_API_KEY": "test_key"})
     def test_initialization_without_client(self, tool_config):
         """Test adapter initialization when goodmem-client not available."""
-        with patch('src.adapters.goodmem.GOODMEM_AVAILABLE', False):
+        with patch("src.adapters.goodmem.GOODMEM_AVAILABLE", False):
             adapter = GoodmemAdapter(tool_config)
             assert adapter.name == "goodmem"
             assert adapter.client is None
@@ -46,7 +45,7 @@ class TestGoodmemAdapter:
     @patch.dict(os.environ, {"GOODMEM_API_KEY": "test_key"})
     def test_mock_search(self, tool_config):
         """Test mock search when client not available."""
-        with patch('src.adapters.goodmem.GOODMEM_AVAILABLE', False):
+        with patch("src.adapters.goodmem.GOODMEM_AVAILABLE", False):
             adapter = GoodmemAdapter(tool_config)
             results = adapter.search("test query", top_k=2)
 
@@ -88,13 +87,13 @@ class TestGoodmemAdapter:
 
         # Test dict response
         dict_response = {
-            'results': [
+            "results": [
                 {
-                    'text': 'Dict result',
-                    'score': 0.88,
-                    'id': 'dict1',
-                    'source': 'Dict Source',
-                    'metadata': {'key': 'value'}
+                    "text": "Dict result",
+                    "score": 0.88,
+                    "id": "dict1",
+                    "source": "Dict Source",
+                    "metadata": {"key": "value"},
                 }
             ]
         }
@@ -110,8 +109,8 @@ class TestGoodmemAdapter:
 
         # Test list response
         list_response = [
-            {'text': 'List item 1', 'score': 0.7},
-            {'text': 'List item 2', 'score': 0.6}
+            {"text": "List item 1", "score": 0.7},
+            {"text": "List item 2", "score": 0.6},
         ]
         results = adapter._parse_goodmem_response(list_response)
         assert len(results) == 2
@@ -126,8 +125,13 @@ class TestGoodmemAdapter:
         # Test object with results attribute
         mock_response = Mock()
         mock_response.results = [
-            Mock(text="Object result", score=0.9, id="obj1",
-                 source="Object Source", metadata={})
+            Mock(
+                text="Object result",
+                score=0.9,
+                id="obj1",
+                source="Object Source",
+                metadata={},
+            )
         ]
         results = adapter._parse_goodmem_response(mock_response)
         assert len(results) == 1
@@ -140,10 +144,10 @@ class TestGoodmemAdapter:
         adapter = GoodmemAdapter(tool_config)
 
         response = {
-            'results': [
-                {'text': 'High score', 'score': 950},  # Out of 1000
-                {'text': 'Percentage', 'score': 85},   # Out of 100
-                {'text': 'Normal', 'score': 0.75}      # Already normalized
+            "results": [
+                {"text": "High score", "score": 950},  # Out of 1000
+                {"text": "Percentage", "score": 85},  # Out of 100
+                {"text": "Normal", "score": 0.75},  # Already normalized
             ]
         }
         results = adapter._parse_goodmem_response(response)
@@ -171,10 +175,10 @@ class TestGoodmemAdapter:
         adapter = GoodmemAdapter(tool_config)
 
         response = {
-            'results': [
-                {'content': 'Using content field'},  # No 'text' field
-                {'text': 'Missing score'},           # No 'score' field
-                'Just a string'                       # Not even a dict
+            "results": [
+                {"content": "Using content field"},  # No 'text' field
+                {"text": "Missing score"},  # No 'score' field
+                "Just a string",  # Not even a dict
             ]
         }
         results = adapter._parse_goodmem_response(response)

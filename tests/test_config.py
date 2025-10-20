@@ -1,10 +1,11 @@
 """Tests for configuration management."""
 
-import pytest
 import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 import yaml
 
 from src.core.config import Config
@@ -23,35 +24,25 @@ class TestConfig:
                     "name": "goodmem",
                     "api_key_env": "GOODMEM_KEY",
                     "timeout": 30,
-                    "default_top_k": 5
+                    "default_top_k": 5,
                 },
                 "mawsuah": {
                     "name": "mawsuah",
                     "api_key_env": "VECTARA_KEY",
                     "corpus_id": "corpus123",
-                    "timeout": 45
-                }
+                    "timeout": 45,
+                },
             },
             "llm": {
                 "model": "claude-opus-4-1",
                 "api_key_env": "ANTHROPIC_KEY",
-                "temperature": 0.3
+                "temperature": 0.3,
             },
-            "output": {
-                "formats": ["console", "jsonl"],
-                "output_dir": "outputs"
-            },
-            "display": {
-                "max_text_length": 500,
-                "highlight_differences": True
-            }
+            "output": {"formats": ["console", "jsonl"], "output_dir": "outputs"},
+            "display": {"max_text_length": 500, "highlight_differences": True},
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.yaml',
-            delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(config_data, f)
             temp_path = Path(f.name)
 
@@ -82,30 +73,27 @@ class TestConfig:
                     "name": "goodmem",
                     "api_key_env": "GOODMEM_KEY",
                     "timeout": 30,
-                    "default_top_k": 5
+                    "default_top_k": 5,
                 },
                 "mawsuah": {
                     "name": "mawsuah",
                     "api_key_env": "VECTARA_KEY",
                     "corpus_id": "${VECTARA_CORPUS}",
-                    "timeout": 45
-                }
+                    "timeout": 45,
+                },
             },
             "llm": {
                 "model": "claude-opus-4-1",
                 "api_key_env": "ANTHROPIC_KEY",
-                "temperature": 0.3
-            }
+                "temperature": 0.3,
+            },
         }
         import tempfile
-        import yaml
         from pathlib import Path
 
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.yaml',
-            delete=False
-        ) as f:
+        import yaml
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(config_data, f)
             temp_path = Path(f.name)
 
@@ -171,7 +159,14 @@ class TestConfig:
         assert display["max_text_length"] == 500
         assert display["highlight_differences"] is True
 
-    @patch.dict(os.environ, {"ANTHROPIC_KEY": "test_key", "GOODMEM_KEY": "test_key", "VECTARA_KEY": "test_key"})
+    @patch.dict(
+        os.environ,
+        {
+            "ANTHROPIC_KEY": "test_key",
+            "GOODMEM_KEY": "test_key",
+            "VECTARA_KEY": "test_key",
+        },
+    )
     def test_validate_success(self, temp_config_file):
         """Test successful validation."""
         config = Config(temp_config_file)
@@ -181,22 +176,11 @@ class TestConfig:
     def test_validate_missing_tool(self):
         """Test validation with missing required tool."""
         config_data = {
-            "tools": {
-                "goodmem": {
-                    "name": "goodmem",
-                    "api_key_env": "KEY"
-                }
-            },
-            "llm": {
-                "api_key_env": "ANTHROPIC_KEY"
-            }
+            "tools": {"goodmem": {"name": "goodmem", "api_key_env": "KEY"}},
+            "llm": {"api_key_env": "ANTHROPIC_KEY"},
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.yaml',
-            delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(config_data, f)
             temp_path = Path(f.name)
 

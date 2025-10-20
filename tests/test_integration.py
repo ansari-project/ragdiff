@@ -1,14 +1,12 @@
 """Integration tests for the RAG comparison tool."""
 
-import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
-from src.core.config import Config
-from src.core.models import RagResult, ComparisonResult
-from ragdiff.adapters.factory import create_adapter
+import pytest
+
 from src.comparison.engine import ComparisonEngine
+from src.core.config import Config
+from src.core.models import ComparisonResult, RagResult
 from src.display.formatter import ComparisonFormatter
 
 
@@ -38,11 +36,10 @@ llm:
         config_file.write_text(config_content)
         return config_file
 
-    @patch.dict("os.environ", {
-        "TEST_KEY1": "key1",
-        "TEST_KEY2": "key2",
-        "TEST_LLM_KEY": "llm_key"
-    })
+    @patch.dict(
+        "os.environ",
+        {"TEST_KEY1": "key1", "TEST_KEY2": "key2", "TEST_LLM_KEY": "llm_key"},
+    )
     def test_config_loading_and_validation(self, temp_config):
         """Test configuration loading and validation."""
         config = Config(temp_config)
@@ -92,28 +89,30 @@ llm:
     @patch.dict("os.environ", {"VECTARA_API_KEY": "test_key"})
     def test_adapter_integration(self, mock_post):
         """Test adapter integration with engine."""
-        from src.core.models import ToolConfig
         from ragdiff.adapters.vectara import VectaraAdapter
+        from src.core.models import ToolConfig
 
         # Setup mock response
         mock_response = Mock()
         mock_response.json.return_value = {
-            "responseSet": [{
-                "response": [{
-                    "text": "Test result",
-                    "score": 0.9,
-                    "documentIndex": "doc1",
-                    "metadata": []
-                }]
-            }]
+            "responseSet": [
+                {
+                    "response": [
+                        {
+                            "text": "Test result",
+                            "score": 0.9,
+                            "documentIndex": "doc1",
+                            "metadata": [],
+                        }
+                    ]
+                }
+            ]
         }
         mock_post.return_value = mock_response
 
         # Create adapter
         config = ToolConfig(
-            name="mawsuah",
-            api_key_env="VECTARA_API_KEY",
-            corpus_id="test_corpus"
+            name="mawsuah", api_key_env="VECTARA_API_KEY", corpus_id="test_corpus"
         )
         adapter = VectaraAdapter(config)
 
@@ -160,13 +159,17 @@ llm:
             query="test query",
             tool_results={
                 "tool1": [
-                    RagResult(id="1", text="First tool result", score=0.9, source="Source1")
+                    RagResult(
+                        id="1", text="First tool result", score=0.9, source="Source1"
+                    )
                 ],
                 "tool2": [
-                    RagResult(id="2", text="Second tool result", score=0.85, source="Source2")
-                ]
+                    RagResult(
+                        id="2", text="Second tool result", score=0.85, source="Source2"
+                    )
+                ],
             },
-            errors={}
+            errors={},
         )
 
         formatter = ComparisonFormatter(width=80)
@@ -193,13 +196,10 @@ llm:
     @patch.dict("os.environ", {"GOODMEM_API_KEY": "test_key"})
     def test_goodmem_mock_mode_integration(self):
         """Test Goodmem adapter in mock mode."""
-        from src.core.models import ToolConfig
         from ragdiff.adapters.goodmem import GoodmemAdapter
+        from src.core.models import ToolConfig
 
-        config = ToolConfig(
-            name="goodmem",
-            api_key_env="GOODMEM_API_KEY"
-        )
+        config = ToolConfig(name="goodmem", api_key_env="GOODMEM_API_KEY")
         adapter = GoodmemAdapter(config)
 
         # Should use mock implementation
@@ -231,7 +231,9 @@ llm:
 
         # Results should be the same
         assert len(result_parallel.tool_results) == len(result_sequential.tool_results)
-        assert result_parallel.tool_results.keys() == result_sequential.tool_results.keys()
+        assert (
+            result_parallel.tool_results.keys() == result_sequential.tool_results.keys()
+        )
 
     def test_error_handling_integration(self):
         """Test error handling across components."""
@@ -244,10 +246,9 @@ llm:
         failing_adapter = Mock()
         failing_adapter.search.side_effect = RuntimeError("Connection failed")
 
-        engine = ComparisonEngine({
-            "working": working_adapter,
-            "failing": failing_adapter
-        })
+        engine = ComparisonEngine(
+            {"working": working_adapter, "failing": failing_adapter}
+        )
 
         result = engine.run_comparison("test", parallel=False)
 
@@ -276,7 +277,7 @@ llm:
                     id=f"tool{i}_1",
                     text=f"Result from tool{i}",
                     score=0.9 - (i * 0.1),
-                    latency_ms=100 + (i * 50)
+                    latency_ms=100 + (i * 50),
                 )
             ]
             mock_adapters[f"tool{i}"] = adapter
@@ -293,7 +294,7 @@ llm:
             "display": formatter.format_side_by_side(result),
             "json": formatter.format_json(result),
             "markdown": formatter.format_markdown(result),
-            "summary": formatter.format_summary(result)
+            "summary": formatter.format_summary(result),
         }
 
         # Verify all formats contain expected content
@@ -307,5 +308,6 @@ llm:
 
         # Verify we can read it back
         import json
+
         saved_data = json.loads(output_file.read_text())
         assert saved_data["query"] == "end to end test"

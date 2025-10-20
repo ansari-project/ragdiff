@@ -1,12 +1,8 @@
 """Tests for batch processing and export formats."""
 
-import pytest
-import json
 import csv
-from pathlib import Path
+import json
 from io import StringIO
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
 
 from src.core.models import ComparisonResult, RagResult
 
@@ -20,7 +16,11 @@ class TestBatchProcessing:
         queries_file = tmp_path / "queries.txt"
         queries_file.write_text("Query 1\nQuery 2\nQuery 3\n")
 
-        queries = [line.strip() for line in queries_file.read_text().split('\n') if line.strip()]
+        queries = [
+            line.strip()
+            for line in queries_file.read_text().split("\n")
+            if line.strip()
+        ]
 
         assert len(queries) == 3
         assert queries[0] == "Query 1"
@@ -32,10 +32,14 @@ class TestBatchProcessing:
         queries_file = tmp_path / "queries.txt"
         queries_file.write_text("Query 1\n\nQuery 2\n  \nQuery 3\n")
 
-        queries = [line.strip() for line in queries_file.read_text().split('\n') if line.strip()]
+        queries = [
+            line.strip()
+            for line in queries_file.read_text().split("\n")
+            if line.strip()
+        ]
 
         assert len(queries) == 3
-        assert '' not in queries
+        assert "" not in queries
 
     def test_batch_creates_output_directory(self, tmp_path):
         """Test that batch creates output directory if it doesn't exist."""
@@ -54,25 +58,17 @@ class TestJSONLExport:
     def test_jsonl_one_line_per_result(self):
         """Test that JSONL exports one JSON object per line."""
         results = [
-            ComparisonResult(
-                query="Query 1",
-                tool_results={'tool1': []},
-                errors={}
-            ),
-            ComparisonResult(
-                query="Query 2",
-                tool_results={'tool1': []},
-                errors={}
-            )
+            ComparisonResult(query="Query 1", tool_results={"tool1": []}, errors={}),
+            ComparisonResult(query="Query 2", tool_results={"tool1": []}, errors={}),
         ]
 
         # Simulate JSONL export
         output = StringIO()
         for result in results:
             json.dump(result.to_dict(), output)
-            output.write('\n')
+            output.write("\n")
 
-        lines = output.getvalue().strip().split('\n')
+        lines = output.getvalue().strip().split("\n")
 
         assert len(lines) == 2
         # Each line should be valid JSON
@@ -84,35 +80,31 @@ class TestJSONLExport:
         result = ComparisonResult(
             query="Test query",
             tool_results={
-                'goodmem': [
-                    RagResult(id='1', text='Result 1', score=0.9, source='Source1')
+                "goodmem": [
+                    RagResult(id="1", text="Result 1", score=0.9, source="Source1")
                 ]
             },
-            errors={'mawsuah': 'Error message'}
+            errors={"mawsuah": "Error message"},
         )
 
         json_str = json.dumps(result.to_dict())
         parsed = json.loads(json_str)
 
-        assert parsed['query'] == 'Test query'
-        assert 'goodmem' in parsed['tool_results']
-        assert 'mawsuah' in parsed['errors']
-        assert parsed['errors']['mawsuah'] == 'Error message'
+        assert parsed["query"] == "Test query"
+        assert "goodmem" in parsed["tool_results"]
+        assert "mawsuah" in parsed["errors"]
+        assert parsed["errors"]["mawsuah"] == "Error message"
 
     def test_jsonl_format_in_cli(self):
         """Test JSONL format option in CLI."""
-        result = ComparisonResult(
-            query="Test",
-            tool_results={'tool1': []},
-            errors={}
-        )
+        result = ComparisonResult(query="Test", tool_results={"tool1": []}, errors={})
 
         # Simulate CLI jsonl format
         output = json.dumps(result.to_dict())
 
         # Should be valid JSON
         parsed = json.loads(output)
-        assert parsed['query'] == 'Test'
+        assert parsed["query"] == "Test"
 
 
 class TestCSVExport:
@@ -123,45 +115,57 @@ class TestCSVExport:
         output = StringIO()
         writer = csv.writer(output)
 
-        tool_names = ['goodmem', 'mawsuah']
+        tool_names = ["goodmem", "mawsuah"]
         header = ["query", "timestamp"]
         for tool_name in tool_names:
-            header.extend([f"{tool_name}_count", f"{tool_name}_avg_score", f"{tool_name}_latency_ms"])
+            header.extend(
+                [
+                    f"{tool_name}_count",
+                    f"{tool_name}_avg_score",
+                    f"{tool_name}_latency_ms",
+                ]
+            )
 
         writer.writerow(header)
 
         csv_text = output.getvalue()
-        lines = csv_text.strip().split('\n')
+        lines = csv_text.strip().split("\n")
 
         assert len(lines) == 1  # Just header
-        assert 'query' in lines[0]
-        assert 'goodmem_count' in lines[0]
-        assert 'mawsuah_avg_score' in lines[0]
+        assert "query" in lines[0]
+        assert "goodmem_count" in lines[0]
+        assert "mawsuah_avg_score" in lines[0]
 
     def test_csv_data_row_format(self):
         """Test CSV data row format."""
         result = ComparisonResult(
             query="Test query",
             tool_results={
-                'goodmem': [
-                    RagResult(id='1', text='Text', score=0.9, latency_ms=100.0)
+                "goodmem": [
+                    RagResult(id="1", text="Text", score=0.9, latency_ms=100.0)
                 ],
-                'mawsuah': [
-                    RagResult(id='2', text='Text', score=0.7, latency_ms=200.0),
-                    RagResult(id='3', text='Text', score=0.8, latency_ms=200.0)
-                ]
+                "mawsuah": [
+                    RagResult(id="2", text="Text", score=0.7, latency_ms=200.0),
+                    RagResult(id="3", text="Text", score=0.8, latency_ms=200.0),
+                ],
             },
-            errors={}
+            errors={},
         )
 
         output = StringIO()
         writer = csv.writer(output)
-        tool_names = ['goodmem', 'mawsuah']
+        tool_names = ["goodmem", "mawsuah"]
 
         # Write header
         header = ["query", "timestamp"]
         for tool_name in tool_names:
-            header.extend([f"{tool_name}_count", f"{tool_name}_avg_score", f"{tool_name}_latency_ms"])
+            header.extend(
+                [
+                    f"{tool_name}_count",
+                    f"{tool_name}_avg_score",
+                    f"{tool_name}_latency_ms",
+                ]
+            )
         writer.writerow(header)
 
         # Write data
@@ -175,7 +179,7 @@ class TestCSVExport:
         writer.writerow(row)
 
         csv_text = output.getvalue()
-        lines = csv_text.strip().split('\n')
+        lines = csv_text.strip().split("\n")
 
         assert len(lines) == 2  # Header + data
         data_line = lines[1]
@@ -196,27 +200,33 @@ class TestCSVExport:
         from src.core.models import LLMEvaluation
 
         evaluation = LLMEvaluation(
-            llm_model='claude',
-            winner='goodmem',
-            analysis='Test',
-            quality_scores={'goodmem': 8, 'mawsuah': 6}
+            llm_model="claude",
+            winner="goodmem",
+            analysis="Test",
+            quality_scores={"goodmem": 8, "mawsuah": 6},
         )
 
         result = ComparisonResult(
             query="Test",
-            tool_results={'goodmem': [], 'mawsuah': []},
+            tool_results={"goodmem": [], "mawsuah": []},
             errors={},
-            llm_evaluation=evaluation
+            llm_evaluation=evaluation,
         )
 
         output = StringIO()
         writer = csv.writer(output)
-        tool_names = ['goodmem', 'mawsuah']
+        tool_names = ["goodmem", "mawsuah"]
 
         # Header with LLM columns
         header = ["query", "timestamp"]
         for tool_name in tool_names:
-            header.extend([f"{tool_name}_count", f"{tool_name}_avg_score", f"{tool_name}_latency_ms"])
+            header.extend(
+                [
+                    f"{tool_name}_count",
+                    f"{tool_name}_avg_score",
+                    f"{tool_name}_latency_ms",
+                ]
+            )
         header.extend(["llm_winner"] + [f"llm_score_{name}" for name in tool_names])
         writer.writerow(header)
 
@@ -230,10 +240,10 @@ class TestCSVExport:
         writer.writerow(row)
 
         csv_text = output.getvalue()
-        lines = csv_text.strip().split('\n')
+        lines = csv_text.strip().split("\n")
 
-        assert 'llm_winner' in lines[0]
-        assert 'llm_score_goodmem' in lines[0]
+        assert "llm_winner" in lines[0]
+        assert "llm_score_goodmem" in lines[0]
 
         # Parse and check data
         reader = csv.reader(StringIO(csv_text))
@@ -242,8 +252,8 @@ class TestCSVExport:
 
         # Find llm_winner column
         header_row = rows[0]
-        llm_winner_idx = header_row.index('llm_winner')
-        assert data_row[llm_winner_idx] == 'goodmem'
+        llm_winner_idx = header_row.index("llm_winner")
+        assert data_row[llm_winner_idx] == "goodmem"
 
 
 class TestLatencyStatistics:
@@ -253,7 +263,18 @@ class TestLatencyStatistics:
         """Test that percentile calculations are correct."""
         import statistics
 
-        latencies = [100.0, 150.0, 200.0, 250.0, 300.0, 350.0, 400.0, 450.0, 500.0, 1000.0]
+        latencies = [
+            100.0,
+            150.0,
+            200.0,
+            250.0,
+            300.0,
+            350.0,
+            400.0,
+            450.0,
+            500.0,
+            1000.0,
+        ]
         latencies_sorted = sorted(latencies)
 
         count = len(latencies_sorted)
@@ -272,6 +293,7 @@ class TestLatencyStatistics:
         # Should handle empty gracefully
         if latencies:
             import statistics
+
             p50 = statistics.median(latencies)
         else:
             p50 = None
@@ -284,31 +306,39 @@ class TestLatencyStatistics:
             ComparisonResult(
                 query="Q1",
                 tool_results={
-                    'goodmem': [RagResult(id='1', text='t', score=0.9, latency_ms=100.0)],
-                    'mawsuah': [RagResult(id='2', text='t', score=0.8, latency_ms=200.0)]
+                    "goodmem": [
+                        RagResult(id="1", text="t", score=0.9, latency_ms=100.0)
+                    ],
+                    "mawsuah": [
+                        RagResult(id="2", text="t", score=0.8, latency_ms=200.0)
+                    ],
                 },
-                errors={}
+                errors={},
             ),
             ComparisonResult(
                 query="Q2",
                 tool_results={
-                    'goodmem': [RagResult(id='3', text='t', score=0.9, latency_ms=150.0)],
-                    'mawsuah': [RagResult(id='4', text='t', score=0.8, latency_ms=250.0)]
+                    "goodmem": [
+                        RagResult(id="3", text="t", score=0.9, latency_ms=150.0)
+                    ],
+                    "mawsuah": [
+                        RagResult(id="4", text="t", score=0.8, latency_ms=250.0)
+                    ],
                 },
-                errors={}
-            )
+                errors={},
+            ),
         ]
 
         # Collect latencies
-        latencies_by_tool = {'goodmem': [], 'mawsuah': []}
+        latencies_by_tool = {"goodmem": [], "mawsuah": []}
         for result in results:
-            for tool_name in ['goodmem', 'mawsuah']:
+            for tool_name in ["goodmem", "mawsuah"]:
                 tool_results = result.tool_results.get(tool_name, [])
                 if tool_results and tool_results[0].latency_ms:
                     latencies_by_tool[tool_name].append(tool_results[0].latency_ms)
 
-        assert latencies_by_tool['goodmem'] == [100.0, 150.0]
-        assert latencies_by_tool['mawsuah'] == [200.0, 250.0]
+        assert latencies_by_tool["goodmem"] == [100.0, 150.0]
+        assert latencies_by_tool["mawsuah"] == [200.0, 250.0]
 
     def test_percentile_with_single_value(self):
         """Test percentiles with single value."""
@@ -331,29 +361,29 @@ class TestExportFormats:
         result = ComparisonResult(
             query="Test query",
             tool_results={
-                'goodmem': [
+                "goodmem": [
                     RagResult(
-                        id='1',
-                        text='Result text',
+                        id="1",
+                        text="Result text",
                         score=0.9,
-                        source='Source1',
-                        metadata={'key': 'value'}
+                        source="Source1",
+                        metadata={"key": "value"},
                     )
                 ]
             },
-            errors={'mawsuah': 'API error'}
+            errors={"mawsuah": "API error"},
         )
 
         result_dict = result.to_dict()
 
-        assert 'query' in result_dict
-        assert 'timestamp' in result_dict
-        assert 'tool_results' in result_dict
-        assert 'errors' in result_dict
-        assert 'llm_evaluation' in result_dict
+        assert "query" in result_dict
+        assert "timestamp" in result_dict
+        assert "tool_results" in result_dict
+        assert "errors" in result_dict
+        assert "llm_evaluation" in result_dict
 
         # Check nested structure
-        assert 'goodmem' in result_dict['tool_results']
-        assert len(result_dict['tool_results']['goodmem']) == 1
-        assert result_dict['tool_results']['goodmem'][0]['text'] == 'Result text'
-        assert result_dict['errors']['mawsuah'] == 'API error'
+        assert "goodmem" in result_dict["tool_results"]
+        assert len(result_dict["tool_results"]["goodmem"]) == 1
+        assert result_dict["tool_results"]["goodmem"][0]["text"] == "Result text"
+        assert result_dict["errors"]["mawsuah"] == "API error"

@@ -1,15 +1,16 @@
 """Base adapter for RAG tools."""
 
+import logging
 import os
 import time
 from abc import abstractmethod
-from typing import List, Dict, Any, Optional
-import logging
+from typing import Any, Dict, List
+
+from ..core.models import RagResult, ToolConfig
 
 # Use mock for now, replace with actual import in production:
 # from ansari.tools import SearchVectara
 from .search_vectara_mock import SearchVectara
-from ..core.models import RagResult, ToolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,9 @@ class BaseRagTool(SearchVectara):
         # Get credentials from environment
         api_key = os.getenv(config.api_key_env)
         if not api_key:
-            raise ValueError(f"Missing API key environment variable: {config.api_key_env}")
+            raise ValueError(
+                f"Missing API key environment variable: {config.api_key_env}"
+            )
 
         # Initialize parent with Vectara-compatible parameters
         # Note: customer_id is no longer required in Vectara v2 API
@@ -41,7 +44,7 @@ class BaseRagTool(SearchVectara):
             api_key=api_key,
             corpus_id=config.corpus_id or "",
             customer_id=config.customer_id,  # Optional in v2 API
-            base_url=config.base_url
+            base_url=config.base_url,
         )
 
         self.name = config.name
@@ -84,7 +87,7 @@ class BaseRagTool(SearchVectara):
                 "results": results,
                 "latency_ms": latency_ms,
                 "query": query,
-                "success": True
+                "success": True,
             }
 
         except Exception as e:
@@ -96,7 +99,7 @@ class BaseRagTool(SearchVectara):
                 "latency_ms": latency_ms,
                 "query": query,
                 "success": False,
-                "error": str(e)
+                "error": str(e),
             }
 
     def format_as_tool_result(self, results: Dict[str, Any]) -> str:
@@ -118,14 +121,10 @@ class BaseRagTool(SearchVectara):
         formatted = []
         for i, result in enumerate(result_list[:5], 1):
             if isinstance(result, RagResult):
-                formatted.append(
-                    f"{i}. [{result.score:.2f}] {result.text[:200]}..."
-                )
+                formatted.append(f"{i}. [{result.score:.2f}] {result.text[:200]}...")
             else:
                 # Handle dict format
-                formatted.append(
-                    f"{i}. {str(result)[:200]}..."
-                )
+                formatted.append(f"{i}. {str(result)[:200]}...")
 
         return "\n".join(formatted)
 

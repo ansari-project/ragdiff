@@ -5,7 +5,7 @@ In production, this would be imported from ansari.tools.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class SearchVectara(ABC):
@@ -15,11 +15,13 @@ class SearchVectara(ABC):
     Replace with actual import when integrating: from ansari.tools import SearchVectara
     """
 
-    def __init__(self,
-                 api_key: str,
-                 corpus_id: str,
-                 customer_id: Optional[str] = None,
-                 base_url: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: str,
+        corpus_id: str,
+        customer_id: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
         """Initialize Vectara search tool.
 
         Args:

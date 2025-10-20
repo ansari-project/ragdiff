@@ -1,11 +1,12 @@
 """Tests for comparison engine."""
 
-import pytest
-from unittest.mock import Mock, patch
 import time
+from unittest.mock import Mock
+
+import pytest
 
 from src.comparison.engine import ComparisonEngine
-from src.core.models import RagResult, ComparisonResult
+from src.core.models import ComparisonResult, RagResult
 
 
 class TestComparisonEngine:
@@ -20,14 +21,14 @@ class TestComparisonEngine:
                 id="tool1_1",
                 text="Result 1 from tool 1",
                 score=0.9,
-                source="Tool 1 Source"
+                source="Tool 1 Source",
             ),
             RagResult(
                 id="tool1_2",
                 text="Result 2 from tool 1",
                 score=0.8,
-                source="Tool 1 Source"
-            )
+                source="Tool 1 Source",
+            ),
         ]
         return tool
 
@@ -40,24 +41,21 @@ class TestComparisonEngine:
                 id="tool2_1",
                 text="Result 1 from tool 2",
                 score=0.95,
-                source="Tool 2 Source"
+                source="Tool 2 Source",
             ),
             RagResult(
                 id="tool2_2",
                 text="Result 2 from tool 2",
                 score=0.85,
-                source="Tool 2 Source"
-            )
+                source="Tool 2 Source",
+            ),
         ]
         return tool
 
     @pytest.fixture
     def engine(self, mock_tool1, mock_tool2):
         """Create engine with mock tools."""
-        tools = {
-            "tool1": mock_tool1,
-            "tool2": mock_tool2
-        }
+        tools = {"tool1": mock_tool1, "tool2": mock_tool2}
         return ComparisonEngine(tools)
 
     def test_initialization(self, mock_tool1):
@@ -110,10 +108,7 @@ class TestComparisonEngine:
         failing_tool = Mock()
         failing_tool.search.side_effect = RuntimeError("Search failed")
 
-        tools = {
-            "working": mock_tool1,
-            "failing": failing_tool
-        }
+        tools = {"working": mock_tool1, "failing": failing_tool}
         engine = ComparisonEngine(tools)
 
         result = engine.run_comparison("test", parallel=False)
@@ -128,12 +123,11 @@ class TestComparisonEngine:
 
     def test_latency_measurement(self, mock_tool1):
         """Test that latency is measured."""
+
         # Add delay to mock
         def delayed_search(query, top_k):
             time.sleep(0.01)  # 10ms delay
-            return [
-                RagResult(id="1", text="Result", score=0.9)
-            ]
+            return [RagResult(id="1", text="Result", score=0.9)]
 
         mock_tool1.search.side_effect = delayed_search
 
@@ -164,10 +158,7 @@ class TestComparisonEngine:
         failing_tool = Mock()
         failing_tool.search.side_effect = RuntimeError("Failed")
 
-        engine = ComparisonEngine({
-            "working": mock_tool1,
-            "failing": failing_tool
-        })
+        engine = ComparisonEngine({"working": mock_tool1, "failing": failing_tool})
 
         result = engine.run_comparison("test")
         stats = engine.get_summary_stats(result)
@@ -188,10 +179,7 @@ class TestComparisonEngine:
         failing_tool = Mock()
         failing_tool.search.side_effect = ValueError("Tool error")
 
-        engine = ComparisonEngine({
-            "working": working_tool,
-            "failing": failing_tool
-        })
+        engine = ComparisonEngine({"working": working_tool, "failing": failing_tool})
 
         result = engine.run_comparison("test", parallel=True)
 

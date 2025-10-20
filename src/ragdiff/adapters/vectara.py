@@ -4,14 +4,13 @@ This adapter connects to the Vectara platform and can be used with different
 corpora (e.g., Tafsir, Mawsuah) by configuring the corpus_id.
 """
 
-import json
-import time
-from typing import List, Dict, Any, Optional
 import logging
+from typing import Any, Dict, List
+
 import requests
 
-from .base import BaseRagTool
 from ..core.models import RagResult, ToolConfig
+from .base import BaseRagTool
 
 logger = logging.getLogger(__name__)
 
@@ -46,20 +45,13 @@ class VectaraAdapter(BaseRagTool):
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "x-api-key": self.api_key
+                "x-api-key": self.api_key,
             }
 
             # Vectara v2 API format
             request_body = {
                 "query": query,
-                "search": {
-                    "corpora": [
-                        {
-                            "corpus_key": self.corpus_id
-                        }
-                    ],
-                    "limit": top_k
-                }
+                "search": {"corpora": [{"corpus_key": self.corpus_id}], "limit": top_k},
             }
 
             # Make API request
@@ -67,7 +59,7 @@ class VectaraAdapter(BaseRagTool):
                 f"{self.base_url}/v2/query",
                 headers=headers,
                 json=request_body,
-                timeout=self.timeout
+                timeout=self.timeout,
             )
 
             response.raise_for_status()
@@ -98,7 +90,7 @@ class VectaraAdapter(BaseRagTool):
                     text=text,
                     score=self._normalize_score(score),
                     source=source,
-                    metadata=metadata
+                    metadata=metadata,
                 )
                 results.append(result)
 
@@ -111,7 +103,7 @@ class VectaraAdapter(BaseRagTool):
                         text=summary_text,
                         score=1.0,
                         source="Summary",
-                        metadata={"type": "summary"}
+                        metadata={"type": "summary"},
                     )
                     results.insert(0, summary_result)
 
@@ -142,7 +134,7 @@ class VectaraAdapter(BaseRagTool):
                         "text": result.text,
                         "source": result.source or "Vectara",
                         "score": result.score,
-                        "metadata": result.metadata or {}
+                        "metadata": result.metadata or {},
                     }
                     ref_list.append(ref)
 

@@ -1,9 +1,9 @@
 """Data models for RAG comparison harness."""
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Any
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -35,6 +35,7 @@ class RagResult:
 
 class ComparisonOutcome(Enum):
     """Possible outcomes of LLM comparison."""
+
     GOODMEM_BETTER = "goodmem"
     MAWSUAH_BETTER = "mawsuah"
     TIE = "tie"
@@ -67,7 +68,7 @@ class LLMEvaluation:
             "analysis": self.analysis,
             "quality_scores": self.quality_scores,
             "metadata": self.metadata,
-            "evaluation_time_ms": self.evaluation_time_ms
+            "evaluation_time_ms": self.evaluation_time_ms,
         }
 
 
@@ -121,8 +122,7 @@ class ComparisonResult:
     def get_result_counts(self) -> Dict[str, int]:
         """Get count of results from each system."""
         return {
-            tool_name: len(results)
-            for tool_name, results in self.tool_results.items()
+            tool_name: len(results) for tool_name, results in self.tool_results.items()
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -137,14 +137,16 @@ class ComparisonResult:
                         "text": r.text,
                         "score": r.score,
                         "source": r.source,
-                        "metadata": r.metadata
+                        "metadata": r.metadata,
                     }
                     for r in results
                 ]
                 for tool_name, results in self.tool_results.items()
             },
             "errors": self.errors,
-            "llm_evaluation": self.llm_evaluation.to_dict() if self.llm_evaluation else None
+            "llm_evaluation": (
+                self.llm_evaluation.to_dict() if self.llm_evaluation else None
+            ),
         }
 
 

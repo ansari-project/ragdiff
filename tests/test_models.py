@@ -1,13 +1,13 @@
 """Tests for data models."""
 
+
 import pytest
-from datetime import datetime
+
 from src.core.models import (
-    RagResult,
-    ComparisonOutcome,
-    LLMEvaluation,
     ComparisonResult,
-    ToolConfig
+    LLMEvaluation,
+    RagResult,
+    ToolConfig,
 )
 
 
@@ -16,12 +16,7 @@ class TestRagResult:
 
     def test_valid_creation(self):
         """Test creating valid RagResult."""
-        result = RagResult(
-            id="doc1",
-            text="Sample text",
-            score=0.95,
-            source="source1"
-        )
+        result = RagResult(id="doc1", text="Sample text", score=0.95, source="source1")
         assert result.id == "doc1"
         assert result.text == "Sample text"
         assert result.score == 0.95
@@ -57,7 +52,7 @@ class TestLLMEvaluation:
             winner="goodmem",
             analysis="Goodmem provides better coverage with more relevant results",
             quality_scores={"goodmem": 9, "mawsuah": 7},
-            metadata={"confidence": "high"}
+            metadata={"confidence": "high"},
         )
         assert eval.llm_model == "claude-opus-4-1"
         assert eval.winner == "goodmem"
@@ -69,7 +64,7 @@ class TestLLMEvaluation:
             llm_model="gpt-4",
             winner="tie",
             analysis="Both tools have similar quality",
-            quality_scores={"goodmem": 7, "mawsuah": 7}
+            quality_scores={"goodmem": 7, "mawsuah": 7},
         )
 
         result = eval.to_dict()
@@ -87,14 +82,10 @@ class TestComparisonResult:
         result = ComparisonResult(
             query="test query",
             tool_results={
-                "goodmem": [
-                    RagResult(id="g1", text="result1", score=0.9)
-                ],
-                "mawsuah": [
-                    RagResult(id="m1", text="result2", score=0.8)
-                ]
+                "goodmem": [RagResult(id="g1", text="result1", score=0.9)],
+                "mawsuah": [RagResult(id="m1", text="result2", score=0.8)],
             },
-            errors={}
+            errors={},
         )
         assert result.query == "test query"
         assert len(result.goodmem_results) == 1
@@ -103,9 +94,7 @@ class TestComparisonResult:
     def test_has_errors(self):
         """Test error detection."""
         result = ComparisonResult(
-            query="test",
-            tool_results={"goodmem": [], "mawsuah": []},
-            errors={}
+            query="test", tool_results={"goodmem": [], "mawsuah": []}, errors={}
         )
         assert not result.has_errors()
 
@@ -118,15 +107,13 @@ class TestComparisonResult:
             query="test",
             tool_results={
                 "goodmem": [
-                    RagResult(id=f"g{i}", text=f"text{i}", score=0.9)
-                    for i in range(3)
+                    RagResult(id=f"g{i}", text=f"text{i}", score=0.9) for i in range(3)
                 ],
                 "mawsuah": [
-                    RagResult(id=f"m{i}", text=f"text{i}", score=0.8)
-                    for i in range(5)
-                ]
+                    RagResult(id=f"m{i}", text=f"text{i}", score=0.8) for i in range(5)
+                ],
             },
-            errors={}
+            errors={},
         )
         counts = result.get_result_counts()
         assert counts["goodmem"] == 3
@@ -137,11 +124,8 @@ class TestComparisonResult:
         goodmem_result = RagResult(id="g1", text="result1", score=0.9, latency_ms=150.5)
         result = ComparisonResult(
             query="test query",
-            tool_results={
-                "goodmem": [goodmem_result],
-                "mawsuah": []
-            },
-            errors={"mawsuah": "Connection failed"}
+            tool_results={"goodmem": [goodmem_result], "mawsuah": []},
+            errors={"mawsuah": "Connection failed"},
         )
 
         dict_result = result.to_dict()
@@ -159,7 +143,7 @@ class TestToolConfig:
             name="test_tool",
             api_key_env="TEST_API_KEY",
             base_url="https://api.test.com",
-            timeout=60
+            timeout=60,
         )
         assert config.name == "test_tool"
         assert config.timeout == 60

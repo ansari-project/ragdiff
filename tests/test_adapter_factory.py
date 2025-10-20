@@ -1,16 +1,17 @@
 """Tests for adapter factory."""
 
-import pytest
 import os
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
-from ragdiff.adapters.factory import (
-    create_adapter,
-    register_adapter,
-    get_available_adapters,
-    ADAPTER_REGISTRY
-)
+import pytest
+
 from ragdiff.adapters.base import BaseRagTool
+from ragdiff.adapters.factory import (
+    ADAPTER_REGISTRY,
+    create_adapter,
+    get_available_adapters,
+    register_adapter,
+)
 from ragdiff.core.models import ToolConfig
 
 
@@ -21,10 +22,7 @@ class TestAdapterFactory:
     def tool_config(self):
         """Create test configuration."""
         return ToolConfig(
-            name="test",
-            api_key_env="TEST_KEY",
-            timeout=30,
-            default_top_k=5
+            name="test", api_key_env="TEST_KEY", timeout=30, default_top_k=5
         )
 
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
@@ -39,7 +37,7 @@ class TestAdapterFactory:
         assert adapter.__class__.__name__ == "VectaraAdapter"
 
     @patch.dict(os.environ, {"GOODMEM_API_KEY": "test_key"})
-    @patch('ragdiff.adapters.goodmem.GOODMEM_AVAILABLE', False)
+    @patch("ragdiff.adapters.goodmem.GOODMEM_AVAILABLE", False)
     def test_create_goodmem_adapter(self, tool_config):
         """Test creating Goodmem adapter."""
         tool_config.name = "goodmem"
@@ -57,6 +55,7 @@ class TestAdapterFactory:
     @patch.dict(os.environ, {"TEST_KEY": "test"})
     def test_create_adapter_initialization_error(self, tool_config):
         """Test error handling during adapter initialization."""
+
         # Mock an adapter that fails during init
         class FailingAdapter(BaseRagTool):
             def __init__(self, config):
@@ -81,6 +80,7 @@ class TestAdapterFactory:
 
     def test_register_adapter(self):
         """Test registering new adapter."""
+
         class CustomAdapter(BaseRagTool):
             def search(self, query, top_k=5):
                 return []
@@ -105,6 +105,7 @@ class TestAdapterFactory:
 
     def test_register_invalid_adapter(self):
         """Test error when registering non-BaseRagTool class."""
+
         class NotAnAdapter:
             pass
 
@@ -130,7 +131,7 @@ class TestAdapterVariants:
             api_key_env="VECTARA_API_KEY",
             corpus_id="test_corpus",
             timeout=30,
-            default_top_k=5
+            default_top_k=5,
         )
 
     @patch.dict(os.environ, {"VECTARA_API_KEY": "test_key"})
@@ -165,7 +166,7 @@ class TestAdapterVariants:
             api_key_env="VECTARA_API_KEY",
             corpus_id="tafsir_v1",
             timeout=30,
-            default_top_k=5
+            default_top_k=5,
         )
 
         variant2_config = ToolConfig(
@@ -174,7 +175,7 @@ class TestAdapterVariants:
             api_key_env="VECTARA_API_KEY",
             corpus_id="mawsuah_v1",
             timeout=30,
-            default_top_k=5
+            default_top_k=5,
         )
 
         adapter1 = create_adapter("tafsir-corpus", variant1_config)
@@ -188,8 +189,11 @@ class TestAdapterVariants:
         assert adapter1.corpus_id == "tafsir_v1"
         assert adapter2.corpus_id == "mawsuah_v1"
 
-    @patch.dict(os.environ, {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_ns"})
-    @patch('ragdiff.adapters.agentset.Agentset')
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_ns"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
     def test_variant_with_options(self, mock_agentset_class, base_config):
         """Test that adapter options are passed correctly."""
         # Create agentset variant with custom options
@@ -200,7 +204,7 @@ class TestAdapterVariants:
             namespace_id_env="AGENTSET_NAMESPACE_ID",
             options={"rerank": False},
             timeout=30,
-            default_top_k=5
+            default_top_k=5,
         )
 
         adapter = create_adapter("agentset-rerank", config_with_options)
@@ -210,12 +214,17 @@ class TestAdapterVariants:
         assert adapter.__class__.__name__ == "AgentsetAdapter"
 
         # Verify options were parsed (AgentsetAdapter should have rerank=False)
-        assert hasattr(adapter, 'rerank')
+        assert hasattr(adapter, "rerank")
         assert adapter.rerank is False
 
-    @patch.dict(os.environ, {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_ns"})
-    @patch('ragdiff.adapters.agentset.Agentset')
-    def test_variant_without_options_uses_defaults(self, mock_agentset_class, base_config):
+    @patch.dict(
+        os.environ,
+        {"AGENTSET_API_TOKEN": "test_token", "AGENTSET_NAMESPACE_ID": "test_ns"},
+    )
+    @patch("ragdiff.adapters.agentset.Agentset")
+    def test_variant_without_options_uses_defaults(
+        self, mock_agentset_class, base_config
+    ):
         """Test that adapters use defaults when no options provided."""
         config_no_options = ToolConfig(
             name="agentset-default",
@@ -224,13 +233,13 @@ class TestAdapterVariants:
             namespace_id_env="AGENTSET_NAMESPACE_ID",
             options=None,  # No options
             timeout=30,
-            default_top_k=5
+            default_top_k=5,
         )
 
         adapter = create_adapter("agentset-default", config_no_options)
 
         # Verify default rerank value is True
-        assert hasattr(adapter, 'rerank')
+        assert hasattr(adapter, "rerank")
         assert adapter.rerank is True
 
     def test_unknown_adapter_in_variant(self, base_config):

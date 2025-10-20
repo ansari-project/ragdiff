@@ -1,9 +1,8 @@
 """Display formatters for comparison results."""
 
 import json
-from typing import Dict, Any, List, Optional
-from textwrap import wrap, dedent
-from datetime import datetime
+from textwrap import wrap
+from typing import List, Optional
 
 from ..core.models import ComparisonResult, RagResult
 
@@ -70,8 +69,7 @@ class ComparisonFormatter:
 
         # Get max number of results from any tool
         max_results = max(
-            (len(results) for results in result.tool_results.values()),
-            default=0
+            (len(results) for results in result.tool_results.values()), default=0
         )
 
         # Create side-by-side comparison for each result position
@@ -83,13 +81,17 @@ class ComparisonFormatter:
                 lines.append(f"\n{self.indent_str * 2}[{tool_name.upper()}]")
 
                 if idx < len(results):
-                    lines.extend(self._format_single_result(results[idx], indent_level=3))
+                    lines.extend(
+                        self._format_single_result(results[idx], indent_level=3)
+                    )
                 else:
                     lines.append(f"{self.indent_str * 3}(No result at this position)")
 
         return "\n".join(lines)
 
-    def _format_single_result(self, result: RagResult, indent_level: int = 2) -> List[str]:
+    def _format_single_result(
+        self, result: RagResult, indent_level: int = 2
+    ) -> List[str]:
         """Format a single search result."""
         indent = self.indent_str * indent_level
         lines = []
@@ -99,7 +101,7 @@ class ComparisonFormatter:
             result.text,
             width=self.width - len(indent),
             initial_indent="",
-            subsequent_indent=""
+            subsequent_indent="",
         )
         for line in text_lines[:3]:  # Limit to 3 lines
             lines.append(f"{indent}{line}")
@@ -115,17 +117,15 @@ class ComparisonFormatter:
 
     def _format_performance(self, result: ComparisonResult) -> str:
         """Format performance metrics."""
-        lines = [
-            "",
-            "-" * self.width,
-            "PERFORMANCE METRICS:"
-        ]
+        lines = ["", "-" * self.width, "PERFORMANCE METRICS:"]
 
         for tool_name, results in result.tool_results.items():
             count = len(results)
 
             # Get latency from first result if available
-            latency = results[0].latency_ms if results and results[0].latency_ms else None
+            latency = (
+                results[0].latency_ms if results and results[0].latency_ms else None
+            )
 
             perf_str = f"{self.indent_str}[{tool_name}] Results: {count}"
             if latency:
@@ -153,7 +153,7 @@ class ComparisonFormatter:
             eval_data.analysis,
             width=self.width - len(self.indent_str * 2),
             initial_indent="",
-            subsequent_indent=""
+            subsequent_indent="",
         )
         for line in analysis_lines:
             lines.append(f"{self.indent_str * 2}{line}")
@@ -198,7 +198,7 @@ class ComparisonFormatter:
             "",
             f"**Query:** {result.query}",
             f"**Timestamp:** {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
-            ""
+            "",
         ]
 
         # Errors section
@@ -233,32 +233,38 @@ class ComparisonFormatter:
 
         for tool_name, results in result.tool_results.items():
             count = len(results)
-            latency = results[0].latency_ms if results and results[0].latency_ms else "N/A"
+            latency = (
+                results[0].latency_ms if results and results[0].latency_ms else "N/A"
+            )
             latency_str = f"{latency:.1f}ms" if isinstance(latency, float) else latency
             lines.append(f"| {tool_name} | {count} | {latency_str} |")
 
         # LLM Evaluation
         if result.llm_evaluation:
             eval_data = result.llm_evaluation
-            lines.extend([
-                "",
-                "## LLM Evaluation",
-                "",
-                f"**Model:** {eval_data.llm_model}",
-                f"**Winner:** {eval_data.winner or 'No clear winner'}",
-                "",
-                "### Analysis",
-                eval_data.analysis,
-            ])
+            lines.extend(
+                [
+                    "",
+                    "## LLM Evaluation",
+                    "",
+                    f"**Model:** {eval_data.llm_model}",
+                    f"**Winner:** {eval_data.winner or 'No clear winner'}",
+                    "",
+                    "### Analysis",
+                    eval_data.analysis,
+                ]
+            )
 
             if eval_data.quality_scores:
-                lines.extend([
-                    "",
-                    "### Quality Scores",
-                    "",
-                    "| Tool | Score |",
-                    "|------|-------|"
-                ])
+                lines.extend(
+                    [
+                        "",
+                        "### Quality Scores",
+                        "",
+                        "| Tool | Score |",
+                        "|------|-------|",
+                    ]
+                )
                 for tool_name, score in eval_data.quality_scores.items():
                     lines.append(f"| {tool_name} | {score}/10 |")
 
@@ -274,7 +280,11 @@ class ComparisonFormatter:
             Brief summary string
         """
         lines = [
-            f"Query: {result.query[:50]}..." if len(result.query) > 50 else f"Query: {result.query}",
+            (
+                f"Query: {result.query[:50]}..."
+                if len(result.query) > 50
+                else f"Query: {result.query}"
+            ),
         ]
 
         # Result counts
