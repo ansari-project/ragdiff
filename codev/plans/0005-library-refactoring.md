@@ -18,6 +18,40 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 
 ## Phase Breakdown
 
+### Phase 0: Performance Baseline
+
+**Objective**: Establish performance baseline before refactoring
+
+**Deliverables**:
+- Performance benchmark script (`tests/benchmarks/baseline.py`)
+- Baseline measurements for:
+  - Single query latency (average, p50, p95, p99)
+  - Batch query throughput (queries/second)
+  - Memory usage (RSS, peak)
+  - CLI startup time
+- Baseline results saved to `tests/benchmarks/baseline_results.json`
+
+**Dependencies**: None
+
+**Success Criteria**:
+- Benchmark script runs successfully
+- All baseline metrics captured
+- Results saved for comparison
+
+**Tests**:
+- Benchmark script executes without errors
+- Results file is valid JSON
+
+**Evaluation**:
+- Baseline established
+- Ready for comparison after refactoring
+
+**Commit**: Single commit after phase evaluation
+
+**Status**: pending
+
+---
+
 ### Phase 1: Foundation
 
 **Objective**: Create core infrastructure for library interface
@@ -25,9 +59,14 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 **Deliverables**:
 - `ragdiff/version.py` - Centralized version strings
 - `ragdiff/core/errors.py` - Exception taxonomy
-- `ragdiff/adapters/base.py` - Abstract `RagAdapter` class
-- `ragdiff/adapters/registry.py` - Adapter discovery mechanism
-- `ragdiff/adapters/__init__.py` - Auto-registration of built-in adapters
+- `ragdiff/adapters/base.py` - Abstract `RagAdapter` class with:
+  - `ADAPTER_API_VERSION = "1.0.0"` class attribute
+  - `ADAPTER_NAME` class attribute
+  - Abstract methods with proper signatures
+- `ragdiff/adapters/registry.py` - Adapter discovery mechanism with:
+  - `ADAPTER_API_VERSION` compatibility enforcement
+  - Version mismatch warnings/errors
+  - Adapter metadata tracking
 
 **Dependencies**: None
 
@@ -37,16 +76,20 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 - Error hierarchy established
 - Adapter ABC defined with proper signatures
 - Registry can register and list adapters
+- Registry enforces `ADAPTER_API_VERSION` compatibility
+- Version mismatches detected and reported
 
 **Tests**:
 - Unit tests for registry operations
 - Import tests for all new modules
 - ABC enforcement tests
+- Version compatibility tests (matching, mismatched)
 
 **Evaluation**:
 - All foundation modules in place
 - No circular imports
 - Clean module structure
+- Version compatibility enforced
 
 **Commit**: Single commit after phase evaluation
 
@@ -64,23 +107,33 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 - Update `AgentsetAdapter` to inherit from `RagAdapter`
 - Each adapter registers on import
 - Update `validate_config` to `-> None` signature
+- Implement metadata methods for each adapter:
+  - `get_required_env_vars() -> List[str]` - Returns list of required env var names
+  - `get_options_schema() -> Dict[str, Any]` - Returns JSON schema for adapter options
+  - Accurate, complete metadata for each adapter
 
 **Dependencies**: Phase 1 (base adapter class and registry)
 
 **Success Criteria**:
 - All adapters inherit from `RagAdapter`
 - All adapters auto-register on import
-- `get_available_adapters()` returns all three adapters
+- All adapters set `ADAPTER_API_VERSION = "1.0.0"`
+- All adapters set `ADAPTER_NAME` correctly
+- `get_available_adapters()` returns all three adapters with complete metadata
 - All adapter tests pass
+- Metadata methods return accurate information
 
 **Tests**:
 - Adapter registration tests
 - Adapter validation tests
 - Backward compatibility tests
+- Metadata method tests (env vars, options schema)
+- Metadata accuracy tests
 
 **Evaluation**:
 - All adapters properly registered
 - No breaking changes to adapter functionality
+- Metadata complete and accurate
 - Tests green
 
 **Commit**: Single commit after phase evaluation
@@ -94,34 +147,52 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 **Objective**: Implement and export 6 core library functions
 
 **Deliverables**:
-- `ragdiff/__init__.py` with complete `__all__` exports
+- `ragdiff/__init__.py` with complete `__all__` exports including `__version__`
 - Implementation of 6 core functions:
   - `run_single_query()`
-  - `run_batch_queries()` (with Union return type)
+  - `run_batch_queries()` with full signature:
+    - Union return type: `List[Union[RagResult, QueryErrorResult]]`
+    - Concurrency controls: `max_workers`, `per_query_timeout` (seconds)
+    - Failure handling: `raise_on_any_error` flag
+    - Progress callback support
   - `create_comparison()`
   - `evaluate_with_llm()`
-  - `get_available_adapters()`
+  - `get_available_adapters()` with full metadata schema:
+    - Returns: `name`, `api_version`, `required_env_vars`, `options_schema`, `description`
   - `validate_config()`
 - Export `load_config` utility
 - Export all error classes
 - Export common models (RagResult, ToolConfig, LLMConfig, etc.)
+- Export `__version__` from version.py
 - `LLMConfig` dataclass implementation
-- `QueryErrorResult` dataclass (JSON-serializable)
+- `QueryErrorResult` dataclass (JSON-serializable with `error_message`, `error_type`)
+- **Deterministic output** (moved from Phase 5):
+  - Implement deterministic sorting with tie-breakers: `(-score, doc_id)`
+  - Float normalization in serialization (6-8 digit precision)
 
 **Dependencies**: Phase 2 (adapters ready)
 
 **Success Criteria**:
 - All 6 functions implemented and working
-- Clean top-level imports work: `from ragdiff import run_single_query`
-- `run_batch_queries` returns `List[Union[RagResult, QueryErrorResult]]`
+- Clean top-level imports work: `from ragdiff import run_single_query, __version__`
+- `run_batch_queries` returns `List[Union[RagResult, QueryErrorResult]]` preserving order
+- `run_batch_queries` implements all concurrency parameters
+- Partial failures tested: mix of RagResult and QueryErrorResult
 - `QueryErrorResult` is JSON-serializable
 - `LLMConfig` decouples from Anthropic-only
+- `get_available_adapters()` returns complete metadata for all adapters
+- **Deterministic sorting**: Same input produces same output
+- **Float precision**: Normalized to 6-8 digits for consistency
 
 **Tests**:
 - Unit tests for each function
 - Integration tests with mocked adapters
 - Error handling tests
+- Partial failure tests (mixed RagResult/QueryErrorResult)
+- Concurrency parameter tests (max_workers, timeouts)
 - Type checking tests
+- Determinism tests (same input → same output)
+- Float precision tests
 
 **Evaluation**:
 - Library can be imported and used programmatically
@@ -171,34 +242,35 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 
 ---
 
-### Phase 5: Determinism & Stability
+### Phase 5: Thread-Safety & Stability
 
-**Objective**: Ensure deterministic behavior for production use
+**Objective**: Ensure thread-safe, reentrant behavior for production use
 
 **Deliverables**:
 - Audit and fix global state issues
-- Implement deterministic sorting with tie-breakers
-- Float normalization in serialization
-- Thread-safety verification
-- Remove any non-deterministic behavior
+- Thread-safety verification for all library functions
+- Shared serialization utility (`ragdiff/core/serialization.py`) for consistent JSON output
+- Remove any non-reentrant behavior
+- Ensure adapter instances are thread-safe or properly isolated
 
 **Dependencies**: Phase 3 (library interface)
 
 **Success Criteria**:
 - No global mutable state
-- Sorting uses `(-score, doc_id)` tie-breaker
-- Float serialization normalized to 6-8 digits
 - Concurrent calls work correctly
 - Reentrancy tests pass
+- Shared serialization utility handles all JSON output
+- Adapters are thread-safe or properly documented
 
 **Tests**:
-- Concurrent execution tests
-- Determinism tests (same input → same output)
-- Float precision tests
+- Concurrent execution tests (10+ workers)
+- Reentrancy tests (same function called multiple times)
+- Thread-safety tests (shared state detection)
+- Serialization consistency tests
 
 **Evaluation**:
 - Library safe for multi-threaded use
-- Results are deterministic
+- No race conditions detected
 - Tests prove stability
 
 **Commit**: Single commit after phase evaluation
@@ -327,7 +399,7 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 4. CLI Redesign (Phase 4) → Parity Tests (Phase 6)
 
 **Parallel Work Opportunities**:
-- Phase 5 (Determinism) can start after Phase 3
+- Phase 5 (Thread-Safety) can start after Phase 3
 - Documentation (Phase 7) can be drafted during implementation
 
 ## Notes
@@ -339,9 +411,40 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 
 ## Consultation Log
 
-### Initial Plan Consultation
-*Pending - will consult GPT-5 and Gemini Pro after plan creation*
+### Implementation Plan Review (2025-10-21)
+
+**Consulted**: GPT-5 Pro, Gemini 2.5 Pro
+
+**Key Recommendations Applied**:
+
+1. **Phase 3 Enhancement** (GPT-5, Gemini):
+   - Moved deterministic sorting and float normalization from Phase 5 to Phase 3
+   - Added full batch API signature with concurrency controls
+   - Added complete metadata schema for `get_available_adapters()`
+   - Added `__version__` export to top-level module
+
+2. **Phase 1 Enhancement** (GPT-5):
+   - Added `ADAPTER_API_VERSION` compatibility enforcement to registry
+   - Added version mismatch detection and warnings
+
+3. **Phase 2 Enhancement** (GPT-5, Gemini):
+   - Added adapter metadata methods: `get_required_env_vars()`, `get_options_schema()`
+   - Ensured all adapters provide accurate, complete metadata
+
+4. **Phase 5 Refocus** (GPT-5, Gemini):
+   - Renamed to "Thread-Safety & Stability"
+   - Removed determinism features (moved to Phase 3)
+   - Added shared serialization utility for consistent JSON output
+   - Focus on thread-safety and reentrancy
+
+5. **Phase 0 Addition** (Gemini):
+   - Added performance baseline phase before implementation
+   - Captures latency, throughput, memory metrics
+   - Enables before/after comparison
+
+**Status**: All recommendations incorporated into plan
 
 ## Revision History
 
 - 2025-10-21: Initial plan draft
+- 2025-10-21: Updated with consultation feedback from GPT-5 Pro and Gemini 2.5 Pro
