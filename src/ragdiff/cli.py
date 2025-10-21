@@ -1,4 +1,13 @@
-"""Command-line interface for RAG comparison tool."""
+"""Command-line interface for RAGDiff.
+
+New CLI structure (Phase 3):
+- query: Run a single query against ONE RAG system
+- run: Run batch queries from a file
+- compare: Compare multiple RAG systems on the same query (live)
+
+Legacy commands (deprecated):
+- batch: Use 'run' instead
+"""
 
 import json
 import logging
@@ -25,8 +34,8 @@ load_dotenv()
 
 # Initialize Typer app
 app = typer.Typer(
-    name="rag-compare",
-    help="Compare RAG tool results side-by-side",
+    name="ragdiff",
+    help="RAGDiff - Compare and evaluate RAG systems",
     add_completion=False,
 )
 
@@ -45,6 +54,284 @@ def setup_logging(verbose: bool = False):
 
 
 @app.command()
+def query(
+    query_text: str = typer.Argument(..., help="Search query to run"),
+    tool: str = typer.Option(..., "--tool", "-t", help="RAG tool to query"),
+    config_file: str = typer.Option(
+        "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
+    ),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results to retrieve"),
+    output_format: str = typer.Option(
+        "display",
+        "--format",
+        "-f",
+        help="Output format: display, json",
+    ),
+    output_file: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Save output to file"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose logging"
+    ),
+):
+    """Run a single query against ONE RAG system.
+
+    Examples:
+        ragdiff query "What is RAG?" --tool vectara --config config.yaml
+        ragdiff query "coral meaning" -t goodmem -k 10 --format json
+    """
+    setup_logging(verbose)
+
+    try:
+        # Load configuration
+        if not Path(config_file).exists():
+            console.print(f"[red]Configuration file not found: {config_file}[/red]")
+            raise typer.Exit(1)
+
+        config = Config(Path(config_file))
+        config.validate()
+
+        # Check tool exists
+        if tool not in config.tools:
+            console.print(f"[red]Tool '{tool}' not found in configuration[/red]")
+            console.print(f"Available tools: {', '.join(config.tools.keys())}")
+            raise typer.Exit(1)
+
+        # Create adapter
+        console.print(f"[cyan]Querying {tool}...[/cyan]")
+        adapter = create_adapter(tool, config.tools[tool])
+
+        # Run query
+        with console.status("[bold cyan]Running query...[/bold cyan]"):
+            results = adapter.search(query_text, top_k=top_k)
+
+        # Format output
+        if output_format == "json":
+            output_data = {
+                "query": query_text,
+                "tool": tool,
+                "top_k": top_k,
+                "results": [
+                    {
+                        "id": r.id,
+                        "text": r.text,
+                        "score": r.score,
+                        "source": r.source,
+                        "metadata": r.metadata,
+                    }
+                    for r in results
+                ],
+            }
+            output = json.dumps(output_data, indent=2, ensure_ascii=False)
+        else:  # display
+            # Create simple table
+            table = Table(title=f"Results for: {query_text}")
+            table.add_column("Rank", style="cyan", width=6)
+            table.add_column("Score", style="green", width=8)
+            table.add_column("Source", style="yellow", width=20)
+            table.add_column("Text", style="white")
+
+            for idx, result in enumerate(results, 1):
+                table.add_row(
+                    str(idx),
+                    f"{result.score:.3f}",
+                    result.source or "N/A",
+                    result.text[:200] + "..."
+                    if len(result.text) > 200
+                    else result.text,
+                )
+
+            console.print(table)
+            console.print(
+                f"\n[green]✓ Retrieved {len(results)} results from {tool}[/green]"
+            )
+            return  # Don't save display output to file
+
+        # Output results
+        if output_file:
+            Path(output_file).write_text(output)
+            console.print(f"[green]Results saved to {output_file}[/green]")
+        else:
+            console.print(output)
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1) from e
+
+
+@app.command()
+def run(
+    queries_file: str = typer.Argument(
+        ..., help="File containing queries (one per line)"
+    ),
+    config_file: str = typer.Option(
+        "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
+    ),
+    tools: list[str] = typer.Option(
+        None,
+        "--tool",
+        "-t",
+        help="Tools to query (can specify multiple). If not specified, uses all configured tools.",
+    ),
+    top_k: int = typer.Option(
+        5, "--top-k", "-k", help="Number of results to retrieve from each tool"
+    ),
+    output_format: str = typer.Option(
+        "jsonl",
+        "--format",
+        "-f",
+        help="Output format: jsonl, json",
+    ),
+    output_file: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Save output to file"
+    ),
+    parallel: bool = typer.Option(
+        True, "--parallel/--sequential", help="Run searches in parallel or sequential"
+    ),
+    evaluate: bool = typer.Option(
+        False, "--evaluate/--no-evaluate", help="Enable LLM evaluation using Claude"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose logging"
+    ),
+):
+    """Run batch queries from a file.
+
+    The queries file should contain one query per line.
+
+    Examples:
+        ragdiff run queries.txt --config config.yaml
+        ragdiff run queries.txt -t vectara -t goodmem --evaluate
+    """
+    setup_logging(verbose)
+
+    try:
+        # Load configuration
+        if not Path(config_file).exists():
+            console.print(f"[red]Configuration file not found: {config_file}[/red]")
+            raise typer.Exit(1)
+
+        config = Config(Path(config_file))
+        config.validate()
+
+        # Load queries
+        if not Path(queries_file).exists():
+            console.print(f"[red]Queries file not found: {queries_file}[/red]")
+            raise typer.Exit(1)
+
+        queries = [
+            line.strip()
+            for line in Path(queries_file).read_text().splitlines()
+            if line.strip()
+        ]
+
+        if not queries:
+            console.print("[red]No queries found in file[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"[cyan]Loaded {len(queries)} queries from {queries_file}[/cyan]")
+
+        # Determine which tools to use
+        if tools:
+            tool_names = tools
+        else:
+            tool_names = list(config.tools.keys())
+
+        # Create adapters
+        console.print(f"[cyan]Initializing {len(tool_names)} tools...[/cyan]")
+        adapters = {}
+        for tool_name in tool_names:
+            if tool_name not in config.tools:
+                console.print(
+                    f"[red]Tool '{tool_name}' not found in configuration[/red]"
+                )
+                raise typer.Exit(1)
+
+            try:
+                adapters[tool_name] = create_adapter(tool_name, config.tools[tool_name])
+                console.print(f"  ✓ {tool_name}")
+            except Exception as e:
+                console.print(f"  ✗ {tool_name}: {str(e)}")
+                if not typer.confirm("Continue without this tool?"):
+                    raise typer.Exit(1) from e
+
+        if not adapters:
+            console.print("[red]No tools available[/red]")
+            raise typer.Exit(1)
+
+        # Create comparison engine
+        engine = ComparisonEngine(adapters)
+
+        # Run batch comparison
+        results = []
+        for idx, query in enumerate(queries, 1):
+            console.print(f"\n[cyan]Query {idx}/{len(queries)}: {query}[/cyan]")
+
+            with console.status("[bold cyan]Running comparison...[/bold cyan]"):
+                result = engine.run_comparison(query, top_k=top_k, parallel=parallel)
+
+            # Run LLM evaluation if requested
+            if evaluate:
+                llm_config = config.get_llm_config()
+                if llm_config:
+                    with console.status(
+                        "[bold cyan]Running LLM evaluation...[/bold cyan]"
+                    ):
+                        try:
+                            evaluator = LLMEvaluator(
+                                model=llm_config.get(
+                                    "model", "claude-sonnet-4-20250514"
+                                ),
+                                api_key=os.getenv(
+                                    llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
+                                ),
+                            )
+                            result.llm_evaluation = evaluator.evaluate(result)
+                            console.print("[green]✓ LLM evaluation complete[/green]")
+                        except Exception as e:
+                            console.print(
+                                f"[yellow]Warning: LLM evaluation failed: {e}[/yellow]"
+                            )
+                else:
+                    console.print(
+                        "[yellow]LLM evaluation requested but not configured[/yellow]"
+                    )
+
+            results.append(result)
+            console.print(f"[green]✓ Query {idx} complete[/green]")
+
+        # Format output
+        if output_format == "json":
+            output = json.dumps(
+                [r.to_dict() for r in results], indent=2, ensure_ascii=False
+            )
+        else:  # jsonl
+            output = "\n".join(
+                json.dumps(r.to_dict(), ensure_ascii=False) for r in results
+            )
+
+        # Output results
+        if output_file:
+            Path(output_file).write_text(output)
+            console.print(f"\n[green]Results saved to {output_file}[/green]")
+        else:
+            console.print(output)
+
+        # Summary
+        console.print(
+            f"\n[green]✓ Completed {len(queries)} queries across {len(adapters)} tools[/green]"
+        )
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1) from e
+
+
+@app.command()
 def compare(
     query: str = typer.Argument(..., help="Search query to run against all tools"),
     tools: list[str] = typer.Option(
@@ -57,7 +344,7 @@ def compare(
         5, "--top-k", "-k", help="Number of results to retrieve from each tool"
     ),
     config_file: str = typer.Option(
-        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
+        "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
     ),
     output_format: str = typer.Option(
         "display",
@@ -78,7 +365,14 @@ def compare(
         False, "--verbose", "-v", help="Enable verbose logging"
     ),
 ):
-    """Run a comparison query against configured RAG tools."""
+    """Compare multiple RAG systems on the same query.
+
+    Runs the query against all specified tools and shows results side-by-side.
+
+    Examples:
+        ragdiff compare "What is RAG?" --config config.yaml
+        ragdiff compare "coral meaning" -t vectara -t goodmem --evaluate
+    """
     setup_logging(verbose)
 
     try:
@@ -168,13 +462,13 @@ def compare(
 
             buf = StringIO()
             writer = csv.writer(buf)
-            tool_names = list(result.tool_results.keys())
+            tool_names_list = list(result.tool_results.keys())
             header: list[str] = ["query", "timestamp"]
-            for tool_name in tool_names:
+            for tool_name in tool_names_list:
                 header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
             writer.writerow(header)
             row: list[str] = [result.query, result.timestamp.isoformat()]
-            for tool_name in tool_names:
+            for tool_name in tool_names_list:
                 tool_results = result.tool_results.get(tool_name, [])
                 count = len(tool_results)
                 latency = tool_results[0].latency_ms if tool_results else 0
@@ -217,111 +511,130 @@ def compare(
         raise typer.Exit(1) from e
 
 
-@app.command()
-def list_tools(
-    config_file: str = typer.Option(
-        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
-    ),
-):
-    """List all available and configured tools."""
-    console.print("[bold]Available Tool Adapters:[/bold]")
-    for adapter_name in get_available_adapters():
-        console.print(f"  • {adapter_name}")
-
-    if Path(config_file).exists():
-        config = Config(Path(config_file))
-        console.print("\n[bold]Configured Tools:[/bold]")
-        for tool_name, tool_config in config.tools.items():
-            status = (
-                "[green]✓[/green]"
-                if os.getenv(tool_config.api_key_env)
-                else "[red]✗ (missing API key)[/red]"
-            )
-            console.print(f"  {status} {tool_name} - {tool_config.api_key_env}")
-
-
-@app.command()
-def validate_config(
-    config_file: str = typer.Option(
-        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
-    ),
-):
-    """Validate the configuration file."""
-    try:
-        if not Path(config_file).exists():
-            console.print(f"[red]Configuration file not found: {config_file}[/red]")
-            raise typer.Exit(1)
-
-        config = Config(Path(config_file))
-        config.validate()
-
-        console.print("[green]✓ Configuration is valid[/green]")
-
-        # Show details
-        console.print(f"\n[bold]Tools configured:[/bold] {len(config.tools)}")
-        for tool_name in config.tools:
-            console.print(f"  • {tool_name}")
-
-        console.print("\n[bold]LLM configuration:[/bold]")
-        if config.llm:
-            console.print(f"  • Model: {config.llm.model}")
-            api_key_status = "✓" if os.getenv(config.llm.api_key_env) else "✗ (not set)"
-            console.print(f"  • API key: {api_key_status}")
-        else:
-            console.print("  • Not configured (LLM evaluation disabled)")
-
-    except Exception as e:
-        console.print(f"[red]Configuration validation failed: {str(e)}[/red]")
-        raise typer.Exit(1) from e
-
-
-@app.command()
-def batch(
+# Legacy command - deprecated
+@app.command(name="batch", deprecated=True, hidden=True)
+def batch_deprecated(
     queries_file: str = typer.Argument(
-        ..., help="Path to file with queries (one per line)"
+        ..., help="File containing queries (one per line)"
+    ),
+    config_file: str = typer.Option(
+        "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
     ),
     tools: list[str] = typer.Option(
         None,
         "--tool",
         "-t",
-        help="Tools to compare (can specify multiple). If not specified, uses all configured tools.",
+        help="Tools to query",
     ),
-    top_k: int = typer.Option(
-        5, "--top-k", "-k", help="Number of results to retrieve from each tool"
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results"),
+    output_format: str = typer.Option("jsonl", "--format", "-f", help="Output format"),
+    output_file: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file"
     ),
-    config_file: str = typer.Option(
-        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
-    ),
-    output_dir: str = typer.Option(
-        "outputs", "--output-dir", "-o", help="Directory to save batch results"
-    ),
-    output_format: str = typer.Option(
-        "jsonl", "--format", "-f", help="Output format: json, jsonl, csv"
+    parallel: bool = typer.Option(
+        True, "--parallel/--sequential", help="Parallel execution"
     ),
     evaluate: bool = typer.Option(
-        False, "--evaluate/--no-evaluate", help="Enable LLM evaluation using Claude"
+        False, "--evaluate/--no-evaluate", help="LLM evaluation"
     ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose logging"
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
+):
+    """[DEPRECATED] Use 'run' instead. Run batch queries from a file."""
+    console.print(
+        "[yellow]Warning: 'batch' command is deprecated. Use 'run' instead.[/yellow]"
+    )
+
+    # Forward to run command
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+
+    args = ["run", queries_file, "--config", config_file]
+    if tools:
+        for t in tools:
+            args.extend(["--tool", t])
+    args.extend(["--top-k", str(top_k)])
+    args.extend(["--format", output_format])
+    if output_file:
+        args.extend(["--output", output_file])
+    args.append("--parallel" if parallel else "--sequential")
+    args.append("--evaluate" if evaluate else "--no-evaluate")
+    if verbose:
+        args.append("--verbose")
+
+    result = runner.invoke(app, args)
+    raise typer.Exit(result.exit_code)
+
+
+@app.command()
+def list_tools(
+    config_file: str = typer.Option(
+        "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
     ),
 ):
-    """Run batch comparison on multiple queries from a file."""
-    setup_logging(verbose)
-
+    """List all available and configured tools."""
     try:
-        # Load queries
-        queries_path = Path(queries_file)
-        if not queries_path.exists():
-            console.print(f"[red]Queries file not found: {queries_file}[/red]")
+        # Show available adapters
+        available = get_available_adapters()
+        console.print("\n[bold cyan]Available Adapters:[/bold cyan]")
+        for adapter_name in sorted(available):
+            console.print(f"  • {adapter_name}")
+
+        # Show configured tools
+        if Path(config_file).exists():
+            config = Config(Path(config_file))
+            console.print(
+                f"\n[bold cyan]Configured Tools in {config_file}:[/bold cyan]"
+            )
+            for tool_name, tool_config in config.tools.items():
+                adapter_used = tool_config.adapter or tool_name
+                console.print(f"  • {tool_name} (uses {adapter_used} adapter)")
+        else:
+            console.print(f"\n[yellow]Config file not found: {config_file}[/yellow]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        raise typer.Exit(1) from e
+
+
+@app.command()
+def validate_config(
+    config_file: str = typer.Argument(
+        ..., help="Path to configuration file to validate"
+    ),
+):
+    """Validate a configuration file."""
+    try:
+        if not Path(config_file).exists():
+            console.print(f"[red]Configuration file not found: {config_file}[/red]")
             raise typer.Exit(1)
 
-        queries = [
-            line.strip()
-            for line in queries_path.read_text().split("\n")
-            if line.strip()
-        ]
-        console.print(f"[cyan]Loaded {len(queries)} queries from {queries_file}[/cyan]")
+        console.print(f"[cyan]Validating {config_file}...[/cyan]")
+        config = Config(Path(config_file))
+        config.validate()
 
+        console.print("[green]✓ Configuration is valid[/green]")
+
+        # Show summary
+        console.print("\n[bold]Summary:[/bold]")
+        console.print(f"  Tools: {len(config.tools)}")
+        for tool_name in config.tools:
+            console.print(f"    • {tool_name}")
+
+    except Exception as e:
+        console.print(f"[red]✗ Validation failed: {str(e)}[/red]")
+        raise typer.Exit(1) from e
+
+
+@app.command()
+def quick_test(
+    config_file: str = typer.Option(
+        "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
+    ),
+    query: str = typer.Option("test", "--query", "-q", help="Test query to use"),
+):
+    """Quick test to verify all configured tools are working."""
+    try:
         # Load configuration
         if not Path(config_file).exists():
             console.print(f"[red]Configuration file not found: {config_file}[/red]")
@@ -330,731 +643,118 @@ def batch(
         config = Config(Path(config_file))
         config.validate()
 
-        # Create output directory
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
+        console.print(
+            f"[cyan]Testing {len(config.tools)} tools with query: '{query}'[/cyan]\n"
+        )
 
-        # Determine which tools to use
-        tool_names = tools if tools else list(config.tools.keys())
+        # Test each tool
+        results = {}
+        for tool_name, tool_config in config.tools.items():
+            console.print(f"[cyan]Testing {tool_name}...[/cyan]")
 
-        # Create adapters
-        console.print(f"[cyan]Initializing {len(tool_names)} tools...[/cyan]")
-        adapters = {}
-        for tool_name in tool_names:
-            if tool_name not in config.tools:
-                console.print(
-                    f"[red]Tool '{tool_name}' not found in configuration[/red]"
-                )
-                raise typer.Exit(1)
-            adapters[tool_name] = create_adapter(tool_name, config.tools[tool_name])
-            console.print(f"  ✓ {tool_name}")
+            try:
+                adapter = create_adapter(tool_name, tool_config)
+                search_results = adapter.search(query, top_k=1)
 
-        # Create comparison engine
-        engine = ComparisonEngine(adapters)
-
-        # Setup LLM evaluator if needed
-        evaluator = None
-        if evaluate:
-            llm_config = config.get_llm_config()
-            if llm_config:
-                evaluator = LLMEvaluator(
-                    model=llm_config.get("model", "claude-sonnet-4-20250514"),
-                    api_key=os.getenv(
-                        llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
-                    ),
-                )
-
-        # Process queries
-        results = []
-        import csv
-        from datetime import datetime
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = output_path / f"batch_results_{timestamp}.{output_format}"
-
-        with console.status("[bold cyan]Processing queries...[/bold cyan]") as status:
-            for idx, query in enumerate(queries, 1):
-                status.update(
-                    f"[bold cyan]Processing query {idx}/{len(queries)}: {query[:50]}...[/bold cyan]"
-                )
-
-                result = engine.run_comparison(query, top_k=top_k, parallel=True)
-
-                # Add LLM evaluation if requested
-                if evaluator:
-                    try:
-                        result.llm_evaluation = evaluator.evaluate(result)
-                    except Exception as e:
-                        logger.warning(f"LLM evaluation failed for query {idx}: {e}")
-
-                results.append(result)
-
-        # Save results
-        if output_format == "json":
-            with open(output_file, "w") as f:
-                json.dump([result.to_dict() for result in results], f, indent=2)
-        elif output_format == "jsonl":
-            with open(output_file, "w") as f:
-                for result in results:
-                    json.dump(result.to_dict(), f)
-                    f.write("\n")
-        elif output_format == "csv":
-            with open(output_file, "w", newline="") as f:
-                writer = csv.writer(f)
-                # Header
-                header: list[str] = ["query", "timestamp"]
-                for tool_name in tool_names:
-                    header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
-                if evaluate:
-                    header.extend(
-                        ["llm_winner"] + [f"llm_score_{name}" for name in tool_names]
+                if search_results:
+                    results[tool_name] = "✓ Working"
+                    console.print(
+                        f"  [green]✓ {tool_name}: Retrieved {len(search_results)} results[/green]"
                     )
-                writer.writerow(header)
+                else:
+                    results[tool_name] = "⚠ No results"
+                    console.print(
+                        f"  [yellow]⚠ {tool_name}: No results returned[/yellow]"
+                    )
 
-                # Data rows
-                for result in results:
-                    row: list[str] = [result.query, result.timestamp.isoformat()]
-                    for tool_name in tool_names:
-                        tool_results = result.tool_results.get(tool_name, [])
-                        count = len(tool_results)
-                        latency = tool_results[0].latency_ms if tool_results else 0
-                        row.extend([str(count), f"{latency:.1f}"])
+            except Exception as e:
+                results[tool_name] = f"✗ Error: {str(e)}"
+                console.print(f"  [red]✗ {tool_name}: {str(e)}[/red]")
 
-                    if evaluate and result.llm_evaluation:
-                        row.append(result.llm_evaluation.winner or "tie")
-                        for tool_name in tool_names:
-                            score = result.llm_evaluation.quality_scores.get(
-                                tool_name, ""
-                            )
-                            row.append(str(score) if score else "")
+        # Summary
+        console.print("\n[bold]Summary:[/bold]")
+        working = sum(1 for v in results.values() if v.startswith("✓"))
+        total = len(results)
+        console.print(f"  {working}/{total} tools working")
 
-                    writer.writerow(row)
-
-        console.print(f"\n[green]✓ Processed {len(queries)} queries[/green]")
-        console.print(f"[green]✓ Results saved to {output_file}[/green]")
-
-        # Calculate and display percentile latencies
-        _display_batch_latency_stats(results, tool_names)
-
-        # Display LLM evaluation summary if enabled
-        if evaluate:
-            _display_llm_evaluation_summary(results, tool_names)
-
-            # Generate and display holistic summary
-            summary_file = output_path / f"holistic_summary_{timestamp}.md"
-            _generate_and_display_holistic_summary(results, tool_names, summary_file)
+        if working < total:
+            raise typer.Exit(1)
 
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/red]")
-        if verbose:
-            console.print_exception()
         raise typer.Exit(1) from e
 
 
-@app.command()
-def quick_test(
-    config_file: str = typer.Option(
-        "configs/mawsuah.yaml", "--config", "-c", help="Path to configuration file"
-    ),
-):
-    """Run a quick test query to verify setup."""
-    query = "What is the ruling on prayer times?"
-    console.print(f"[cyan]Running test query: '{query}'[/cyan]\n")
-
-    # Run comparison with minimal settings
-    compare(
-        query=query,
-        tools=[],
-        top_k=2,
-        config_file=config_file,
-        output_format="summary",
-        output_file=None,
-        parallel=True,
-        evaluate=False,
-        verbose=False,
-    )
-
-
+# Display helper functions (from old CLI)
 def _display_rich_results(result: ComparisonResult):
-    """Display results using rich formatting."""
-    # Header
-    console.print(
-        Panel.fit(
-            f"[bold cyan]Query:[/bold cyan] {result.query}",
-            title="RAG Comparison Results",
+    """Display comparison results with rich formatting."""
+    # Create panels for each tool's results
+    for tool_name, tool_results in result.tool_results.items():
+        if not tool_results:
+            continue
+
+        # Create table for this tool
+        table = Table(
+            title=f"{tool_name} Results", show_header=True, header_style="bold cyan"
         )
-    )
+        table.add_column("Rank", style="cyan", width=6)
+        table.add_column("Score", style="green", width=8)
+        table.add_column("Source", style="yellow", width=20)
+        table.add_column("Text", style="white")
 
-    # Errors if any
-    if result.has_errors():
-        error_text = Text()
-        for tool_name, error_msg in result.errors.items():
-            error_text.append(f"{tool_name}: ", style="bold red")
-            error_text.append(f"{error_msg}\n")
-        console.print(Panel(error_text, title="[red]Errors[/red]", border_style="red"))
+        for idx, r in enumerate(tool_results, 1):
+            table.add_row(
+                str(idx),
+                f"{r.score:.3f}",
+                r.source or "N/A",
+                r.text[:200] + "..." if len(r.text) > 200 else r.text,
+            )
 
-    # Results side by side
-    for idx in range(max(len(results) for results in result.tool_results.values())):
-        console.print(f"\n[bold]Result #{idx + 1}[/bold]")
-
-        for tool_name, results in sorted(result.tool_results.items()):
-            if idx < len(results):
-                res = results[idx]
-                panel_content = Text()
-                panel_content.append(res.text[:200])
-                if len(res.text) > 200:
-                    panel_content.append("...", style="dim")
-                panel_content.append(f"\n\nScore: {res.score:.3f}", style="cyan")
-                if res.source:
-                    panel_content.append(f"\nSource: {res.source}", style="dim")
-
-                console.print(
-                    Panel(
-                        panel_content,
-                        title=f"[bold]{tool_name.upper()}[/bold]",
-                        border_style="cyan",
-                    )
-                )
+        console.print(table)
+        console.print()
 
 
 def _display_llm_evaluation(evaluation):
     """Display LLM evaluation results."""
-
-    eval_text = Text()
-
-    # Winner
-    if evaluation.winner:
-        eval_text.append("🏆 Winner: ", style="bold")
-        eval_text.append(f"{evaluation.winner.upper()}\n\n", style="bold green")
-    else:
-        eval_text.append("🏆 Winner: ", style="bold")
-        eval_text.append("TIE\n\n", style="bold yellow")
-
-    # Quality scores
-    if evaluation.quality_scores:
-        eval_text.append("Quality Scores (0-10):\n", style="bold")
-        for tool, score in evaluation.quality_scores.items():
-            eval_text.append(f"  • {tool}: ", style="cyan")
-            eval_text.append(f"{score}/10\n")
-        eval_text.append("\n")
-
-    # Analysis
-    eval_text.append("Analysis:\n", style="bold")
-    eval_text.append(evaluation.analysis)
-
-    console.print(
-        Panel(eval_text, title="[bold]LLM Evaluation[/bold]", border_style="green")
-    )
-
-
-def _display_batch_latency_stats(
-    results: list[ComparisonResult], tool_names: list[str]
-):
-    """Display latency percentile statistics for batch processing."""
-    import statistics
-
-    # Collect latencies per tool
-    latencies_by_tool: dict[str, list[float]] = {
-        tool_name: [] for tool_name in tool_names
-    }
-
-    for result in results:
-        for tool_name in tool_names:
-            tool_results = result.tool_results.get(tool_name, [])
-            if tool_results and tool_results[0].latency_ms:
-                latencies_by_tool[tool_name].append(tool_results[0].latency_ms)
-
-    # Create table with percentile statistics
-    table = Table(title="Latency Statistics (ms)", show_header=True)
-    table.add_column("Tool", style="cyan")
-    table.add_column("Count", justify="right")
-    table.add_column("Min", justify="right")
-    table.add_column("P50 (Median)", justify="right", style="bold")
-    table.add_column("P95", justify="right", style="bold")
-    table.add_column("P99", justify="right")
-    table.add_column("Max", justify="right")
-    table.add_column("Mean", justify="right")
-
-    for tool_name in tool_names:
-        latencies = latencies_by_tool[tool_name]
-        if latencies:
-            latencies_sorted = sorted(latencies)
-            count = len(latencies)
-
-            # Calculate percentiles
-            p50 = statistics.median(latencies_sorted)
-            p95 = latencies_sorted[int(0.95 * count)] if count > 0 else 0
-            p99 = latencies_sorted[int(0.99 * count)] if count > 0 else 0
-            min_lat = min(latencies_sorted)
-            max_lat = max(latencies_sorted)
-            mean_lat = statistics.mean(latencies_sorted)
-
-            table.add_row(
-                tool_name,
-                str(count),
-                f"{min_lat:.1f}",
-                f"{p50:.1f}",
-                f"{p95:.1f}",
-                f"{p99:.1f}",
-                f"{max_lat:.1f}",
-                f"{mean_lat:.1f}",
-            )
-        else:
-            table.add_row(tool_name, "0", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A")
-
-    console.print(table)
-
-
-def _display_llm_evaluation_summary(results: list, tool_names: list[str]):
-    """Display summary of LLM evaluations across all queries."""
-    # Map internal names to display names
-    display_names = {"tafsir": "vectara", "goodmem": "goodmem"}
-
-    # Collect evaluation data
-    total_scores: dict[str, float] = {name: 0.0 for name in tool_names}
-    win_counts: dict[str, int] = {name: 0 for name in tool_names}
-    tie_count = 0
-    evaluated_count = 0
-
-    for result in results:
-        if result.llm_evaluation:
-            evaluated_count += 1
-
-            # Count wins
-            winner = result.llm_evaluation.winner
-            if winner:
-                winner_lower = winner.lower()
-                matched = False
-                for name in tool_names:
-                    if (
-                        name.lower() in winner_lower
-                        or display_names.get(name, name).lower() in winner_lower
-                    ):
-                        win_counts[name] += 1
-                        matched = True
-                        break
-                if not matched:
-                    tie_count += 1
-            else:
-                tie_count += 1
-
-            # Sum scores
-            for name in tool_names:
-                score = result.llm_evaluation.quality_scores.get(name, 0)
-                # Normalize to 100 scale if needed
-                if score > 0 and score <= 10:
-                    score *= 10
-                total_scores[name] += score
-
-    if evaluated_count == 0:
-        console.print("\n[yellow]No LLM evaluations available[/yellow]")
+    if not evaluation:
         return
 
-    # Create summary table
-    table = Table(title="LLM Evaluation Summary", show_header=True)
-    table.add_column("Tool", style="cyan")
-    table.add_column("Wins", justify="right", style="bold")
-    table.add_column("Avg Quality", justify="right")
+    panel_content = Text()
+    panel_content.append("Winner: ", style="bold")
+    panel_content.append(f"{evaluation.winner or 'Tie'}\n\n", style="bold green")
 
-    for tool_name in tool_names:
-        avg_score = total_scores[tool_name] / evaluated_count
-        wins = win_counts[tool_name]
+    if evaluation.analysis:
+        panel_content.append("Analysis:\n", style="bold")
+        panel_content.append(f"{evaluation.analysis}\n")
 
-        # Use display name
-        display_name = display_names.get(tool_name, tool_name)
+    if evaluation.quality_scores:
+        panel_content.append("\nQuality Scores:\n", style="bold")
+        for tool, score in evaluation.quality_scores.items():
+            panel_content.append(f"  {tool}: {score}/100\n", style="cyan")
 
-        # Style the row based on performance
-        if wins == max(win_counts.values()) and wins > 0:
-            tool_display = f"🏆 {display_name}"
-        else:
-            tool_display = display_name
-
-        table.add_row(tool_display, f"{wins}/{evaluated_count}", f"{avg_score:.1f}/100")
-
-    if tie_count > 0:
-        table.add_row("TIE", f"{tie_count}/{evaluated_count}", "-")
-
-    console.print()
-    console.print(table)
-
-    # Determine overall winner
-    max_wins = max(win_counts.values())
-    winners = [
-        display_names.get(name, name)
-        for name, count in win_counts.items()
-        if count == max_wins
-    ]
-
-    if len(winners) == 1 and max_wins > 0:
-        console.print(
-            f"\n[bold green]Overall Winner: {winners[0].upper()}[/bold green]"
-        )
-    elif len(winners) > 1:
-        console.print(f"\n[yellow]Tie between: {', '.join(winners)}[/yellow]")
-
-
-def _generate_and_display_holistic_summary(
-    results: list, tool_names: list[str], output_file: Path
-):
-    """Generate comprehensive holistic summary and save to file."""
-    from collections import Counter, defaultdict
-
-    # Map internal names to display names
-    display_names = {"tafsir": "vectara", "goodmem": "goodmem"}
-
-    # Collect comprehensive statistics
-    query_details = []
-    issue_tracker: dict[str, int] = defaultdict(int)
-    theme_tracker: dict[str, list[str]] = defaultdict(list)
-
-    for result in results:
-        if not result.llm_evaluation:
-            continue
-
-        query_info = {
-            "query": result.query,
-            "winner": result.llm_evaluation.winner,
-            "scores": {},
-            "analysis": result.llm_evaluation.analysis,
-        }
-
-        # Extract scores
-        for tool_name in tool_names:
-            score = result.llm_evaluation.quality_scores.get(tool_name, 0)
-            # Normalize to 100 scale if needed
-            if score > 0 and score <= 10:
-                score *= 10
-            query_info["scores"][tool_name] = score
-
-        query_details.append(query_info)
-
-        # Track issues mentioned in analysis
-        analysis_lower = result.llm_evaluation.analysis.lower()
-        if "duplicate" in analysis_lower or "repetition" in analysis_lower:
-            issue_tracker["duplicates"] += 1
-            theme_tracker["duplicates"].append(result.query)
-        if (
-            "fragment" in analysis_lower
-            or "incomplete" in analysis_lower
-            or "truncat" in analysis_lower
-        ):
-            issue_tracker["fragmentation"] += 1
-            theme_tracker["fragmentation"].append(result.query)
-        if "citation" in analysis_lower:
-            issue_tracker["citation_issues"] += 1
-            theme_tracker["citation_issues"].append(result.query)
-        if "coherent" in analysis_lower or "cohesive" in analysis_lower:
-            issue_tracker["coherence_mentioned"] += 1
-            theme_tracker["coherence"].append(result.query)
-
-    # Generate markdown summary
-    md_lines = ["# RAG Comparison: Holistic Summary\n"]
-    md_lines.append(f"**Total Queries Evaluated:** {len(query_details)}\n")
-    md_lines.append(
-        f"**Tools Compared:** {', '.join(display_names.get(n, n) for n in tool_names)}\n"
-    )
-    md_lines.append("\n---\n")
-
-    # Section 1: Query-by-Query Breakdown
-    md_lines.append("\n## 1. Query-by-Query Results\n")
-    for i, qinfo in enumerate(query_details, 1):
-        md_lines.append(f"\n### Query {i}: \"{qinfo['query']}\"\n")
-
-        # Winner
-        winner_display = qinfo["winner"] if qinfo["winner"] else "TIE"
-        if qinfo["winner"]:
-            for tool_name in tool_names:
-                winner_lower = qinfo["winner"].lower()
-                if (
-                    tool_name.lower() in winner_lower
-                    or display_names.get(tool_name, tool_name).lower() in winner_lower
-                ):
-                    winner_display = f"🏆 {display_names.get(tool_name, tool_name)}"
-                    break
-        md_lines.append(f"**Winner:** {winner_display}\n")
-
-        # Scores
-        md_lines.append("**Quality Scores:**\n")
-        for tool_name in tool_names:
-            score = qinfo["scores"].get(tool_name, 0)
-            display_name = display_names.get(tool_name, tool_name)
-            md_lines.append(f"- {display_name}: {score:.1f}/100\n")
-
-        # Full analysis (no truncation)
-        md_lines.append(f"\n**Analysis:**\n\n{qinfo['analysis']}\n")
-
-    # Section 2: Common Themes
-    md_lines.append("\n---\n\n## 2. Common Themes\n")
-
-    # Calculate win distribution
-    win_counts: Counter[str] = Counter()
-    for qinfo in query_details:
-        if qinfo["winner"]:
-            winner_lower = qinfo["winner"].lower()
-            for tool_name in tool_names:
-                if (
-                    tool_name.lower() in winner_lower
-                    or display_names.get(tool_name, tool_name).lower() in winner_lower
-                ):
-                    win_counts[tool_name] += 1
-                    break
-
-    md_lines.append("\n### Win Distribution\n")
-    for tool_name in tool_names:
-        display_name = display_names.get(tool_name, tool_name)
-        wins = win_counts.get(tool_name, 0)
-        percentage = (wins / len(query_details) * 100) if query_details else 0
-        md_lines.append(
-            f"- **{display_name}**: {wins}/{len(query_details)} queries ({percentage:.1f}%)\n"
-        )
-
-    # Calculate average scores
-    md_lines.append("\n### Average Quality Scores\n")
-    for tool_name in tool_names:
-        display_name = display_names.get(tool_name, tool_name)
-        avg_score = (
-            sum(q["scores"].get(tool_name, 0) for q in query_details)
-            / len(query_details)
-            if query_details
-            else 0
-        )
-        md_lines.append(f"- **{display_name}**: {avg_score:.1f}/100\n")
-
-    # Issue frequency
-    if issue_tracker:
-        md_lines.append("\n### Recurring Issues\n")
-        for issue_type, count in sorted(
-            issue_tracker.items(), key=lambda x: x[1], reverse=True
-        ):
-            percentage = (count / len(query_details) * 100) if query_details else 0
-            issue_name = issue_type.replace("_", " ").title()
-            md_lines.append(
-                f"- **{issue_name}**: {count}/{len(query_details)} queries ({percentage:.1f}%)\n"
-            )
-            # List affected queries
-            if theme_tracker[issue_type]:
-                affected = theme_tracker[issue_type][:3]  # Show first 3
-                examples = ", ".join(f'"{q}"' for q in affected)
-                md_lines.append(f"  - Examples: {examples}\n")
-
-    # Section 3: Key Differentiators
-    md_lines.append("\n---\n\n## 3. Key Differentiators\n")
-
-    # Determine winner
-    max_wins = max(win_counts.values()) if win_counts else 0
-    overall_winner = None
-    for tool_name, wins in win_counts.items():
-        if wins == max_wins and max_wins > 0:
-            overall_winner = tool_name
-            break
-
-    if overall_winner:
-        winner_display = display_names.get(overall_winner, overall_winner)
-        loser_names = [
-            display_names.get(n, n) for n in tool_names if n != overall_winner
-        ]
-        loser_display = loser_names[0] if loser_names else "other tools"
-
-        md_lines.append(f"\n### What makes {winner_display} better?\n")
-
-        # Analyze winning queries for patterns
-        winner_analyses = []
-        for qinfo in query_details:
-            if qinfo["winner"]:
-                winner_lower = qinfo["winner"].lower()
-                if (
-                    overall_winner.lower() in winner_lower
-                    or display_names.get(overall_winner, overall_winner).lower()
-                    in winner_lower
-                ):
-                    winner_analyses.append(qinfo["analysis"].lower())
-
-        # Look for common positive terms in winner
-        positive_terms = {
-            "complete": 0,
-            "comprehensive": 0,
-            "coherent": 0,
-            "cohesive": 0,
-            "structured": 0,
-            "organized": 0,
-            "clear": 0,
-            "relevant": 0,
-            "detailed": 0,
-            "thorough": 0,
-            "accurate": 0,
-        }
-
-        for analysis in winner_analyses:
-            for term in positive_terms:
-                if term in analysis:
-                    positive_terms[term] += 1
-
-        # Show top 3 positive attributes
-        top_positives = sorted(
-            positive_terms.items(), key=lambda x: x[1], reverse=True
-        )[:3]
-        for term, count in top_positives:
-            if count > 0:
-                percentage = (
-                    (count / len(winner_analyses) * 100) if winner_analyses else 0
-                )
-                md_lines.append(
-                    f"- **{term.title()}**: mentioned in {count}/{len(winner_analyses)} winning queries ({percentage:.1f}%)\n"
-                )
-
-        md_lines.append(f"\n### What's wrong with {loser_display}?\n")
-
-        # Analyze losing queries for patterns
-        loser_analyses = []
-        for qinfo in query_details:
-            if qinfo["winner"]:
-                winner_lower = qinfo["winner"].lower()
-                for tool_name in tool_names:
-                    if tool_name == overall_winner:
-                        continue
-                    if (
-                        tool_name.lower() in winner_lower
-                        or display_names.get(tool_name, tool_name).lower()
-                        in winner_lower
-                    ):
-                        loser_analyses.append(qinfo["analysis"].lower())
-                        break
-
-        # Look for common negative terms
-        negative_terms = {
-            "duplicate": 0,
-            "repetition": 0,
-            "fragment": 0,
-            "incomplete": 0,
-            "truncat": 0,
-            "disjointed": 0,
-            "confusing": 0,
-            "irrelevant": 0,
-        }
-
-        for analysis in loser_analyses:
-            for term in negative_terms:
-                if term in analysis:
-                    negative_terms[term] += 1
-
-        # Show top 3 negative attributes
-        top_negatives = sorted(
-            negative_terms.items(), key=lambda x: x[1], reverse=True
-        )[:3]
-        for term, count in top_negatives:
-            if count > 0:
-                percentage = (count / len(query_details) * 100) if query_details else 0
-                md_lines.append(
-                    f"- **{term.title()}**: mentioned in {count}/{len(query_details)} queries ({percentage:.1f}%)\n"
-                )
-
-    # Section 4: Overall Verdict
-    md_lines.append("\n---\n\n## 4. Overall Verdict\n")
-
-    if overall_winner:
-        winner_display = display_names.get(overall_winner, overall_winner)
-        wins = win_counts.get(overall_winner, 0)
-        win_pct = (wins / len(query_details) * 100) if query_details else 0
-        avg_winner_score = (
-            sum(q["scores"].get(overall_winner, 0) for q in query_details)
-            / len(query_details)
-            if query_details
-            else 0
-        )
-
-        md_lines.append(f"\n**🏆 Clear Winner: {winner_display.upper()}**\n")
-        md_lines.append(
-            f"\n{winner_display} won {wins} out of {len(query_details)} queries ({win_pct:.1f}%) "
-        )
-        md_lines.append(
-            f"with an average quality score of {avg_winner_score:.1f}/100.\n"
-        )
-
-        # Recommendation
-        md_lines.append(
-            f"\n**Recommendation:** Use {winner_display} for production queries based on superior "
-        )
-        md_lines.append("result quality, coherence, and completeness.\n")
-    else:
-        md_lines.append("\n**Result:** No clear winner - further evaluation needed.\n")
-
-    # Write to file
-    summary_content = "".join(md_lines)
-    output_file.write_text(summary_content)
-
-    # Display in terminal
-    console.print("\n" + "=" * 80)
-    console.print(
-        Panel.fit(
-            "[bold cyan]Holistic Summary Generated[/bold cyan]", border_style="cyan"
-        )
-    )
-    console.print(f"[green]✓ Full summary saved to: {output_file}[/green]\n")
-
-    # Display condensed version in terminal
-    console.print("[bold]== Quick Summary ==[/bold]\n")
-
-    # Show win counts
-    for tool_name in tool_names:
-        display_name = display_names.get(tool_name, tool_name)
-        wins = win_counts.get(tool_name, 0)
-        percentage = (wins / len(query_details) * 100) if query_details else 0
-        avg_score = (
-            sum(q["scores"].get(tool_name, 0) for q in query_details)
-            / len(query_details)
-            if query_details
-            else 0
-        )
-
-        if wins == max_wins and max_wins > 0:
-            console.print(
-                f"🏆 [bold green]{display_name}[/bold green]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100"
-            )
-        else:
-            console.print(
-                f"   [cyan]{display_name}[/cyan]: {wins}/{len(query_details)} wins ({percentage:.1f}%), avg score {avg_score:.1f}/100"
-            )
-
-    # Show top issues
-    if issue_tracker:
-        console.print("\n[bold]Top Issues:[/bold]")
-        for issue_type, count in sorted(
-            issue_tracker.items(), key=lambda x: x[1], reverse=True
-        )[:3]:
-            percentage = (count / len(query_details) * 100) if query_details else 0
-            issue_name = issue_type.replace("_", " ").title()
-            console.print(
-                f"  • {issue_name}: {count}/{len(query_details)} queries ({percentage:.1f}%)"
-            )
-
-    console.print("\n" + "=" * 80 + "\n")
+    console.print(Panel(panel_content, title="LLM Evaluation", border_style="blue"))
 
 
 def _display_stats_table(stats: dict):
-    """Display statistics in a table format."""
-    table = Table(title="Performance Statistics", show_header=True)
+    """Display summary statistics table."""
+    table = Table(
+        title="Summary Statistics", show_header=True, header_style="bold cyan"
+    )
     table.add_column("Tool", style="cyan")
-    table.add_column("Results", justify="right")
-    table.add_column("Latency (ms)", justify="right")
+    table.add_column("Results", style="green", justify="right")
+    table.add_column("Avg Score", style="yellow", justify="right")
+    table.add_column("Latency (ms)", style="magenta", justify="right")
 
-    for tool_name in stats.get("tools_compared", []):
-        count = stats["result_counts"].get(tool_name, 0)
-        latency = stats["latencies_ms"].get(tool_name, "N/A")
-
-        if isinstance(latency, float):
-            latency_str = f"{latency:.1f}"
-        else:
-            latency_str = str(latency)
-
-        table.add_row(tool_name, str(count), latency_str)
+    for tool_name, tool_stats in stats.items():
+        table.add_row(
+            tool_name,
+            str(tool_stats.get("count", 0)),
+            f"{tool_stats.get('avg_score', 0):.3f}",
+            f"{tool_stats.get('latency_ms', 0):.1f}",
+        )
 
     console.print(table)
 
 
-def main():
-    """Main entry point for CLI."""
-    app()
-
-
 if __name__ == "__main__":
-    main()
+    app()
