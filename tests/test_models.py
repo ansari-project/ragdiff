@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.core.models import (
+from ragdiff.core.models import (
     ComparisonResult,
     LLMEvaluation,
     RagResult,

@@ -3,9 +3,9 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src.adapters.goodmem import GoodmemAdapter
-from src.core.config import Config
-from src.core.models import ToolConfig
+from ragdiff.adapters.goodmem import GoodmemAdapter
+from ragdiff.core.config import Config
+from ragdiff.core.models import ToolConfig
 
 
 class TestSpaceIdsConfiguration:

@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.adapters.base import BaseRagTool
-from src.core.models import RagResult, ToolConfig
+from ragdiff.adapters.base import BaseRagTool
+from ragdiff.core.models import RagResult, ToolConfig
 
 
 class ConcreteRagTool(BaseRagTool):

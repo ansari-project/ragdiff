@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from src.core.models import ComparisonResult, LLMEvaluation, RagResult
-from src.display.formatter import ComparisonFormatter
+from ragdiff.core.models import ComparisonResult, LLMEvaluation, RagResult
+from ragdiff.display.formatter import ComparisonFormatter
 
 
 class TestComparisonFormatter:

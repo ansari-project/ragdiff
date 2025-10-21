@@ -5,8 +5,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.comparison.engine import ComparisonEngine
-from src.core.models import ComparisonResult, RagResult
+from ragdiff.comparison.engine import ComparisonEngine
+from ragdiff.core.models import ComparisonResult, RagResult
 
 
 class TestComparisonEngine:

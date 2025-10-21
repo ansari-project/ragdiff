@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 import pytest
 from typer.testing import CliRunner
 
-from src.cli import app
-from src.core.models import ComparisonResult, RagResult
+from ragdiff.cli import app
+from ragdiff.core.models import ComparisonResult, RagResult
 
 
 class TestCLI:
@@ -231,7 +231,7 @@ class TestCLI:
 
         mock_engine = Mock()
         # Use the actual ComparisonResult for proper behavior
-        from src.core.models import ComparisonResult
+        from ragdiff.core.models import ComparisonResult
 
         mock_engine.run_comparison.return_value = ComparisonResult(
             query="test", tool_results={"tool1": []}, errors={}

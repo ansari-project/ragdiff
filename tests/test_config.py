@@ -8,8 +8,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from src.core.config import Config
-from src.core.models import ToolConfig
+from ragdiff.core.config import Config
+from ragdiff.core.models import ToolConfig
 
 
 class TestConfig:

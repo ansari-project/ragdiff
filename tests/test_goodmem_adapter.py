@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.adapters.goodmem import GoodmemAdapter
-from src.core.models import RagResult, ToolConfig
+from ragdiff.adapters.goodmem import GoodmemAdapter
+from ragdiff.core.models import RagResult, ToolConfig
 
 
 class TestGoodmemAdapter:

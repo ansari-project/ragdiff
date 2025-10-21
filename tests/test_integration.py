@@ -4,10 +4,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.comparison.engine import ComparisonEngine
-from src.core.config import Config
-from src.core.models import ComparisonResult, RagResult
-from src.display.formatter import ComparisonFormatter
+from ragdiff.comparison.engine import ComparisonEngine
+from ragdiff.core.config import Config
+from ragdiff.core.models import ComparisonResult, RagResult
+from ragdiff.display.formatter import ComparisonFormatter
 
 
 class TestIntegration:
@@ -90,7 +90,7 @@ llm:
     def test_adapter_integration(self, mock_post):
         """Test adapter integration with engine."""
         from ragdiff.adapters.vectara import VectaraAdapter
-        from src.core.models import ToolConfig
+        from ragdiff.core.models import ToolConfig
 
         # Setup mock response
         mock_response = Mock()
@@ -197,7 +197,7 @@ llm:
     def test_goodmem_mock_mode_integration(self):
         """Test Goodmem adapter in mock mode."""
         from ragdiff.adapters.goodmem import GoodmemAdapter
-        from src.core.models import ToolConfig
+        from ragdiff.core.models import ToolConfig
 
         config = ToolConfig(name="goodmem", api_key_env="GOODMEM_API_KEY")
         adapter = GoodmemAdapter(config)

@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.core.models import ComparisonResult, LLMEvaluation, RagResult
-from src.evaluation.evaluator import LLMEvaluator
+from ragdiff.core.models import ComparisonResult, LLMEvaluation, RagResult
+from ragdiff.evaluation.evaluator import LLMEvaluator
 
 
 class TestLLMEvaluator:

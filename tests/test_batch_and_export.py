@@ -4,7 +4,7 @@ import csv
 import json
 from io import StringIO
 
-from src.core.models import ComparisonResult, RagResult
+from ragdiff.core.models import ComparisonResult, RagResult
 
 
 class TestBatchProcessing:
@@ -196,7 +196,7 @@ class TestCSVExport:
 
     def test_csv_includes_llm_evaluation_if_present(self):
         """Test that CSV includes LLM evaluation columns if available."""
-        from src.core.models import LLMEvaluation
+        from ragdiff.core.models import LLMEvaluation
 
         evaluation = LLMEvaluation(
             llm_model="claude",
