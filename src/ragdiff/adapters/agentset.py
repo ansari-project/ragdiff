@@ -7,14 +7,18 @@ from typing import Any
 from agentset import Agentset
 from agentset.models.searchop import SearchData
 
+from ..core.errors import AdapterError, ConfigurationError
 from ..core.models import RagResult, ToolConfig
-from .base import BaseRagTool
+from .abc import RagAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class AgentsetAdapter(BaseRagTool):
+class AgentsetAdapter(RagAdapter):
     """Adapter for Agentset RAG-as-a-Service platform."""
+
+    ADAPTER_API_VERSION = "1.0.0"
+    ADAPTER_NAME = "agentset"
 
     def __init__(self, config: ToolConfig):
         """Initialize Agentset adapter.
@@ -23,26 +27,28 @@ class AgentsetAdapter(BaseRagTool):
             config: Tool configuration
 
         Raises:
-            ValueError: If required environment variables are missing
+            ConfigurationError: If required environment variables are missing
         """
-        # Store config before super().__init__ because we need custom credential handling
+        # Store config and validate
         self.config = config
+        self.validate_config(config.__dict__)
 
         # Get API credentials from environment
         api_token = os.getenv(config.api_key_env)
         if not api_token:
-            raise ValueError(
-                f"Missing required environment variable: {config.api_key_env}\n"
-                f"Please set it with your Agentset API token."
+            raise ConfigurationError(
+                f"Missing required environment variable: {config.api_key_env}"
             )
 
         # Get namespace ID - check for custom env var name or default
-        namespace_id_env = getattr(config, "namespace_id_env", "AGENTSET_NAMESPACE_ID")
+        # Use 'or' to handle None value from Optional fields
+        namespace_id_env = (
+            getattr(config, "namespace_id_env", None) or "AGENTSET_NAMESPACE_ID"
+        )
         namespace_id = os.getenv(namespace_id_env)
         if not namespace_id:
-            raise ValueError(
-                f"Missing required environment variable: {namespace_id_env}\n"
-                f"Please set it with your Agentset namespace ID."
+            raise ConfigurationError(
+                f"Missing required environment variable: {namespace_id_env}"
             )
 
         # Initialize Agentset client
@@ -51,24 +57,19 @@ class AgentsetAdapter(BaseRagTool):
             logger.info(f"Agentset client initialized for namespace: {namespace_id}")
         except Exception as e:
             logger.error(f"Failed to initialize Agentset client: {e}")
-            raise ValueError(f"Failed to initialize Agentset client: {e}") from e
+            raise ConfigurationError(
+                f"Failed to initialize Agentset client: {e}"
+            ) from e
 
-        # Set config attributes needed by BaseRagTool
+        # Store configuration
         self.name = config.name
-        self.timeout = config.timeout
-        self.max_retries = config.max_retries
-        self.default_top_k = config.default_top_k
-
-        # Note: We don't call super().__init__ because Agentset doesn't use
-        # the Vectara-compatible parameters (api_key, corpus_id, etc.)
-        # Instead we set the attributes directly
+        self.timeout = config.timeout or 60
+        self.max_retries = config.max_retries or 3
+        self.default_top_k = config.default_top_k or 5
         self.description = "Agentset RAG-as-a-Service platform"
-
-        # Store credentials for BaseRagTool compatibility
         self.api_key = api_token
-        self.corpus_id = namespace_id  # Use namespace as corpus equivalent
-        self.base_url = getattr(config, "base_url", None) or ""
-        self.customer_id = None  # Not used by Agentset
+        self.namespace_id = namespace_id
+        self.namespace_id_env = namespace_id_env
 
         # Parse adapter-specific options
         self.rerank = True  # Default to True
@@ -175,4 +176,83 @@ class AgentsetAdapter(BaseRagTool):
 
         except Exception as e:
             logger.error(f"Agentset search failed: {str(e)}")
-            raise
+            raise AdapterError(f"Agentset search failed: {str(e)}") from e
+
+    def validate_config(self, config: dict[str, Any]) -> None:
+        """Validate Agentset configuration.
+
+        Args:
+            config: Configuration dictionary
+
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
+        # Check required fields
+        if not config.get("api_key_env"):
+            raise ConfigurationError(
+                "Agentset config missing required field: api_key_env"
+            )
+
+        # Get namespace_id_env (with default)
+        # Use 'or' to handle None value from Optional fields
+        namespace_id_env = config.get("namespace_id_env") or "AGENTSET_NAMESPACE_ID"
+
+        # Validate environment variables exist
+        if not os.getenv(config["api_key_env"]):
+            raise ConfigurationError(
+                f"Environment variable {config['api_key_env']} is not set"
+            )
+
+        if not os.getenv(namespace_id_env):
+            raise ConfigurationError(
+                f"Environment variable {namespace_id_env} is not set"
+            )
+
+    def get_required_env_vars(self) -> list[str]:
+        """Get list of required environment variables.
+
+        Returns:
+            List of required environment variable names
+        """
+        return [self.config.api_key_env, self.namespace_id_env]
+
+    def get_options_schema(self) -> dict[str, Any]:
+        """Get JSON schema for Agentset configuration options.
+
+        Returns:
+            JSON schema for configuration options
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "namespace_id_env": {
+                    "type": "string",
+                    "description": "Environment variable name for namespace ID",
+                    "default": "AGENTSET_NAMESPACE_ID",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Request timeout in seconds",
+                    "minimum": 1,
+                    "default": 60,
+                },
+                "default_top_k": {
+                    "type": "integer",
+                    "description": "Default number of results",
+                    "minimum": 1,
+                    "default": 5,
+                },
+                "rerank": {
+                    "type": "boolean",
+                    "description": "Enable result reranking",
+                    "default": True,
+                },
+            },
+            "required": [],
+        }
+
+
+# Register adapter on import
+from .registry import register_adapter
+
+register_adapter(AgentsetAdapter)

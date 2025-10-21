@@ -12,8 +12,9 @@ import urllib3
 # Disable SSL warnings for self-signed certificate
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+from ..core.errors import ConfigurationError
 from ..core.models import RagResult, ToolConfig
-from .base import BaseRagTool
+from .abc import RagAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,11 @@ except ImportError:
     logger.warning("goodmem-client not installed. Using mock implementation.")
 
 
-class GoodmemAdapter(BaseRagTool):
+class GoodmemAdapter(RagAdapter):
     """Adapter for Goodmem search tool."""
+
+    ADAPTER_API_VERSION = "1.0.0"
+    ADAPTER_NAME = "goodmem"
 
     def __init__(self, config: ToolConfig):
         """Initialize Goodmem adapter.
@@ -45,7 +49,22 @@ class GoodmemAdapter(BaseRagTool):
         Args:
             config: Tool configuration
         """
-        super().__init__(config)
+        self.config = config
+        self.validate_config(config.__dict__)
+
+        # Get credentials from environment
+        api_key = os.getenv(config.api_key_env)
+        if not api_key:
+            raise ConfigurationError(
+                f"Missing API key environment variable: {config.api_key_env}"
+            )
+
+        # Store configuration
+        self.api_key = api_key
+        self.base_url = config.base_url or "http://ansari.hosted.pairsys.ai:8080"
+        self.timeout = config.timeout or 60
+        self.default_top_k = config.default_top_k or 5
+        self.name = config.name
         self.description = "Next-generation RAG system using Goodmem"
 
         # Initialize Goodmem client if available
@@ -530,3 +549,73 @@ class GoodmemAdapter(BaseRagTool):
                 )
             )
         return mock_results
+
+    def validate_config(self, config: dict[str, Any]) -> None:
+        """Validate Goodmem configuration.
+
+        Args:
+            config: Configuration dictionary
+
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
+        # Check required fields
+        if not config.get("api_key_env"):
+            raise ConfigurationError(
+                "Goodmem config missing required field: api_key_env"
+            )
+
+        # Validate environment variable exists
+        if not os.getenv(config["api_key_env"]):
+            raise ConfigurationError(
+                f"Environment variable {config['api_key_env']} is not set"
+            )
+
+    def get_required_env_vars(self) -> list[str]:
+        """Get list of required environment variables.
+
+        Returns:
+            List of required environment variable names
+        """
+        return [self.config.api_key_env]
+
+    def get_options_schema(self) -> dict[str, Any]:
+        """Get JSON schema for Goodmem configuration options.
+
+        Returns:
+            JSON schema for configuration options
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "type": "string",
+                    "description": "Goodmem API base URL",
+                    "default": "http://ansari.hosted.pairsys.ai:8080",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Request timeout in seconds",
+                    "minimum": 1,
+                    "default": 60,
+                },
+                "default_top_k": {
+                    "type": "integer",
+                    "description": "Default number of results",
+                    "minimum": 1,
+                    "default": 5,
+                },
+                "space_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of Goodmem space IDs to search",
+                },
+            },
+            "required": [],
+        }
+
+
+# Register adapter on import
+from .registry import register_adapter
+
+register_adapter(GoodmemAdapter)
