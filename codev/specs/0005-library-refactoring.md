@@ -39,8 +39,8 @@ RAGDiff currently functions as a CLI-only tool, which limits its utility for pro
 ## Desired State
 
 A dual-purpose package that:
-1. Maintains CLI backwards compatibility (no breaking changes)
-2. Provides stable public interface via top-level `ragdiff` module exports for programmatic access
+1. Provides stable public interface via top-level `ragdiff` module exports for programmatic access
+2. Redesigns CLI with clearer command names (breaking change acceptable - single user currently)
 3. Freezes adapter interface via ABCs with explicit versioning
 4. Ensures deterministic, reentrant behavior for background workers
 5. Follows semantic versioning for managing breaking changes
@@ -152,7 +152,16 @@ class RagAdapter(ABC):
         pass
 
     @abstractmethod
-    def validate_config(self, config: Dict[str, Any]) -> bool:
+    def validate_config(self, config: Dict[str, Any]) -> None:
+        """
+        Validate adapter-specific configuration.
+
+        Args:
+            config: Adapter configuration dict
+
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
         pass
 
     @abstractmethod
@@ -302,7 +311,7 @@ class QueryError(RagDiffError):
     pass
 ```
 
-**Export Strategy**: Re-export from `ragdiff.api.__init__` in `__all__`
+**Export Strategy**: Re-export from `ragdiff/__init__.py` in `__all__`
 
 #### 7.2 Adapter Registry (`ragdiff.adapters.registry`)
 **Purpose**: Centralized adapter discovery and version validation
@@ -427,14 +436,21 @@ def run_batch_queries(
     top_k: int = 5,
     parallel: bool = True,
     max_workers: Optional[int] = None,  # NEW
-    per_query_timeout: Optional[int] = None,  # NEW
+    per_query_timeout: Optional[int] = None,  # NEW (in seconds)
     raise_on_any_error: bool = False,  # NEW
     progress_callback: Optional[Callable[[int, int], None]] = None,
-) -> List[RagResult]:
+) -> List[Union[RagResult, QueryErrorResult]]:
     """
+    Execute multiple queries, returning results in the same order as input queries.
+
     For partial failure handling:
-    - If raise_on_any_error=True: Raise on first query error
-    - If raise_on_any_error=False: Return mixed list of RagResult and QueryErrorResult
+    - If raise_on_any_error=True: Raise QueryError on first failure
+    - If raise_on_any_error=False (default): Return mixed list preserving order
+      - Successful queries return RagResult
+      - Failed queries return QueryErrorResult
+
+    Args:
+        per_query_timeout: Timeout per query in seconds (None = no timeout)
     """
     pass
 ```
@@ -443,9 +459,15 @@ def run_batch_queries(
 ```python
 @dataclass
 class QueryErrorResult:
+    """Represents a query that failed during batch execution.
+
+    JSON-serializable for CLI output.
+    """
     query: str
-    error: Exception
-    error_type: str
+    error_message: str  # str(exception) for serialization
+    error_type: str  # exception.__class__.__name__
+    # Original exception stored internally for programmatic access
+    _exception: Optional[Exception] = None  # Not serialized to JSON
 ```
 
 #### 7.7 Deterministic Sorting
@@ -491,10 +513,10 @@ async def query_endpoint(query: str):
 - [ ] `ragdiff/version.py` created as single source of truth for versions
 - [ ] `LLMConfig` dataclass implemented for evaluation configuration
 - [ ] All adapters inherit from `RagAdapter` ABC with `-> None` validate_config
-- [ ] Golden parity tests pass, covering every adapter in both single and batch query modes, with and without LLM evaluation
+- [ ] Golden parity tests pass, covering every adapter in both single and batch query modes (LLM eval tested separately)
 - [ ] Parity tests include float normalization (6-8 digit precision)
 - [ ] Deterministic sorting with tie-breakers implemented (`-score, doc_id`)
-- [ ] CLI continues to work unchanged (all existing tests pass)
+- [ ] CLI commands work correctly with new naming (query, run, compare)
 - [ ] Package can be imported and used programmatically with clean top-level imports
 - [ ] Semantic versioning documented in CHANGELOG.md
 - [ ] No global state or non-deterministic behavior
@@ -623,8 +645,7 @@ async def query_endpoint(query: str):
 The following are explicitly OUT OF SCOPE for this refactoring:
 
 - ❌ Adding new RAG adapters
-- ❌ Changing CLI command structure
-- ❌ Adding new CLI features
+- ❌ Adding new CLI features (beyond the redesign)
 - ❌ Performance optimizations beyond determinism
 - ❌ Database integration
 - ❌ Async/await support (may add later)
@@ -633,7 +654,7 @@ The following are explicitly OUT OF SCOPE for this refactoring:
 ## Testing Strategy
 
 ### Unit Tests
-- Test each `ragdiff.api` function independently
+- Test each top-level `ragdiff` library function independently
 - Mock external dependencies (RAG APIs, LLM APIs)
 - Cover error cases (invalid config, network errors, timeouts)
 
