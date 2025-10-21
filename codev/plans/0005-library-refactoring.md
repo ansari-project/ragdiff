@@ -30,21 +30,26 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
   - Memory usage (RSS, peak)
   - CLI startup time
 - Baseline results saved to `tests/benchmarks/baseline_results.json`
+- Sample query outputs saved for correctness comparison (`tests/benchmarks/baseline_outputs.json`)
+  - Ensures refactored code produces identical results, not just similar performance
 
 **Dependencies**: None
 
 **Success Criteria**:
 - Benchmark script runs successfully
 - All baseline metrics captured
-- Results saved for comparison
+- Performance results saved for comparison
+- Sample outputs saved for correctness validation
+- Outputs are deterministic (same query → same output)
 
 **Tests**:
 - Benchmark script executes without errors
 - Results file is valid JSON
+- Output file contains deterministic results
 
 **Evaluation**:
 - Baseline established
-- Ready for comparison after refactoring
+- Ready for both performance and correctness comparison after refactoring
 
 **Commit**: Single commit after phase evaluation
 
@@ -166,6 +171,10 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 - Export `__version__` from version.py
 - `LLMConfig` dataclass implementation
 - `QueryErrorResult` dataclass (JSON-serializable with `error_message`, `error_type`)
+- **On-disk format specification**:
+  - Define JSON schema for saved results (single query, batch, comparison)
+  - Ensure all dataclasses are JSON-serializable via dataclasses.asdict() or custom serializers
+  - Document format in docstrings and type hints
 - **Deterministic output** (moved from Phase 5):
   - Implement deterministic sorting with tie-breakers: `(-score, doc_id)`
   - Float normalization in serialization (6-8 digit precision)
@@ -181,6 +190,8 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 - `QueryErrorResult` is JSON-serializable
 - `LLMConfig` decouples from Anthropic-only
 - `get_available_adapters()` returns complete metadata for all adapters
+- **On-disk format**: All dataclasses serialize to JSON cleanly
+- **On-disk format**: JSON schema documented and consistent
 - **Deterministic sorting**: Same input produces same output
 - **Float precision**: Normalized to 6-8 digits for consistency
 
@@ -191,6 +202,8 @@ Transform RAGDiff from a CLI-only tool into a proper Python library with a stabl
 - Partial failure tests (mixed RagResult/QueryErrorResult)
 - Concurrency parameter tests (max_workers, timeouts)
 - Type checking tests
+- JSON serialization tests (all dataclasses)
+- JSON schema validation tests
 - Determinism tests (same input → same output)
 - Float precision tests
 
