@@ -103,5 +103,6 @@ skip_covered = false
 
 [dependency-groups]
 dev = [
+    "psutil>=7.1.1",
     "types-markdown>=3.9.0.20250906",
 ]
