@@ -1,4 +1,4 @@
-# Specification: RAGDiff API Refactoring
+# Specification: RAGDiff Library Refactoring
 
 **Status**: Draft
 **Created**: 2025-10-21
@@ -7,7 +7,7 @@
 
 ## Problem Statement
 
-RAGDiff currently functions as a CLI-only tool, which limits its utility for programmatic integration. The RAGDiff Web UI (spec 0001) requires a stable programmatic API to enable the FastAPI backend to perform comparisons, run batch queries, and evaluate results. Without a stable library interface:
+RAGDiff currently functions as a CLI-only tool, which limits its utility for programmatic integration. The RAGDiff Web UI (spec 0001) requires RAGDiff to be usable as a library with a stable programmatic API to enable the FastAPI backend to perform comparisons, run batch queries, and evaluate results. Without a stable library interface:
 
 1. Web UI cannot reliably integrate with RAGDiff functionality
 2. Breaking changes could occur without warning
@@ -48,22 +48,22 @@ A dual-purpose package that:
 
 ## Solution Approaches
 
-### Approach 1: Comprehensive Refactoring (RECOMMENDED)
+### Approach 1: Comprehensive Library Refactoring (RECOMMENDED)
 
 **Design**:
-- Create `src/ragdiff/api/__init__.py` with 6 public functions
+- Create `src/ragdiff/api/__init__.py` with 6 public functions for library usage
 - Define abstract `RagAdapter` base class with versioning
 - Audit and fix global state, non-deterministic behavior
 - Implement golden parity tests (CLI vs library output identical)
-- Refactor CLI to internally use `ragdiff.api` module
+- Refactor CLI to internally use library API via `ragdiff.api` module
 - Add semantic versioning and CHANGELOG.md
 
 **Pros**:
 - Complete solution addressing all gaps
 - Establishes solid foundation for future development
-- Clear separation of concerns
+- Clear separation of concerns (library vs CLI)
 - Strong backwards compatibility guarantees
-- Professional library interface
+- Professional library interface for programmatic use
 
 **Cons**:
 - More extensive changes required
@@ -107,9 +107,9 @@ A dual-purpose package that:
 
 ## Recommended Approach
 
-**Approach 1: Comprehensive Refactoring**
+**Approach 1: Comprehensive Library Refactoring**
 
-This approach provides the solid foundation needed for the Web UI and future integrations while maintaining professional library standards.
+This approach transforms RAGDiff into a proper Python library with a stable programmatic API while maintaining CLI compatibility. It provides the solid foundation needed for the Web UI and future integrations while maintaining professional library standards.
 
 ## Detailed Design
 
