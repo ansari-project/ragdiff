@@ -215,17 +215,214 @@ def compare(config: str, query: str, ...):
 
 **Documentation**: Maintain CHANGELOG.md for all releases
 
+### 7. Additional Requirements from Consultation
+
+Based on multi-agent feedback, the following components must be added:
+
+#### 7.1 Error Taxonomy (`ragdiff.core.errors`)
+**Purpose**: Stable exception contract for library users
+
+```python
+# ragdiff/core/errors.py
+class RagDiffError(Exception):
+    """Base exception for all RAGDiff errors"""
+    pass
+
+class ConfigurationError(RagDiffError):
+    """Invalid configuration"""
+    pass
+
+class AdapterError(RagDiffError):
+    """RAG system error (network, auth, etc.)"""
+    pass
+
+class LLMEvaluationError(RagDiffError):
+    """LLM evaluation failed"""
+    pass
+
+class QueryError(RagDiffError):
+    """Query execution error"""
+    pass
+```
+
+**Export Strategy**: Re-export from `ragdiff.api.__init__` in `__all__`
+
+#### 7.2 Adapter Registry (`ragdiff.adapters.registry`)
+**Purpose**: Centralized adapter discovery and version validation
+
+```python
+# ragdiff/adapters/registry.py
+_ADAPTERS: Dict[str, Type[RagAdapter]] = {}
+
+def register_adapter(adapter_cls: Type[RagAdapter]) -> None:
+    """Register an adapter with version check"""
+    # Validate API version compatibility
+    if adapter_cls.ADAPTER_API_VERSION != ADAPTER_API_VERSION:
+        raise ValueError(f"Incompatible adapter API version")
+    _ADAPTERS[adapter_cls.ADAPTER_NAME] = adapter_cls
+
+def get_adapter(name: str) -> Type[RagAdapter]:
+    """Get adapter class by name"""
+    if name not in _ADAPTERS:
+        raise KeyError(f"Unknown adapter: {name}")
+    return _ADAPTERS[name]
+
+def list_adapters() -> List[str]:
+    """List all registered adapter names"""
+    return list(_ADAPTERS.keys())
+```
+
+**Usage**: Each adapter module calls `register_adapter()` at import time
+
+#### 7.3 Version Centralization (`ragdiff/version.py`)
+**Purpose**: Single source of truth for version strings
+
+```python
+# ragdiff/version.py
+VERSION = "1.0.0"
+ADAPTER_API_VERSION = "1.0.0"
+```
+
+**Import Pattern**: All modules import from this file
+
+#### 7.4 Enhanced Public API Exports
+**Updated `__all__`**:
+
+```python
+# ragdiff/api/__init__.py
+__all__ = [
+    # Core functions
+    "run_single_query",
+    "run_batch_queries",
+    "create_comparison",
+    "evaluate_with_llm",
+    "get_available_adapters",
+    "validate_config",
+
+    # Utilities
+    "load_config",
+
+    # Exceptions
+    "RagDiffError",
+    "ConfigurationError",
+    "AdapterError",
+    "LLMEvaluationError",
+    "QueryError",
+
+    # Version
+    "__version__",
+]
+```
+
+#### 7.5 LLMConfig for Evaluation
+**Purpose**: Decouple from Anthropic, enable future providers
+
+```python
+# ragdiff/core/models.py (or config.py)
+@dataclass
+class LLMConfig:
+    provider: str = "anthropic"
+    model: str = "claude-sonnet-4-20250514"
+    api_key_env: str = "ANTHROPIC_API_KEY"
+    temperature: float = 0.0  # Deterministic by default
+    max_tokens: int = 4096
+```
+
+**Updated Function Signatures**:
+```python
+def create_comparison(
+    results: List[RagResult],
+    llm_evaluate: bool = False,
+    llm_config: Optional[LLMConfig] = None,  # Changed from llm_model, llm_api_key
+) -> ComparisonResult:
+    pass
+
+def evaluate_with_llm(
+    results: List[RagResult],
+    config: LLMConfig,  # Required, not optional with defaults
+) -> LLMEvaluation:
+    pass
+```
+
+#### 7.6 Enhanced Batch API
+**Updated Signature**:
+
+```python
+def run_batch_queries(
+    config: ToolConfig,
+    queries: List[str],
+    top_k: int = 5,
+    parallel: bool = True,
+    max_workers: Optional[int] = None,  # NEW
+    per_query_timeout: Optional[int] = None,  # NEW
+    raise_on_any_error: bool = False,  # NEW
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+) -> List[RagResult]:
+    """
+    For partial failure handling:
+    - If raise_on_any_error=True: Raise on first query error
+    - If raise_on_any_error=False: Return mixed list of RagResult and QueryErrorResult
+    """
+    pass
+```
+
+**QueryErrorResult** (for partial failures):
+```python
+@dataclass
+class QueryErrorResult:
+    query: str
+    error: Exception
+    error_type: str
+```
+
+#### 7.7 Deterministic Sorting
+**Requirement**: All result lists sorted with tie-breakers
+
+```python
+# In all adapters and comparison logic
+results.sort(key=lambda r: (-r.score, r.document.id or ""))  # Stable sort
+```
+
+#### 7.8 FastAPI Usage Documentation
+**Requirement**: Document thread pool executor usage
+
+```python
+# Example for FastAPI integration docs
+from fastapi import FastAPI
+from fastapi.concurrency import run_in_threadpool
+from ragdiff.api import run_single_query
+
+@app.post("/query")
+async def query_endpoint(query: str):
+    # REQUIRED: Run in thread pool to avoid blocking event loop
+    result = await run_in_threadpool(
+        run_single_query,
+        config,
+        query
+    )
+    return result
+```
+
 ## Success Criteria
 
 ### Must Have (Phase Complete)
 - [ ] All 6 functions in `ragdiff.api` implemented and tested
-- [ ] All adapters inherit from `RagAdapter` ABC
-- [ ] 10+ golden parity tests pass (CLI vs library identical)
+- [ ] `load_config` exported from public API
+- [ ] All custom exceptions (`RagDiffError`, etc.) exported from public API
+- [ ] `ragdiff.core.errors` module created with stable exception taxonomy
+- [ ] `ragdiff.adapters.registry` module created with adapter discovery
+- [ ] `ragdiff/version.py` created as single source of truth for versions
+- [ ] `LLMConfig` dataclass implemented for evaluation configuration
+- [ ] All adapters inherit from `RagAdapter` ABC with `-> None` validate_config
+- [ ] Golden parity tests pass, covering every adapter in both single and batch query modes, with and without LLM evaluation
+- [ ] Parity tests include float normalization (6-8 digit precision)
+- [ ] Deterministic sorting with tie-breakers implemented (`-score, doc_id`)
 - [ ] CLI continues to work unchanged (all existing tests pass)
 - [ ] Package can be imported and used programmatically
 - [ ] Semantic versioning documented in CHANGELOG.md
 - [ ] No global state or non-deterministic behavior
 - [ ] All existing tests continue to pass
+- [ ] FastAPI usage documentation with thread pool executor example
 
 ### Should Have
 - [ ] Comprehensive API documentation with examples
@@ -240,20 +437,57 @@ def compare(config: str, query: str, ...):
 
 ## Open Questions
 
-### Critical (Blocks Progress)
-None identified - core architecture is well-understood
+### Critical (Blocks Progress - MUST RESOLVE BEFORE PLANNING)
+
+**From Multi-Agent Consultation:**
+
+1. **CLI `compare` Command Semantics** (GPT-5)
+   - What does the existing CLI `compare` command output today?
+   - Is it a single `RagResult` or a `ComparisonResult` across multiple adapters/configs?
+   - This affects parity test design and API mapping
+   - **Action**: Examine current CLI implementation before planning phase
+
+2. **Batch Partial Failure Strategy** (GPT-5)
+   - How should `run_batch_queries()` handle per-query failures?
+   - Option A: Return `List[Union[RagResult, QueryErrorResult]]` preserving order
+   - Option B: Return wrapper `{ results: [...], errors: [...] }`
+   - Option C: Raise on first error with `raise_on_any_error` flag
+   - **Decision Needed**: Choose approach before API design
+
+3. **LLM Evaluation in CI** (Both models)
+   - Should CI parity tests use cached golden LLM responses or skip live calls?
+   - LLMs are non-deterministic; live calls will cause test flakiness
+   - **Recommendation**: Use cached responses for CI, optional live tests
+   - **Decision Needed**: Confirm approach
 
 ### Important (Affects Design)
-1. **Adapter versioning**: Should we support multiple adapter versions simultaneously (v1 and v2 coexist)?
+
+4. **Adapter Discovery Mechanism** (GPT-5)
+   - Is simple in-repo registry acceptable to start?
+   - Registry: `ragdiff.adapters.registry` with `register_adapter()` and `list_adapters()`
+   - **Recommendation**: Start simple, defer entry points
+   - **Confirmation Needed**: Acceptable approach?
+
+5. **Error Taxonomy Module** (GPT-5)
+   - Should we create `ragdiff.core.errors` for exception definitions?
+   - Export from `ragdiff.api` for stable contract
+   - **Recommendation**: Yes, create error module
+   - **Confirmation Needed**: Location and naming OK?
+
+6. **Adapter versioning**: Should we support multiple adapter versions simultaneously (v1 and v2 coexist)?
    - **Recommendation**: Start with single version, add multi-version support if needed
-2. **Publishing strategy**: PyPI or git dependency during development?
+
+7. **Publishing strategy**: PyPI or git dependency during development?
    - **Recommendation**: Git dependency initially, PyPI after stable
-3. **Testing access**: Do we have real RAG API keys for integration testing?
+
+8. **Testing access**: Do we have real RAG API keys for integration testing?
    - **Impact**: May need to use mocked tests if keys not available
 
 ### Nice-to-Know (Optimization)
+
 1. **Performance overhead**: What's acceptable overhead for library vs CLI?
-   - **Target**: <10ms overhead acceptable
+   - **Target**: <10ms overhead acceptable (confirmed in consultation)
+
 2. **Breaking change timeline**: What's acceptable deprecation period?
    - **Recommendation**: 1 minor release (deprecate in 1.1.0, remove in 2.0.0)
 
@@ -416,13 +650,95 @@ Each phase will follow the IDE cycle (Implement, Defend, Evaluate) with proper g
 
 ## Consultation Log
 
-*This section will be populated after multi-agent consultation with GPT-5 and Gemini Pro*
+### First Consultation (After Initial Draft) - 2025-10-21
 
-### First Consultation (After Initial Draft)
-*Pending*
+**Consulted Models**: GPT-5 (OpenAI), Gemini 2.5 Pro (Google)
+
+#### Key Feedback Summary
+
+Both models provided excellent, complementary feedback. GPT-5 focused on implementation details and concrete fixes, while Gemini Pro emphasized design refinements and future-proofing.
+
+#### Critical Issues Identified
+
+1. **CLI/Library Parity Test Mapping** (GPT-5)
+   - Issue: Current parity tests show CLI `compare` command but library calls `run_single_query()`
+   - Impact: These may not be equivalent - `compare` implies multiple systems, `run_single_query` returns one result
+   - Resolution: Need to clarify what CLI `compare` actually outputs and ensure parity tests match semantics
+
+2. **Error Taxonomy Not Defined** (GPT-5)
+   - Issue: Functions reference `ConfigurationError`, `AdapterError`, `LLMEvaluationError` but no module defines them
+   - Impact: No stable exception contract for library users
+   - Resolution: Create `ragdiff.core.errors` module and export from `ragdiff.api`
+
+3. **Adapter Discovery/Registry Missing** (GPT-5)
+   - Issue: `get_available_adapters()` needs adapter metadata but no registry mechanism exists
+   - Impact: Cannot implement the function without defining how adapters are discovered
+   - Resolution: Add simple `ragdiff.adapters.registry` with `register_adapter()` and `list_adapters()`
+
+4. **Configuration and Secret Handling** (Gemini Pro)
+   - Issue: Passing API keys directly as function parameters (`llm_api_key: Optional[str]`)
+   - Impact: Tight coupling to Anthropic, non-extensible, discouraged pattern for secrets
+   - Resolution: Introduce `LLMConfig` dataclass similar to `ToolConfig` for better abstraction
+
+5. **Missing Utilities in Public API** (Gemini Pro)
+   - Issue: CLI uses `load_config()` but it's not exported from `ragdiff.api`
+   - Impact: Library users can't load the same YAML configs as CLI
+   - Resolution: Export `load_config` and all custom exceptions in `__all__`
+
+#### Design Improvements
+
+6. **ABC validate_config Contract** (Both models)
+   - Issue: Method returns `bool` but also raises `ConfigurationError` - redundant
+   - Resolution: Change to `-> None`, only raise exception on invalid config
+
+7. **Batch API Partial Failures** (GPT-5)
+   - Issue: `run_batch_queries()` returns `List[RagResult]` with no strategy for per-query failures
+   - Impact: Can't distinguish successful from failed queries in batch
+   - Resolution Options:
+     - Option A: Return `List[Union[RagResult, QueryErrorResult]]` preserving order
+     - Option B: Return wrapper `{ results: [...], errors: [...] }`
+     - Add `raise_on_any_error: bool = False` flag
+
+8. **Batch API Concurrency Controls** (GPT-5)
+   - Issue: Only has `parallel: bool` but no controls for rate limiting, workers, timeouts
+   - Impact: Can't handle adapters with strict rate limits
+   - Resolution: Add `max_workers`, `per_query_timeout`, retry/backoff options
+
+9. **LLM Evaluation Determinism** (Both models)
+   - Issue: LLMs are inherently non-deterministic; parity tests will drift
+   - Impact: Golden parity tests with LLM evaluation will be flaky
+   - Resolution: Support `evaluation_cache` for tests, fix temperature/top_p, or skip LLM in CI parity tests
+
+10. **Async Framework Usage Risk** (Gemini Pro)
+    - Issue: Synchronous API will block event loops in FastAPI
+    - Impact: Poor performance if not handled correctly
+    - Resolution: Document requirement to use thread pool executors in async frameworks
+
+#### Additional Refinements
+
+11. **Version String Centralization** (GPT-5)
+    - Create `ragdiff/version.py` with `VERSION` and `ADAPTER_API_VERSION` to avoid drift
+
+12. **Float Normalization in Parity Tests** (GPT-5)
+    - Round floats to fixed precision (6-8 digits) in `normalize_output()` to avoid trivial drift
+
+13. **Deterministic Sorting with Tie-Breakers** (GPT-5)
+    - Sort by `(-score, doc_id)` or `(-score, stable_hash)` for complete determinism
+
+14. **Success Criteria Enhancement** (Gemini Pro)
+    - Change "10+ golden parity tests pass" to "All golden parity tests pass, covering every adapter in both single and batch query modes, with and without LLM evaluation"
+
+#### Questions Requiring Clarification
+
+**CRITICAL** (from GPT-5):
+1. What does the existing CLI `compare` command output today? Single `RagResult` or `ComparisonResult` across multiple adapters?
+2. How should batch partial failures be handled? Mixed list or raise on first error?
+3. For LLM evaluation in CI, use cached golden responses or skip live calls?
+4. Adapter discovery: OK to start with simple in-repo registry?
+5. Error taxonomy: Create `ragdiff.core.errors` module?
 
 ### Second Consultation (After User Feedback)
-*Pending*
+*Pending - will occur after user reviews and provides feedback on this draft*
 
 ## References
 
@@ -435,3 +751,17 @@ Each phase will follow the IDE cycle (Implement, Defend, Evaluate) with proper g
 ## Revision History
 
 - 2025-10-21: Initial specification draft
+- 2025-10-21: Renamed from "API Refactoring" to "Library Refactoring" for clarity
+- 2025-10-21: Incorporated feedback from GPT-5 and Gemini 2.5 Pro consultation
+  - Added section 7: Additional Requirements from Consultation
+  - Created error taxonomy requirements (`ragdiff.core.errors`)
+  - Created adapter registry requirements (`ragdiff.adapters.registry`)
+  - Added version centralization requirements (`ragdiff/version.py`)
+  - Enhanced public API exports (added `load_config`, exceptions)
+  - Introduced `LLMConfig` for better abstraction
+  - Enhanced batch API with concurrency controls
+  - Added deterministic sorting requirements
+  - Added FastAPI usage documentation requirements
+  - Updated Open Questions with critical items from consultation
+  - Enhanced Success Criteria based on feedback
+  - Documented all consultation feedback in Consultation Log section
