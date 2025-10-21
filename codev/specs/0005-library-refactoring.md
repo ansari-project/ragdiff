@@ -196,26 +196,69 @@ class RagAdapter(ABC):
 - With and without LLM evaluation
 - Edge cases (empty results, errors, timeouts)
 
-### 5. CLI Refactoring
+### 5. CLI Redesign
 
-**Requirement**: CLI continues to work exactly as before
+**Requirement**: Rename commands for clarity (breaking change acceptable)
+
+**New CLI Structure**:
+
+```bash
+# Single query against one RAG system
+ragdiff query "What is RAG?" --config config.yaml --top-k 5
+
+# Batch queries from file
+ragdiff run queries.txt --config config.yaml --output results.jsonl
+
+# Compare pre-existing result files
+ragdiff compare result1.json result2.json --evaluate
+```
 
 **Implementation**:
-- CLI commands internally use top-level `ragdiff` library functions
-- No changes to CLI arguments or output format
-- Same behavior, different internal implementation
+- All CLI commands internally use top-level `ragdiff` library functions
+- Clear command-to-function mapping
+- Consistent argument structure across commands
 
 **Example**:
 ```python
 # src/ragdiff/cli.py
-from ragdiff import run_single_query, load_config  # Use library functions
+from ragdiff import run_single_query, run_batch_queries, create_comparison, load_config
 from ragdiff.formatters import format_json
 
 @app.command()
-def compare(config: str, query: str, ...):
+def query(
+    query_text: str,
+    config: str = typer.Option(..., "--config"),
+    top_k: int = typer.Option(5, "--top-k"),
+    output: str = typer.Option("json", "--output"),
+):
+    """Run a single query against a RAG system."""
     cfg = load_config(config)
-    result = run_single_query(cfg, query, top_k=top_k)  # Library function
-    print(format_json(result))  # Existing formatter
+    result = run_single_query(cfg, query_text, top_k=top_k)
+    print(format_json(result))
+
+@app.command()
+def run(
+    queries_file: str,
+    config: str = typer.Option(..., "--config"),
+    top_k: int = typer.Option(5, "--top-k"),
+    output: str = typer.Option("jsonl", "--output"),
+    parallel: bool = typer.Option(True, "--parallel/--sequential"),
+):
+    """Run batch queries from a file."""
+    cfg = load_config(config)
+    queries = Path(queries_file).read_text().splitlines()
+    results = run_batch_queries(cfg, queries, top_k=top_k, parallel=parallel)
+    # Output results...
+
+@app.command()
+def compare(
+    result_files: List[str],
+    evaluate: bool = typer.Option(False, "--evaluate"),
+):
+    """Compare pre-existing result files."""
+    results = [load_result(f) for f in result_files]
+    comparison = create_comparison(results, llm_evaluate=evaluate)
+    print(format_json(comparison))
 ```
 
 ### 6. Semantic Versioning
@@ -475,47 +518,59 @@ async def query_endpoint(query: str):
 
 **From Multi-Agent Consultation:**
 
-1. **CLI `compare` Command Semantics** (GPT-5)
-   - What does the existing CLI `compare` command output today?
-   - Is it a single `RagResult` or a `ComparisonResult` across multiple adapters/configs?
-   - This affects parity test design and API mapping
-   - **Action**: Examine current CLI implementation before planning phase
+1. **CLI Command Redesign** ✅ RESOLVED
+   - **Decision**: Rename CLI commands for clarity (breaking change OK - single user)
+   - `ragdiff query` - Run single query (was `compare`)
+   - `ragdiff run` - Run batch queries (was `batch`)
+   - `ragdiff compare` - Compare pre-existing result files (NEW)
+   - **Library mapping**:
+     - `query` → `run_single_query()`
+     - `run` → `run_batch_queries()`
+     - `compare` → `create_comparison()`
 
-2. **Batch Partial Failure Strategy** (GPT-5)
-   - How should `run_batch_queries()` handle per-query failures?
-   - Option A: Return `List[Union[RagResult, QueryErrorResult]]` preserving order
-   - Option B: Return wrapper `{ results: [...], errors: [...] }`
-   - Option C: Raise on first error with `raise_on_any_error` flag
-   - **Decision Needed**: Choose approach before API design
+2. **Batch Partial Failure Strategy** ✅ RESOLVED
+   - **Decision**: Option A - Return `List[Union[RagResult, QueryErrorResult]]` preserving order
+   - Keeps it simple, maintains query order for matching with input
+   - Library users can filter/separate successful vs failed results as needed
+   - Example:
+     ```python
+     results = run_batch_queries(config, queries)
+     successful = [r for r in results if isinstance(r, RagResult)]
+     failed = [r for r in results if isinstance(r, QueryErrorResult)]
+     ```
 
-3. **LLM Evaluation in CI** (Both models)
-   - Should CI parity tests use cached golden LLM responses or skip live calls?
-   - LLMs are non-deterministic; live calls will cause test flakiness
-   - **Recommendation**: Use cached responses for CI, optional live tests
-   - **Decision Needed**: Confirm approach
+3. **LLM Evaluation in CI** ✅ RESOLVED
+   - **Decision**: Skip LLM evaluation in parity tests initially, add optional cached mode later
+   - Rationale: LLMs are non-deterministic; simplest approach is to test without LLM eval
+   - Parity tests will cover: query execution, result formatting, comparison logic (without LLM)
+   - LLM evaluation tested separately with mock/fixture responses
+   - Future enhancement: Add optional `evaluation_cache` parameter for deterministic testing
 
 ### Important (Affects Design)
 
-4. **Adapter Discovery Mechanism** (GPT-5)
-   - Is simple in-repo registry acceptable to start?
+4. **Adapter Discovery Mechanism** ✅ RESOLVED
+   - **Decision**: Simple in-repo registry to start
    - Registry: `ragdiff.adapters.registry` with `register_adapter()` and `list_adapters()`
-   - **Recommendation**: Start simple, defer entry points
-   - **Confirmation Needed**: Acceptable approach?
+   - Each adapter module calls `register_adapter()` at import time
+   - Defer plugin/entry-point system until needed
 
-5. **Error Taxonomy Module** (GPT-5)
-   - Should we create `ragdiff.core.errors` for exception definitions?
-   - Export from `ragdiff.api` for stable contract
-   - **Recommendation**: Yes, create error module
-   - **Confirmation Needed**: Location and naming OK?
+5. **Error Taxonomy Module** ✅ RESOLVED
+   - **Decision**: Create `ragdiff.core.errors` for exception definitions
+   - Export all exceptions from top-level `ragdiff` module
+   - Location: `src/ragdiff/core/errors.py`
+   - Clean imports: `from ragdiff import ConfigurationError, AdapterError`
 
-6. **Adapter versioning**: Should we support multiple adapter versions simultaneously (v1 and v2 coexist)?
-   - **Recommendation**: Start with single version, add multi-version support if needed
+6. **Adapter versioning** ✅ RESOLVED
+   - **Decision**: Single version to start (ADAPTER_API_VERSION = "1.0.0")
+   - Add multi-version support if needed in future
 
-7. **Publishing strategy**: PyPI or git dependency during development?
-   - **Recommendation**: Git dependency initially, PyPI after stable
+7. **Publishing strategy** ✅ RESOLVED
+   - **Decision**: Git dependency during development, PyPI after 1.0.0 stable
+   - Fast iteration with git commits, formal releases later
 
-8. **Testing access**: Do we have real RAG API keys for integration testing?
-   - **Impact**: May need to use mocked tests if keys not available
+8. **Testing access** ✅ RESOLVED
+   - **Decision**: Use mocked tests for CI/parity tests
+   - Optional integration tests with real API keys (marked as optional/manual)
 
 ### Nice-to-Know (Optimization)
 
@@ -534,7 +589,7 @@ async def query_endpoint(query: str):
 - Python 3.9.2+ is minimum supported version
 
 ### Constraints
-- Must maintain CLI backwards compatibility (no breaking changes)
+- CLI will be redesigned with clearer command names (breaking change acceptable - single user)
 - Must follow user's git preferences (explicit file listing, no git add -A)
 - Must use existing test infrastructure (pytest)
 - Must adhere to existing code style (Ruff formatting)
@@ -804,3 +859,15 @@ Both models provided excellent, complementary feedback. GPT-5 focused on impleme
   - Updated all references to use clean top-level imports: `from ragdiff import run_single_query`
   - Enhanced `__all__` to include commonly used models (RagResult, ToolConfig, etc.)
   - Updated all examples and documentation to reflect new import pattern
+- 2025-10-21: Resolved all critical open questions and redesigned CLI
+  - **CLI Redesign**: Renamed commands for clarity (breaking change acceptable)
+    - `compare` → `query` (single query)
+    - `batch` → `run` (batch queries)
+    - `compare` (NEW) - Compare pre-existing result files
+  - **Batch Failures**: Option A - Return `List[Union[RagResult, QueryErrorResult]]`
+  - **LLM in CI**: Skip LLM eval in parity tests, test separately with mocks
+  - **Adapter Registry**: Simple in-repo registry to start
+  - **Error Module**: Create `ragdiff.core.errors` and export from top-level
+  - **Versioning**: Single adapter version to start
+  - **Publishing**: Git dependency initially, PyPI after stable
+  - **Testing**: Mocked tests for CI, optional integration tests
