@@ -151,7 +151,299 @@ vectara:
 
 ## Usage
 
-### Basic Comparison
+RAGDiff can be used both as a **CLI tool** and as a **Python library**. Choose the interface that best fits your workflow.
+
+### Library API
+
+Use RAGDiff programmatically in your Python applications for maximum flexibility and integration.
+
+#### Installation as a Library
+
+```bash
+# Install from source
+cd ragdiff
+uv pip install -e .
+
+# Or in your project
+pip install ragdiff  # When published to PyPI
+```
+
+#### Quick Start
+
+```python
+from ragdiff import query, compare, run_batch
+
+# Single query against one tool
+results = query("config.yaml", "What is RAG?", tool="vectara", top_k=5)
+for result in results:
+    print(f"{result.score:.3f}: {result.text[:100]}")
+
+# Compare multiple tools
+comparison = compare(
+    "config.yaml",
+    "What is RAG?",
+    tools=["vectara", "goodmem"],
+    top_k=5,
+    evaluate=True  # Run LLM evaluation
+)
+print(f"Winner: {comparison.llm_evaluation.winner}")
+print(f"Vectara score: {comparison.llm_evaluation.quality_scores['vectara']}")
+
+# Batch processing
+queries = ["What is RAG?", "What is vector search?", "Explain embeddings"]
+results = run_batch(
+    "config.yaml",
+    queries,
+    tools=["vectara", "goodmem"],
+    parallel=True,
+    evaluate=True
+)
+for result in results:
+    print(f"Query: {result.query}")
+    print(f"Winner: {result.llm_evaluation.winner if result.llm_evaluation else 'N/A'}")
+```
+
+#### Core Functions
+
+**`query(config_path, query_text, tool, top_k=5)`**
+
+Run a single query against one RAG system.
+
+```python
+from ragdiff import query
+
+results = query(
+    config_path="config.yaml",
+    query_text="What is Islamic inheritance law?",
+    tool="vectara",
+    top_k=10
+)
+
+for idx, result in enumerate(results, 1):
+    print(f"{idx}. [{result.score:.3f}] {result.text[:200]}")
+    print(f"   Source: {result.source}")
+```
+
+**`compare(config_path, query_text, tools=None, top_k=5, parallel=True, evaluate=False)`**
+
+Compare multiple RAG systems on a single query.
+
+```python
+from ragdiff import compare
+
+comparison = compare(
+    config_path="config.yaml",
+    query_text="Explain Quranic inheritance",
+    tools=["vectara", "goodmem", "agentset"],  # None = all tools
+    top_k=5,
+    parallel=True,  # Run searches in parallel
+    evaluate=True   # Run LLM evaluation
+)
+
+# Access results
+print(f"Query: {comparison.query}")
+print(f"Tools compared: {list(comparison.tool_results.keys())}")
+
+for tool_name, results in comparison.tool_results.items():
+    print(f"\n{tool_name}: {len(results)} results")
+    if results:
+        print(f"  Top result: {results[0].text[:100]}")
+
+# LLM evaluation (if evaluate=True)
+if comparison.llm_evaluation:
+    print(f"\nWinner: {comparison.llm_evaluation.winner}")
+    print(f"Analysis: {comparison.llm_evaluation.analysis}")
+    for tool, score in comparison.llm_evaluation.quality_scores.items():
+        print(f"  {tool}: {score}/100")
+```
+
+**`run_batch(config_path, queries, tools=None, top_k=5, parallel=True, evaluate=False)`**
+
+Run multiple queries against multiple RAG systems.
+
+```python
+from ragdiff import run_batch
+
+queries = [
+    "What is zakat?",
+    "Explain hajj requirements",
+    "What is the shahada?"
+]
+
+results = run_batch(
+    config_path="config.yaml",
+    queries=queries,
+    tools=["vectara", "goodmem"],
+    top_k=5,
+    parallel=True,
+    evaluate=True
+)
+
+# Process results
+for comparison in results:
+    print(f"\nQuery: {comparison.query}")
+    print(f"Results: {comparison.get_result_counts()}")
+
+    if comparison.llm_evaluation:
+        print(f"Winner: {comparison.llm_evaluation.winner}")
+        print(f"Scores: {comparison.llm_evaluation.quality_scores}")
+```
+
+**`evaluate_with_llm(comparison_result, model=None, api_key=None)`**
+
+Evaluate comparison results using an LLM.
+
+```python
+from ragdiff import compare, evaluate_with_llm
+
+# Run comparison without evaluation
+comparison = compare("config.yaml", "What is RAG?", tools=["vectara", "goodmem"])
+
+# Evaluate later
+evaluation = evaluate_with_llm(
+    comparison,
+    model="claude-sonnet-4-20250514",  # Optional, uses config default
+    api_key=None  # Optional, uses ANTHROPIC_API_KEY env var
+)
+
+print(f"Winner: {evaluation.winner}")
+print(f"Analysis: {evaluation.analysis}")
+```
+
+#### Configuration Management
+
+```python
+from ragdiff import load_config, validate_config, get_available_adapters
+
+# Load and validate configuration
+config = load_config("config.yaml")
+validate_config("config.yaml")
+
+# Get available adapters
+adapters = get_available_adapters()
+for adapter_name, info in adapters.items():
+    print(f"{adapter_name}: {info['description']}")
+    print(f"  Required env vars: {info['required_env_vars']}")
+```
+
+#### Working with Results
+
+```python
+from ragdiff import compare
+from ragdiff.core.serialization import to_json
+
+comparison = compare("config.yaml", "test query", tools=["vectara"])
+
+# Convert to JSON
+json_output = to_json(comparison, pretty=True)
+print(json_output)
+
+# Convert to dict
+data = comparison.to_dict()
+
+# Access specific fields
+print(f"Query: {comparison.query}")
+print(f"Timestamp: {comparison.timestamp}")
+print(f"Errors: {comparison.errors}")
+print(f"Has errors: {comparison.has_errors()}")
+```
+
+#### Thread-Safe Usage
+
+RAGDiff is thread-safe and can be used in multi-threaded applications:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from ragdiff import query
+
+def run_query(query_text):
+    return query("config.yaml", query_text, tool="vectara", top_k=5)
+
+# Safe concurrent execution
+with ThreadPoolExecutor(max_workers=10) as executor:
+    queries = [f"Query {i}" for i in range(100)]
+    results = list(executor.map(run_query, queries))
+
+print(f"Completed {len(results)} queries concurrently")
+```
+
+#### Error Handling
+
+```python
+from ragdiff import query, compare
+from ragdiff.core.errors import (
+    ConfigurationError,
+    AdapterError,
+    ValidationError,
+    EvaluationError
+)
+
+try:
+    results = query("config.yaml", "test", tool="invalid_tool")
+except ConfigurationError as e:
+    print(f"Configuration error: {e}")
+except AdapterError as e:
+    print(f"Adapter failed: {e}")
+except ValidationError as e:
+    print(f"Invalid input: {e}")
+
+# Errors are also captured in comparison results
+comparison = compare("config.yaml", "test", tools=["vectara", "goodmem"])
+if comparison.has_errors():
+    for tool, error in comparison.errors.items():
+        print(f"{tool} failed: {error}")
+```
+
+#### FastAPI Integration
+
+See `examples/fastapi_integration.py` for a complete FastAPI service example:
+
+```bash
+# Install FastAPI dependencies
+uv pip install fastapi uvicorn
+
+# Run the API server
+uvicorn examples.fastapi_integration:app --reload
+
+# Or run directly
+python examples/fastapi_integration.py
+```
+
+The example includes:
+- Thread-safe concurrent request handling
+- Structured JSON request/response models
+- Comprehensive error handling
+- Configuration validation on startup
+- Health check endpoint
+- API documentation at `/docs`
+
+**Example API calls:**
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Query single tool
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is RAG?", "tool": "vectara", "top_k": 5}'
+
+# Compare multiple tools
+curl -X POST http://localhost:8000/compare \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is RAG?", "tools": ["vectara", "goodmem"], "evaluate": true}'
+
+# Batch queries
+curl -X POST http://localhost:8000/batch \
+  -H "Content-Type: application/json" \
+  -d '{"queries": ["What is RAG?", "Explain vectors"], "tools": ["vectara"]}'
+```
+
+### CLI Usage
+
+For command-line usage, RAGDiff provides a rich CLI interface.
+
+#### Basic Comparison
 
 ```bash
 # Compare all configured tools

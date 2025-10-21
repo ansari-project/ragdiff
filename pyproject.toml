@@ -4,24 +4,40 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ragdiff"
-version = "0.1.0"
-description = "A flexible framework for comparing RAG systems side-by-side with LLM evaluation"
+version = "1.0.0"
+description = "Compare and evaluate RAG systems side-by-side with LLM evaluation. Use as a library or CLI tool."
 readme = "README.md"
 requires-python = ">=3.9.2"
 license = {text = "MIT"}
 authors = [
     {name = "Ansari Project"},
 ]
-keywords = ["rag", "comparison", "evaluation", "diff", "llm"]
+keywords = [
+    "rag",
+    "retrieval-augmented-generation",
+    "comparison",
+    "evaluation",
+    "llm",
+    "vector-search",
+    "semantic-search",
+    "library",
+    "cli",
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
 ]
 dependencies = [
     "typer>=0.9.0",
