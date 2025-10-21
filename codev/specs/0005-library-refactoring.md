@@ -40,7 +40,7 @@ RAGDiff currently functions as a CLI-only tool, which limits its utility for pro
 
 A dual-purpose package that:
 1. Maintains CLI backwards compatibility (no breaking changes)
-2. Provides stable `ragdiff.api` module for programmatic access
+2. Provides stable public interface via top-level `ragdiff` module exports for programmatic access
 3. Freezes adapter interface via ABCs with explicit versioning
 4. Ensures deterministic, reentrant behavior for background workers
 5. Follows semantic versioning for managing breaking changes
@@ -51,11 +51,11 @@ A dual-purpose package that:
 ### Approach 1: Comprehensive Library Refactoring (RECOMMENDED)
 
 **Design**:
-- Create `src/ragdiff/api/__init__.py` with 6 public functions for library usage
+- Export 6 public functions from top-level `ragdiff/__init__.py` for clean library usage
 - Define abstract `RagAdapter` base class with versioning
 - Audit and fix global state, non-deterministic behavior
 - Implement golden parity tests (CLI vs library output identical)
-- Refactor CLI to internally use library API via `ragdiff.api` module
+- Refactor CLI to internally use library functions via top-level `ragdiff` imports
 - Add semantic versioning and CHANGELOG.md
 
 **Pros**:
@@ -113,17 +113,27 @@ This approach transforms RAGDiff into a proper Python library with a stable prog
 
 ## Detailed Design
 
-### 1. API Module Structure
+### 1. Public Library Interface
 
-**Location**: `src/ragdiff/api/__init__.py`
+**Location**: `src/ragdiff/__init__.py`
 
-**Public Interface** (6 functions):
+**Public Exports** (6 core functions):
 1. `run_single_query()` - Execute single query against RAG system
 2. `run_batch_queries()` - Execute multiple queries with optional parallelization
 3. `create_comparison()` - Compare multiple RAG results
 4. `evaluate_with_llm()` - Evaluate results using Claude LLM
 5. `get_available_adapters()` - List available adapters with schemas
 6. `validate_config()` - Validate configuration without executing
+
+**Import Pattern**:
+```python
+# Clean, top-level imports for library users
+from ragdiff import run_single_query, load_config, ConfigurationError
+
+# Usage
+config = load_config("config.yaml")
+result = run_single_query(config, "What is RAG?", top_k=5)
+```
 
 **Version**: 1.0.0 (initial release)
 
@@ -191,16 +201,20 @@ class RagAdapter(ABC):
 **Requirement**: CLI continues to work exactly as before
 
 **Implementation**:
-- CLI commands internally use `ragdiff.api` module
+- CLI commands internally use top-level `ragdiff` library functions
 - No changes to CLI arguments or output format
 - Same behavior, different internal implementation
 
 **Example**:
 ```python
+# src/ragdiff/cli.py
+from ragdiff import run_single_query, load_config  # Use library functions
+from ragdiff.formatters import format_json
+
 @app.command()
 def compare(config: str, query: str, ...):
     cfg = load_config(config)
-    result = run_single_query(cfg, query, top_k=top_k)  # NEW API
+    result = run_single_query(cfg, query, top_k=top_k)  # Library function
     print(format_json(result))  # Existing formatter
 ```
 
@@ -209,7 +223,7 @@ def compare(config: str, query: str, ...):
 **Format**: MAJOR.MINOR.PATCH
 
 **Rules**:
-- **MAJOR**: Breaking changes to `ragdiff.api` or `RagAdapter`
+- **MAJOR**: Breaking changes to public library interface or `RagAdapter`
 - **MINOR**: New features, backwards compatible
 - **PATCH**: Bug fixes
 
@@ -285,11 +299,20 @@ ADAPTER_API_VERSION = "1.0.0"
 
 **Import Pattern**: All modules import from this file
 
-#### 7.4 Enhanced Public API Exports
-**Updated `__all__`**:
+#### 7.4 Enhanced Public Library Exports
+**Top-level `__all__` in `ragdiff/__init__.py`**:
 
 ```python
-# ragdiff/api/__init__.py
+# ragdiff/__init__.py
+"""RAGDiff: Compare and evaluate RAG systems
+
+Library usage:
+    from ragdiff import run_single_query, load_config
+
+    config = load_config("config.yaml")
+    result = run_single_query(config, "What is RAG?")
+"""
+
 __all__ = [
     # Core functions
     "run_single_query",
@@ -308,6 +331,13 @@ __all__ = [
     "AdapterError",
     "LLMEvaluationError",
     "QueryError",
+
+    # Models (commonly used)
+    "RagResult",
+    "ComparisonResult",
+    "LLMEvaluation",
+    "ToolConfig",
+    "LLMConfig",
 
     # Version
     "__version__",
@@ -390,7 +420,11 @@ results.sort(key=lambda r: (-r.score, r.document.id or ""))  # Stable sort
 # Example for FastAPI integration docs
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
-from ragdiff.api import run_single_query
+from ragdiff import run_single_query, load_config
+
+# Load config once at startup
+config = load_config("config.yaml")
+app = FastAPI()
 
 @app.post("/query")
 async def query_endpoint(query: str):
@@ -406,9 +440,9 @@ async def query_endpoint(query: str):
 ## Success Criteria
 
 ### Must Have (Phase Complete)
-- [ ] All 6 functions in `ragdiff.api` implemented and tested
-- [ ] `load_config` exported from public API
-- [ ] All custom exceptions (`RagDiffError`, etc.) exported from public API
+- [ ] All 6 core functions exported from top-level `ragdiff` module and tested
+- [ ] `load_config` exported from public interface
+- [ ] All custom exceptions (`RagDiffError`, etc.) exported from top-level
 - [ ] `ragdiff.core.errors` module created with stable exception taxonomy
 - [ ] `ragdiff.adapters.registry` module created with adapter discovery
 - [ ] `ragdiff/version.py` created as single source of truth for versions
@@ -418,14 +452,14 @@ async def query_endpoint(query: str):
 - [ ] Parity tests include float normalization (6-8 digit precision)
 - [ ] Deterministic sorting with tie-breakers implemented (`-score, doc_id`)
 - [ ] CLI continues to work unchanged (all existing tests pass)
-- [ ] Package can be imported and used programmatically
+- [ ] Package can be imported and used programmatically with clean top-level imports
 - [ ] Semantic versioning documented in CHANGELOG.md
 - [ ] No global state or non-deterministic behavior
 - [ ] All existing tests continue to pass
 - [ ] FastAPI usage documentation with thread pool executor example
 
 ### Should Have
-- [ ] Comprehensive API documentation with examples
+- [ ] Comprehensive library documentation with examples
 - [ ] Published to PyPI or git dependency works
 - [ ] Performance benchmarks (library vs CLI)
 - [ ] Reentrancy tests (concurrent calls)
@@ -597,13 +631,13 @@ No new runtime dependencies required
 
 The implementation will be broken into logical phases during the Planning stage. Expected phases:
 
-1. **Foundation**: Create API module structure and base adapter class
-2. **API Implementation**: Implement 6 public functions
-3. **Adapter Migration**: Update adapters to use ABC
+1. **Foundation**: Create error taxonomy, adapter registry, version module, and base adapter class
+2. **Public Interface**: Implement 6 core functions and export from top-level `ragdiff/__init__.py`
+3. **Adapter Migration**: Update adapters to use ABC with registry
 4. **Determinism Audit**: Fix global state and non-deterministic behavior
 5. **Golden Parity Tests**: Create comprehensive CLI vs library tests
-6. **CLI Refactoring**: Update CLI to use API module
-7. **Documentation**: Complete API docs and examples
+6. **CLI Refactoring**: Update CLI to use library functions
+7. **Documentation**: Complete library usage docs and examples
 
 Each phase will follow the IDE cycle (Implement, Defend, Evaluate) with proper git commits.
 
@@ -632,15 +666,15 @@ Each phase will follow the IDE cycle (Implement, Defend, Evaluate) with proper g
 ## Success Metrics
 
 ### Functional Metrics
-- All 6 API functions working correctly
+- All 6 core library functions working correctly
 - 100% of existing CLI tests still passing
 - 100% of golden parity tests passing
 - All adapters implementing RagAdapter ABC
 
 ### Quality Metrics
 - Test coverage: ≥90%
-- Type hint coverage: 100% for public API
-- Documentation coverage: 100% for public API
+- Type hint coverage: 100% for public library interface
+- Documentation coverage: 100% for public library interface
 - Linting: 0 errors/warnings
 
 ### Performance Metrics
@@ -765,3 +799,8 @@ Both models provided excellent, complementary feedback. GPT-5 focused on impleme
   - Updated Open Questions with critical items from consultation
   - Enhanced Success Criteria based on feedback
   - Documented all consultation feedback in Consultation Log section
+- 2025-10-21: Changed module naming from `ragdiff.api` to top-level `ragdiff` exports
+  - User feedback: "api" is confusing - this is a library interface, not REST API
+  - Updated all references to use clean top-level imports: `from ragdiff import run_single_query`
+  - Enhanced `__all__` to include commonly used models (RagResult, ToolConfig, etc.)
+  - Updated all examples and documentation to reflect new import pattern
