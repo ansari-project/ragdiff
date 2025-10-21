@@ -2,9 +2,16 @@
 
 This module provides a central registry for discovering and managing RAG adapters.
 It enforces adapter API version compatibility to prevent runtime errors.
+
+Thread-Safety:
+    The global registry uses a re-entrant lock (threading.RLock) to ensure
+    thread-safe operations. All public methods that access or modify the
+    registry acquire this lock, making the registry safe for concurrent use
+    in multi-threaded environments (e.g., web servers, FastAPI workers).
 """
 
 import logging
+import threading
 from typing import Optional
 
 from ..core.errors import AdapterRegistryError
@@ -15,20 +22,25 @@ logger = logging.getLogger(__name__)
 
 
 class AdapterRegistry:
-    """Registry for RAG adapters with version compatibility checking.
+    """Thread-safe registry for RAG adapters with version compatibility checking.
 
     The registry maintains a mapping of adapter names to adapter classes,
     and ensures all registered adapters are compatible with the current
     adapter API version.
+
+    Thread-Safety:
+        All operations are protected by a re-entrant lock, making this registry
+        safe for concurrent access from multiple threads.
     """
 
     def __init__(self):
-        """Initialize empty registry."""
+        """Initialize empty registry with thread lock."""
         self._adapters: dict[str, type[RagAdapter]] = {}
         self._registry_api_version = ADAPTER_API_VERSION
+        self._lock = threading.RLock()
 
     def register(self, adapter_class: type[RagAdapter]) -> None:
-        """Register an adapter class.
+        """Register an adapter class (thread-safe).
 
         Args:
             adapter_class: The adapter class to register (must inherit from RagAdapter)
@@ -37,38 +49,40 @@ class AdapterRegistry:
             AdapterRegistryError: If adapter name is empty, already registered,
                                  or API version is incompatible
         """
-        # Validate adapter has a name
-        if not adapter_class.ADAPTER_NAME:
-            raise AdapterRegistryError(
-                f"Adapter class {adapter_class.__name__} must set ADAPTER_NAME"
+        with self._lock:
+            # Validate adapter has a name
+            if not adapter_class.ADAPTER_NAME:
+                raise AdapterRegistryError(
+                    f"Adapter class {adapter_class.__name__} must set ADAPTER_NAME"
+                )
+
+            adapter_name = adapter_class.ADAPTER_NAME
+
+            # Check for duplicate registration
+            if adapter_name in self._adapters:
+                raise AdapterRegistryError(
+                    f"Adapter '{adapter_name}' is already registered. "
+                    f"Cannot register {adapter_class.__name__}."
+                )
+
+            # Check API version compatibility
+            adapter_version = adapter_class.ADAPTER_API_VERSION
+            if not self._is_compatible_version(adapter_version):
+                logger.warning(
+                    f"Adapter '{adapter_name}' uses API version {adapter_version}, "
+                    f"but registry expects {self._registry_api_version}. "
+                    f"This may cause compatibility issues."
+                )
+
+            # Register the adapter
+            self._adapters[adapter_name] = adapter_class
+            logger.info(
+                f"Registered adapter '{adapter_name}' "
+                f"(API version: {adapter_version})"
             )
-
-        adapter_name = adapter_class.ADAPTER_NAME
-
-        # Check for duplicate registration
-        if adapter_name in self._adapters:
-            raise AdapterRegistryError(
-                f"Adapter '{adapter_name}' is already registered. "
-                f"Cannot register {adapter_class.__name__}."
-            )
-
-        # Check API version compatibility
-        adapter_version = adapter_class.ADAPTER_API_VERSION
-        if not self._is_compatible_version(adapter_version):
-            logger.warning(
-                f"Adapter '{adapter_name}' uses API version {adapter_version}, "
-                f"but registry expects {self._registry_api_version}. "
-                f"This may cause compatibility issues."
-            )
-
-        # Register the adapter
-        self._adapters[adapter_name] = adapter_class
-        logger.info(
-            f"Registered adapter '{adapter_name}' " f"(API version: {adapter_version})"
-        )
 
     def get(self, name: str) -> Optional[type[RagAdapter]]:
-        """Get adapter class by name.
+        """Get adapter class by name (thread-safe).
 
         Args:
             name: Name of the adapter to retrieve
@@ -76,18 +90,20 @@ class AdapterRegistry:
         Returns:
             The adapter class, or None if not found
         """
-        return self._adapters.get(name)
+        with self._lock:
+            return self._adapters.get(name)
 
     def list_adapters(self) -> list[str]:
-        """Get list of all registered adapter names.
+        """Get list of all registered adapter names (thread-safe).
 
         Returns:
             List of adapter names sorted alphabetically
         """
-        return sorted(self._adapters.keys())
+        with self._lock:
+            return sorted(self._adapters.keys())
 
     def get_adapter_info(self, name: str) -> Optional[dict[str, any]]:
-        """Get detailed information about an adapter.
+        """Get detailed information about an adapter (thread-safe).
 
         Args:
             name: Name of the adapter
@@ -103,16 +119,17 @@ class AdapterRegistry:
                 "module": "ragdiff.adapters.vectara"
             }
         """
-        adapter_class = self._adapters.get(name)
-        if not adapter_class:
-            return None
+        with self._lock:
+            adapter_class = self._adapters.get(name)
+            if not adapter_class:
+                return None
 
-        return {
-            "name": adapter_class.ADAPTER_NAME,
-            "api_version": adapter_class.ADAPTER_API_VERSION,
-            "class_name": adapter_class.__name__,
-            "module": adapter_class.__module__,
-        }
+            return {
+                "name": adapter_class.ADAPTER_NAME,
+                "api_version": adapter_class.ADAPTER_API_VERSION,
+                "class_name": adapter_class.__name__,
+                "module": adapter_class.__module__,
+            }
 
     def _is_compatible_version(self, adapter_version: str) -> bool:
         """Check if adapter version is compatible with registry.

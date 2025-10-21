@@ -36,6 +36,14 @@ except ImportError:
     ApiException_type = None  # type: ignore[assignment,misc]
     logger.warning("goodmem-client not installed. Using mock implementation.")
 
+# Space ID to human-readable name mapping
+# This is a module-level constant (thread-safe, immutable)
+_SPACE_NAMES = {
+    "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
+    "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
+    "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
+}
+
 
 class GoodmemAdapter(RagAdapter):
     """Adapter for Goodmem search tool."""
@@ -173,14 +181,7 @@ class GoodmemAdapter(RagAdapter):
                 logger.warning(f"Failed to search spaces: HTTP {response.status_code}")
                 return results
 
-            # Parse NDJSON response
-            space_names = {
-                "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
-                "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-                "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
-            }
-
-            # Build mapping from memoryId to spaceId
+            # Parse NDJSON response and build mapping from memoryId to spaceId
             memory_to_space = {}
             rerank_result_set_ids = set()
             current_stage = None
@@ -239,7 +240,7 @@ class GoodmemAdapter(RagAdapter):
                                         id=f"goodmem_{len(results)}",
                                         text=text,
                                         score=self._normalize_score(score),
-                                        source=space_names.get(space_id, "GoodMem"),
+                                        source=_SPACE_NAMES.get(space_id, "GoodMem"),
                                         metadata={
                                             "space_id": space_id,
                                             "result_set_id": result_set_id,
@@ -347,13 +348,8 @@ class GoodmemAdapter(RagAdapter):
         """
         results = []
 
-        # Map space IDs to source names
-        space_names = {
-            "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
-            "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-            "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
-        }
-        source = space_names.get(space_id, "GoodMem")
+        # Map space ID to source name using module constant
+        source = _SPACE_NAMES.get(space_id, "GoodMem")
 
         # Parse retrieved chunks
         retrieved = data.get("retrieved", [])
@@ -416,13 +412,8 @@ class GoodmemAdapter(RagAdapter):
             # Extract score if available
             score = float(getattr(item, "score", 0.5))
 
-            # Map space IDs to source names
-            space_names = {
-                "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
-                "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-                "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
-            }
-            source = space_names.get(space_id, "GoodMem")
+            # Map space ID to source name using module constant
+            source = _SPACE_NAMES.get(space_id, "GoodMem")
 
             # Extract metadata if available
             metadata = {}
@@ -499,12 +490,7 @@ class GoodmemAdapter(RagAdapter):
 
                     # Add space information if available
                     if hasattr(item, "space_id"):
-                        space_names = {
-                            "efd91f05-87cf-4c4c-a04d-0a970f8d30a7": "Ibn Katheer",
-                            "2d1f3227-8331-46ee-9dc2-d9265bfc79f5": "Mawsuah",
-                            "d04d8032-3a9b-4b83-b906-e48458715a7a": "Qurtubi",
-                        }
-                        source = space_names.get(item.space_id, source)
+                        source = _SPACE_NAMES.get(item.space_id, source)
                         metadata["space_id"] = item.space_id
 
                     result = RagResult(

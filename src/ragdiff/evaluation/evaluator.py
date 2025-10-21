@@ -13,10 +13,21 @@ logger = logging.getLogger(__name__)
 
 
 class LLMEvaluator:
-    """Uses Claude to provide qualitative evaluation of RAG results."""
+    """Uses Claude to provide qualitative evaluation of RAG results.
+
+    Thread-Safety:
+        This class is safe for concurrent use. Each instance maintains its own
+        Anthropic client and evaluation state. The DISPLAY_NAMES class variable
+        is read-only and should never be modified after class definition.
+    """
 
     # Map internal tool names to display names (if needed)
     # Empty dict means tool names are used as-is
+    #
+    # WARNING: READ-ONLY - Do not modify this dict after class definition.
+    # Modification would affect all instances across all threads and could
+    # cause race conditions. If you need custom display names, pass them
+    # to the constructor or use a subclass.
     DISPLAY_NAMES: dict[str, str] = {}
 
     def __init__(
