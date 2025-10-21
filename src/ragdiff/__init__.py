@@ -53,6 +53,7 @@ from .api import (
     run_batch,
     validate_config,
 )
+from .core.config import Config
 from .core.errors import (
     AdapterError,
     AdapterRegistryError,
@@ -77,6 +78,7 @@ __all__ = [
     "load_config",
     "validate_config",
     "get_available_adapters",
+    "Config",
     # Models
     "RagResult",
     "ComparisonResult",

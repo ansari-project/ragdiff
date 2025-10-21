@@ -4,6 +4,8 @@ This module provides the main programmatic interface for RAGDiff.
 All functions are also exported from the top-level ragdiff package.
 """
 
+import logging
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,8 +13,151 @@ from .adapters.factory import create_adapter
 from .adapters.registry import list_available_adapters
 from .comparison.engine import ComparisonEngine
 from .core.config import Config
-from .core.models import ComparisonResult, RagResult
+from .core.errors import ConfigurationError, ValidationError
+from .core.models import ComparisonResult, RagResult, ToolConfig
 from .evaluation.evaluator import LLMEvaluator
+
+logger = logging.getLogger(__name__)
+
+# Default LLM model for evaluations
+DEFAULT_LLM_MODEL = "claude-sonnet-4-20250514"
+
+
+def _validate_config_path(config_path: str | Path) -> Path:
+    """Validate that config path exists and is readable.
+
+    Args:
+        config_path: Path to configuration file
+
+    Returns:
+        Resolved Path object
+
+    Raises:
+        ConfigurationError: If path doesn't exist or isn't readable
+    """
+    path = Path(config_path)
+    if not path.exists():
+        raise ConfigurationError(f"Configuration file not found: {path}")
+    if not path.is_file():
+        raise ConfigurationError(f"Configuration path is not a file: {path}")
+    return path
+
+
+def _validate_query_text(query_text: str) -> None:
+    """Validate query text is non-empty.
+
+    Args:
+        query_text: Query string to validate
+
+    Raises:
+        ValidationError: If query text is empty or whitespace-only
+    """
+    if not query_text or not query_text.strip():
+        raise ValidationError("query_text cannot be empty or whitespace-only")
+
+
+def _validate_top_k(top_k: int) -> None:
+    """Validate top_k parameter.
+
+    Args:
+        top_k: Number of results to return
+
+    Raises:
+        ValidationError: If top_k is not positive
+    """
+    if top_k < 1:
+        raise ValidationError(f"top_k must be positive, got {top_k}")
+
+
+def _validate_queries_list(queries: list[str]) -> None:
+    """Validate queries list is non-empty.
+
+    Args:
+        queries: List of query strings
+
+    Raises:
+        ValidationError: If queries list is empty
+    """
+    if not queries:
+        raise ValidationError("queries list cannot be empty")
+
+
+def _load_and_validate_config(
+    config_path: str | Path, tools: Optional[list[str]] = None
+) -> tuple[Config, list[str]]:
+    """Load config and validate tools exist.
+
+    Args:
+        config_path: Path to YAML configuration file
+        tools: Optional list of tool names to validate (None = all tools)
+
+    Returns:
+        Tuple of (validated Config object, list of tool names to use)
+
+    Raises:
+        ConfigurationError: If config is invalid or tools not found
+    """
+    # Validate path exists
+    path = _validate_config_path(config_path)
+
+    # Load and validate configuration
+    config = Config(path)
+    config.validate()
+
+    # Determine which tools to use
+    if tools is None:
+        tool_names = list(config.tools.keys())
+    else:
+        tool_names = tools
+
+    # Validate tools exist
+    for tool_name in tool_names:
+        if tool_name not in config.tools:
+            raise ConfigurationError(
+                f"Tool '{tool_name}' not found in configuration. "
+                f"Available tools: {', '.join(config.tools.keys())}"
+            )
+
+    return config, tool_names
+
+
+def _create_llm_evaluator(config: Config, evaluate: bool) -> Optional[LLMEvaluator]:
+    """Create LLM evaluator if evaluation is requested.
+
+    Args:
+        config: Config object containing LLM settings
+        evaluate: Whether evaluation is requested
+
+    Returns:
+        LLMEvaluator instance or None if evaluation not requested/configured
+
+    Raises:
+        ConfigurationError: If evaluation requested but API key missing
+    """
+    if not evaluate:
+        return None
+
+    llm_config = config.get_llm_config()
+    if not llm_config:
+        logger.warning(
+            "LLM evaluation requested but no LLM configuration found in config file. "
+            "Add an 'llm' section with 'model' and 'api_key_env' to enable evaluation. "
+            "Evaluation will be skipped."
+        )
+        return None
+
+    # Get API key from environment
+    api_key_env = llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
+    api_key = os.getenv(api_key_env)
+
+    if not api_key:
+        raise ConfigurationError(
+            f"LLM evaluation requested but {api_key_env} environment variable not set. "
+            f"Set the environment variable or disable evaluation."
+        )
+
+    model = llm_config.get("model", DEFAULT_LLM_MODEL)
+    return LLMEvaluator(model=model, api_key=api_key)
 
 
 def query(
@@ -33,7 +178,8 @@ def query(
         List of RagResult objects containing the search results
 
     Raises:
-        ConfigurationError: If config is invalid or tool not found
+        ConfigurationError: If config is invalid, file not found, or tool not found
+        ValidationError: If query_text is empty or top_k is invalid
         AdapterError: If the adapter fails to execute the query
 
     Example:
@@ -42,18 +188,12 @@ def query(
         >>> for result in results:
         ...     print(f"{result.score:.3f}: {result.text[:100]}")
     """
+    # Validate inputs
+    _validate_query_text(query_text)
+    _validate_top_k(top_k)
+
     # Load and validate configuration
-    config = Config(Path(config_path))
-    config.validate()
-
-    # Check tool exists
-    if tool not in config.tools:
-        from .core.errors import ConfigurationError
-
-        raise ConfigurationError(
-            f"Tool '{tool}' not found in configuration. "
-            f"Available tools: {', '.join(config.tools.keys())}"
-        )
+    config, _ = _load_and_validate_config(config_path, tools=[tool])
 
     # Create adapter and run query
     adapter = create_adapter(tool, config.tools[tool])
@@ -82,7 +222,8 @@ def run_batch(
         List of ComparisonResult objects, one per query
 
     Raises:
-        ConfigurationError: If config is invalid or tools not found
+        ConfigurationError: If config is invalid, file not found, or tools not found
+        ValidationError: If queries list is empty or top_k is invalid
         AdapterError: If any adapter fails to execute queries
 
     Example:
@@ -93,25 +234,12 @@ def run_batch(
         ...     print(f"Query: {result.query}")
         ...     print(f"Tools: {', '.join(result.tool_results.keys())}")
     """
+    # Validate inputs
+    _validate_queries_list(queries)
+    _validate_top_k(top_k)
+
     # Load and validate configuration
-    config = Config(Path(config_path))
-    config.validate()
-
-    # Determine which tools to use
-    if tools is None:
-        tool_names = list(config.tools.keys())
-    else:
-        tool_names = tools
-
-    # Validate tools exist
-    for tool_name in tool_names:
-        if tool_name not in config.tools:
-            from .core.errors import ConfigurationError
-
-            raise ConfigurationError(
-                f"Tool '{tool_name}' not found in configuration. "
-                f"Available tools: {', '.join(config.tools.keys())}"
-            )
+    config, tool_names = _load_and_validate_config(config_path, tools)
 
     # Create adapters
     adapters = {}
@@ -121,24 +249,17 @@ def run_batch(
     # Create comparison engine
     engine = ComparisonEngine(adapters)
 
+    # Create LLM evaluator if needed
+    evaluator = _create_llm_evaluator(config, evaluate)
+
     # Run queries
     results = []
     for query_text in queries:
         result = engine.run_comparison(query_text, top_k=top_k, parallel=parallel)
 
         # Optionally run LLM evaluation
-        if evaluate:
-            llm_config = config.get_llm_config()
-            if llm_config:
-                import os
-
-                evaluator = LLMEvaluator(
-                    model=llm_config.get("model", "claude-sonnet-4-20250514"),
-                    api_key=os.getenv(
-                        llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
-                    ),
-                )
-                result.llm_evaluation = evaluator.evaluate(result)
+        if evaluator:
+            result.llm_evaluation = evaluator.evaluate(result)
 
         results.append(result)
 
@@ -167,7 +288,8 @@ def compare(
         ComparisonResult containing results from all tools
 
     Raises:
-        ConfigurationError: If config is invalid or tools not found
+        ConfigurationError: If config is invalid, file not found, or tools not found
+        ValidationError: If query_text is empty or top_k is invalid
         AdapterError: If any adapter fails to execute the query
 
     Example:
@@ -184,25 +306,12 @@ def compare(
         >>> if result.llm_evaluation:
         ...     print(f"Winner: {result.llm_evaluation.winner}")
     """
+    # Validate inputs
+    _validate_query_text(query_text)
+    _validate_top_k(top_k)
+
     # Load and validate configuration
-    config = Config(Path(config_path))
-    config.validate()
-
-    # Determine which tools to use
-    if tools is None:
-        tool_names = list(config.tools.keys())
-    else:
-        tool_names = tools
-
-    # Validate tools exist
-    for tool_name in tool_names:
-        if tool_name not in config.tools:
-            from .core.errors import ConfigurationError
-
-            raise ConfigurationError(
-                f"Tool '{tool_name}' not found in configuration. "
-                f"Available tools: {', '.join(config.tools.keys())}"
-            )
+    config, tool_names = _load_and_validate_config(config_path, tools)
 
     # Create adapters
     adapters = {}
@@ -216,23 +325,16 @@ def compare(
     result = engine.run_comparison(query_text, top_k=top_k, parallel=parallel)
 
     # Optionally run LLM evaluation
-    if evaluate:
-        llm_config = config.get_llm_config()
-        if llm_config:
-            import os
-
-            evaluator = LLMEvaluator(
-                model=llm_config.get("model", "claude-sonnet-4-20250514"),
-                api_key=os.getenv(llm_config.get("api_key_env", "ANTHROPIC_API_KEY")),
-            )
-            result.llm_evaluation = evaluator.evaluate(result)
+    evaluator = _create_llm_evaluator(config, evaluate)
+    if evaluator:
+        result.llm_evaluation = evaluator.evaluate(result)
 
     return result
 
 
 def evaluate_with_llm(
     result: ComparisonResult,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_LLM_MODEL,
     api_key: Optional[str] = None,
 ) -> ComparisonResult:
     """Evaluate comparison results using Claude LLM.
@@ -246,6 +348,7 @@ def evaluate_with_llm(
         The same ComparisonResult with llm_evaluation field populated
 
     Raises:
+        ConfigurationError: If API key is not provided or found in environment
         EvaluationError: If LLM evaluation fails
 
     Example:
@@ -255,15 +358,11 @@ def evaluate_with_llm(
         >>> print(f"Winner: {result.llm_evaluation.winner}")
         >>> print(f"Analysis: {result.llm_evaluation.analysis}")
     """
-    import os
-
     # Get API key from parameter or environment
     if api_key is None:
         api_key = os.getenv("ANTHROPIC_API_KEY")
 
     if not api_key:
-        from .core.errors import ConfigurationError
-
         raise ConfigurationError(
             "ANTHROPIC_API_KEY environment variable not set and no api_key provided"
         )
@@ -304,7 +403,7 @@ def get_available_adapters() -> list[dict[str, Any]]:
         if not adapter_class:
             continue
 
-        # Build metadata dict
+        # Build metadata dict with defaults
         metadata = {
             "name": name,
             "api_version": adapter_class.ADAPTER_API_VERSION,
@@ -312,37 +411,38 @@ def get_available_adapters() -> list[dict[str, Any]]:
             "options_schema": {},
         }
 
-        # Try to get instance methods (these require a config, so we'll create a dummy one)
+        # Try to get metadata from adapter instance
         try:
-            # Create minimal dummy config
-            from .core.models import ToolConfig
-
+            # Create minimal dummy config for instantiation
             dummy_config = ToolConfig(name=name, api_key_env="DUMMY_KEY")
-
-            # Try to instantiate (may fail, that's ok)
-            try:
-                instance = adapter_class(dummy_config)
-                metadata["required_env_vars"] = instance.get_required_env_vars()
-                metadata["options_schema"] = instance.get_options_schema()
-            except Exception:
-                # If instantiation fails, try calling as class methods
-                if hasattr(adapter_class, "get_required_env_vars"):
-                    try:
-                        metadata["required_env_vars"] = (
-                            adapter_class.get_required_env_vars(adapter_class)
-                        )
-                    except Exception:
-                        pass
-                if hasattr(adapter_class, "get_options_schema"):
-                    try:
-                        metadata["options_schema"] = adapter_class.get_options_schema(
-                            adapter_class
-                        )
-                    except Exception:
-                        pass
-
-        except Exception:
-            pass
+            instance = adapter_class(dummy_config)
+            metadata["required_env_vars"] = instance.get_required_env_vars()
+            metadata["options_schema"] = instance.get_options_schema()
+        except (TypeError, AttributeError, KeyError) as e:
+            # Instantiation failed, try class methods as fallback
+            logger.debug(
+                f"Could not instantiate adapter '{name}' for metadata: {e}. "
+                f"Trying class methods."
+            )
+            if hasattr(adapter_class, "get_required_env_vars"):
+                try:
+                    metadata["required_env_vars"] = adapter_class.get_required_env_vars(
+                        adapter_class
+                    )
+                except (TypeError, AttributeError) as e:
+                    logger.debug(f"Could not get required_env_vars for '{name}': {e}")
+            if hasattr(adapter_class, "get_options_schema"):
+                try:
+                    metadata["options_schema"] = adapter_class.get_options_schema(
+                        adapter_class
+                    )
+                except (TypeError, AttributeError) as e:
+                    logger.debug(f"Could not get options_schema for '{name}': {e}")
+        except Exception as e:
+            # Unexpected error - log but continue
+            logger.warning(
+                f"Unexpected error getting metadata for adapter '{name}': {e}"
+            )
 
         # Add description if available
         if hasattr(adapter_class, "__doc__") and adapter_class.__doc__:
