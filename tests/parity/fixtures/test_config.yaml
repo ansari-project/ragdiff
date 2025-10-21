@@ -1,0 +1,24 @@
+# Test configuration for parity testing
+# Uses mock adapters that don't require real API keys
+
+tools:
+  # Mock tool for testing (uses mock mode)
+  goodmem:
+    api_key_env: FAKE_API_KEY  # Not actually used in mock mode
+    base_url: http://fake.local
+    timeout: 30
+    default_top_k: 5
+    # This will use mock responses defined in the goodmem adapter
+
+  # Second mock tool for multi-tool tests
+  vectara:
+    api_key_env: FAKE_VECTARA_KEY
+    corpus_id: fake-corpus-123
+    base_url: https://api.fake.local
+    timeout: 30
+    default_top_k: 5
+
+# LLM config (won't be used in most parity tests)
+llm:
+  model: claude-sonnet-4-20250514
+  api_key_env: ANTHROPIC_API_KEY
