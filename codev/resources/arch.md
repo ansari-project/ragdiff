@@ -11,6 +11,8 @@ The system emphasizes:
 - **Multiple Output Formats**: Display, JSON, JSONL, CSV, and Markdown
 - **Batch Processing**: Process multiple queries with comprehensive statistics and holistic summaries
 - **SearchVectara Compatibility**: All adapters implement the SearchVectara interface for Ansari Backend integration
+- **Multi-Tenant Support**: Thread-safe credential management for SaaS and multi-user environments
+- **Thread-Safe Library API**: Production-ready for web services and concurrent usage
 
 ## Technology Stack
 
@@ -29,7 +31,7 @@ The system emphasizes:
 - **agentset**: 0.4.0+ (Agentset RAG-as-a-Service)
 
 ### Development Tools
-- **pytest**: 7.4.0+ (Testing framework)
+- **pytest**: 7.4.0+ (Testing framework with 230+ tests)
 - **pytest-cov**: 4.1.0+ (Test coverage reporting)
 - **black**: 23.0.0+ (Code formatting)
 - **ruff**: 0.1.0+ (Fast Python linter)
@@ -50,26 +52,36 @@ ragdiff/
 │   ├── specs/                  # Feature specifications
 │   │   ├── 0001-rag-comparison-harness.md
 │   │   ├── 0002-rag-system-generalization.md
-│   │   ├── 0003-agentset-adapter.md
-│   │   └── 0004-adapter-variants.md
+│   │   ├── 0003-library-refactoring.md
+│   │   └── 0004-multi-tenant-credentials.md
 │   ├── plans/                  # Implementation plans
-│   │   └── 0001-rag-comparison-harness.md
-│   └── reviews/                # Code reviews and evaluations
-│       └── 0001-rag-comparison-harness.md
+│   │   ├── 0001-rag-comparison-harness.md
+│   │   ├── 0003-library-refactoring.md
+│   │   └── 0004-multi-tenant-credentials.md
+│   ├── reviews/                # Code reviews and evaluations
+│   │   ├── 0001-rag-comparison-harness.md
+│   │   ├── 0002-adapter-variants.md
+│   │   └── 0003-library-refactoring-final-review.md
+│   └── resources/              # Architecture documentation
+│       └── arch.md            # This file - canonical architecture reference
 ├── src/                        # Source code (PYTHONPATH=src)
 │   ├── __init__.py
 │   ├── __main__.py            # Entry point for python -m src
 │   └── ragdiff/               # Main package
-│       ├── __init__.py
+│       ├── __init__.py        # Public API exports
+│       ├── api.py             # Library API functions
 │       ├── cli.py             # Typer CLI implementation
 │       ├── core/              # Core models and configuration
 │       │   ├── __init__.py
 │       │   ├── models.py      # Data models (RagResult, ComparisonResult, etc.)
-│       │   └── config.py      # YAML configuration management
+│       │   ├── config.py      # YAML configuration with credential management
+│       │   └── errors.py      # Custom exception types
 │       ├── adapters/          # RAG tool adapters
 │       │   ├── __init__.py
+│       │   ├── abc.py         # RagAdapter abstract base class
 │       │   ├── base.py        # BaseRagTool (SearchVectara interface)
-│       │   ├── factory.py     # Adapter factory and registry
+│       │   ├── factory.py     # Adapter factory with credential support
+│       │   ├── registry.py    # Adapter registry with auto-discovery
 │       │   ├── vectara.py     # Vectara platform adapter
 │       │   ├── goodmem.py     # Goodmem adapter
 │       │   ├── agentset.py    # Agentset adapter
@@ -83,9 +95,14 @@ ragdiff/
 │       └── display/           # Output formatters
 │           ├── __init__.py
 │           └── formatter.py   # Multiple format support
-├── tests/                     # Test suite (90+ tests)
+├── tests/                     # Test suite (230+ tests)
 │   ├── test_cli.py
 │   ├── test_adapters.py
+│   ├── test_api.py           # Library API tests
+│   ├── test_multi_tenant.py  # Multi-tenant credential tests
+│   ├── test_api_multi_tenant.py  # API multi-tenant integration tests
+│   ├── test_thread_safety.py # Thread safety tests
+│   ├── test_reentrancy.py    # Reentrancy tests
 │   └── ...
 ├── configs/                   # Configuration files
 │   ├── tafsir.yaml           # Tafsir corpus configuration
@@ -103,7 +120,7 @@ ragdiff/
 ## Core Components
 
 ### 1. Data Models (`src/ragdiff/core/models.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/core/models.py`
+- **Location**: `src/ragdiff/core/models.py`
 - **Purpose**: Define core data structures for RAG results and comparisons
 - **Key Classes**:
   - `RagResult`: Normalized search result from any RAG system
@@ -120,668 +137,558 @@ ragdiff/
     - Methods: `validate()`
 
 ### 2. Configuration Management (`src/ragdiff/core/config.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/core/config.py`
-- **Purpose**: Load and validate YAML configuration with environment variable substitution
+- **Location**: `src/ragdiff/core/config.py`
+- **Purpose**: Load and validate YAML configuration with environment variable substitution and multi-tenant credential support
 - **Key Class**: `Config`
-  - Loads YAML configuration from `configs/` directory
-  - Processes `${ENV_VAR}` placeholders with actual environment values
-  - Validates tool configurations and credentials
-  - Methods:
+  - **Constructor Parameters**:
+    - `config_path`: Optional path to YAML file
+    - `config_dict`: Optional configuration dictionary (alternative to file)
+    - `credentials`: Optional credential overrides dictionary (env var name -> value)
+  - **Credential Resolution**: Implements precedence model for multi-tenant support
+  - **Key Methods**:
+    - `_get_env_value(env_var_name)`: Resolve credentials with precedence (credentials dict > environment)
+    - `_process_env_vars()`: Process `${ENV_VAR}` placeholders using credential resolution
     - `get_tool_config(tool_name)`: Retrieve specific tool configuration
     - `get_llm_config()`: Get LLM evaluation settings
-    - `validate()`: Ensure all required environment variables are set
+    - `validate()`: Ensure all required credentials are available
+  - **Multi-Tenant Features**:
+    - Accepts configuration as dictionary (not just files)
+    - Thread-safe credential isolation per Config instance
+    - No environment variable pollution
+    - Supports dynamic configuration from databases
 
-### 3. Base Adapter (`src/ragdiff/adapters/base.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/adapters/base.py`
-- **Purpose**: Abstract base class implementing SearchVectara interface
-- **Key Class**: `BaseRagTool(SearchVectara)`
-  - Ensures compatibility with Ansari Backend
-  - Provides normalized search interface
-  - Handles credential validation and error handling
-  - Methods:
-    - `run(query, **kwargs)`: SearchVectara-compatible search method
-    - `format_as_tool_result(results)`: Format for tool display
-    - `search(query, top_k)`: Abstract method for subclasses to implement
-    - `_normalize_score(score)`: Normalize scores to 0-1 range
-  - Attributes: `name`, `timeout`, `max_retries`, `default_top_k`
+### 3. Abstract Adapter Base (`src/ragdiff/adapters/abc.py`)
+- **Location**: `src/ragdiff/adapters/abc.py`
+- **Purpose**: Define stable adapter interface with multi-tenant support
+- **Key Class**: `RagAdapter(ABC)`
+  - **Constructor Parameters**:
+    - `config`: ToolConfig object
+    - `credentials`: Optional credential overrides dictionary
+  - **Credential Management**:
+    - `_get_credential(env_var_name)`: Resolve credential with precedence
+    - Credentials dict takes precedence over environment variables
+  - **Abstract Methods**:
+    - `search(query, top_k)`: Execute search and return normalized results
+    - `validate_config(config)`: Validate adapter configuration
+  - **Optional Methods**:
+    - `get_required_env_vars()`: List required environment variables
+    - `get_options_schema()`: JSON schema for adapter options
+  - **Attributes**:
+    - `ADAPTER_API_VERSION`: Version compatibility marker
+    - `ADAPTER_NAME`: Unique adapter identifier
+    - `config`: Tool configuration
+    - `_credentials`: Credential overrides dictionary
 
 ### 4. Adapter Factory (`src/ragdiff/adapters/factory.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/adapters/factory.py`
-- **Purpose**: Registry pattern for creating and managing adapters
-- **Key Components**:
-  - `ADAPTER_REGISTRY`: Dict mapping adapter names to classes
-    - Registered adapters: `vectara`, `tafsir`, `mawsuah`, `goodmem`, `agentset`
-  - `create_adapter(tool_name, config)`: Factory method for adapter creation
-    - Supports adapter variants via `config.adapter` field
-    - Enables multiple configurations of same adapter (e.g., "agentset-rerank-on" and "agentset-rerank-off")
-  - `register_adapter(name, adapter_class)`: Add new adapter to registry
+- **Location**: `src/ragdiff/adapters/factory.py`
+- **Purpose**: Registry pattern for creating and managing adapters with credential support
+- **Key Function**: `create_adapter(tool_name, config, credentials=None)`
+  - Accepts optional credentials dictionary for multi-tenant support
+  - Passes credentials to adapter constructor
+  - Supports adapter variants via `config.adapter` field
+  - Enables multiple configurations of same adapter
+- **Registry Management**:
+  - Auto-imports adapter modules to trigger registration
   - `get_available_adapters()`: List registered adapter names
+  - Maintains backward compatibility while adding credential support
 
-### 5. Tool Adapters
+### 5. Public API (`src/ragdiff/api.py`)
+- **Location**: `src/ragdiff/api.py`
+- **Purpose**: Provide programmatic interface for library usage
+- **Multi-Tenant Functions**:
+  - `load_config(config, credentials=None)`: Load configuration with credential overrides
+    - Accepts file path, Path object, or dictionary
+    - Returns Config object with encapsulated credentials
+  - `query(config, query_text, tool, top_k=5)`: Single query execution
+    - Accepts Config object (new) or file path (backward compatible)
+    - Uses credentials from Config object
+  - `compare(config, query_text, tools=None, top_k=5, parallel=True, evaluate=False)`: Multi-tool comparison
+    - Accepts Config object or file path
+    - Thread-safe for concurrent requests
+  - `run_batch(config, queries, tools=None, top_k=5, parallel=True, evaluate=False)`: Batch processing
+    - Accepts Config object or file path
+    - Maintains credential isolation across queries
+- **Helper Functions**:
+  - `validate_config(config_path)`: Validate configuration file
+  - `get_available_adapters()`: List available adapter metadata
+  - `evaluate_with_llm(result, model, api_key)`: LLM evaluation
+
+### 6. Tool Adapters (Multi-Tenant Enhanced)
+
+All adapters now support multi-tenant credentials through the base class:
 
 #### Vectara Adapter (`src/ragdiff/adapters/vectara.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/adapters/vectara.py`
-- **Purpose**: Connect to Vectara v2 API for corpus search
-- **Implementation**:
-  - Uses Vectara v2 API (`/v2/query` endpoint)
-  - Supports different corpora via `corpus_key` configuration
-  - Extracts metadata from both part and document levels
-  - Handles optional summary results
-  - Methods:
-    - `search(query, top_k)`: Execute Vectara search
-    - `format_as_ref_list(results)`: Format as Claude reference list
+- **Constructor**: `__init__(config, credentials=None)`
+- **Credential Resolution**: Uses `self._get_credential(config.api_key_env)`
+- **Thread Safety**: No shared state, credentials isolated per instance
 
 #### Goodmem Adapter (`src/ragdiff/adapters/goodmem.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/adapters/goodmem.py`
-- **Purpose**: Connect to Goodmem RAG platform
-- **Implementation**:
-  - Uses goodmem-client Python library
-  - Configurable space_ids for different knowledge bases
-  - Supports both streaming and CLI API modes
-  - Fallback mechanism for API failures
+- **Constructor**: `__init__(config, credentials=None)`
+- **Credential Resolution**: Uses base class `_get_credential()` method
+- **Multiple Space Support**: Configurable space_ids per tenant
 
 #### Agentset Adapter (`src/ragdiff/adapters/agentset.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/adapters/agentset.py`
-- **Purpose**: Connect to Agentset RAG-as-a-Service platform
-- **Implementation**:
-  - Uses Agentset SDK (agentset-python)
-  - Requires both API token and namespace ID
-  - Supports rerank option via `config.options.rerank`
-  - Handles SearchData response format with `.data` attribute
-  - Methods:
-    - `search(query, top_k)`: Execute semantic search
-    - Extracts metadata: filename, filetype, file_directory, sequence_number, languages
+- **Constructor**: `__init__(config, credentials=None)`
+- **Dual Credentials**: Handles both API token and namespace ID
+- **Credential Resolution**: Resolves both credentials independently
 
-### 6. Comparison Engine (`src/ragdiff/comparison/engine.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/comparison/engine.py`
+### 7. Comparison Engine (`src/ragdiff/comparison/engine.py`)
+- **Location**: `src/ragdiff/comparison/engine.py`
 - **Purpose**: Orchestrate parallel or sequential RAG tool searches
 - **Key Class**: `ComparisonEngine`
-  - Manages multiple tool adapters
-  - Executes searches with configurable parallelism
-  - Collects latency and error metrics
-  - Methods:
-    - `run_comparison(query, top_k, parallel)`: Run query across all tools
-    - `_run_parallel(query, top_k)`: ThreadPoolExecutor-based parallel execution
-    - `_run_sequential(query, top_k)`: Sequential execution for debugging
-    - `_run_single_search(tool_name, tool, query, top_k)`: Single search with timing
-    - `get_summary_stats(result)`: Calculate performance statistics
+  - Thread-safe execution with ThreadPoolExecutor
+  - No shared mutable state between searches
+  - Each adapter instance has isolated credentials
+  - Methods remain unchanged but benefit from thread-safe adapters
 
-### 7. LLM Evaluator (`src/ragdiff/evaluation/evaluator.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/evaluation/evaluator.py`
+### 8. LLM Evaluator (`src/ragdiff/evaluation/evaluator.py`)
+- **Location**: `src/ragdiff/evaluation/evaluator.py`
 - **Purpose**: Use Claude to provide qualitative RAG result evaluation
-- **Key Class**: `LLMEvaluator`
-  - Uses Anthropic Claude API for evaluation
-  - Supports multiple Claude models (default: claude-sonnet-4-20250514)
-  - Evaluates on 5 dimensions: Relevance, Completeness, Accuracy, Coherence, Source Quality
-  - Methods:
-    - `evaluate(result)`: Evaluate ComparisonResult and return LLMEvaluation
-    - `_build_evaluation_prompt(result)`: Construct structured evaluation prompt
-    - `_parse_evaluation(analysis_text, result)`: Parse Claude response into structured data
-  - Display name mapping: Maps internal names (tafsir, goodmem) to display names (vectara, goodmem)
-
-### 8. Display Formatter (`src/ragdiff/display/formatter.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/display/formatter.py`
-- **Purpose**: Format comparison results in multiple output formats
-- **Key Class**: `ComparisonFormatter`
-  - Supports 5 output formats: display, json, markdown, summary, csv/jsonl
-  - Text wrapping and indentation for readability
-  - Methods:
-    - `format_side_by_side(result)`: Human-friendly side-by-side comparison
-    - `format_json(result, pretty)`: JSON output with optional pretty-printing
-    - `format_markdown(result)`: Markdown formatted output
-    - `format_summary(result)`: Brief one-line summary
-    - Helper methods: `_format_header()`, `_format_errors()`, `_format_results_comparison()`, `_format_performance()`, `_format_llm_evaluation()`
+- **Multi-Tenant Support**:
+  - API key can be passed per evaluation
+  - Config object provides credential resolution for LLM API key
+  - Thread-safe for concurrent evaluations
 
 ### 9. CLI (`src/ragdiff/cli.py`)
-- **Location**: `/Users/mwk/Development/ansari-project/ragdiff/src/ragdiff/cli.py`
-- **Purpose**: Typer-based command-line interface with Rich formatting
-- **Commands**:
-  - `compare`: Single query comparison across tools
-    - Options: `--tool`, `--top-k`, `--config`, `--format`, `--output`, `--parallel`, `--evaluate`, `--verbose`
-  - `batch`: Batch processing of queries from file
-    - Options: `--tool`, `--top-k`, `--config`, `--output-dir`, `--format`, `--evaluate`, `--verbose`
-    - Generates: Individual results (JSON/JSONL/CSV) + holistic summary (Markdown)
-  - `list-tools`: List available and configured tools
-  - `validate-config`: Validate YAML configuration
-  - `quick-test`: Run quick test query to verify setup
-- **Helper Functions**:
-  - `_display_rich_results(result)`: Rich panel-based result display
-  - `_display_llm_evaluation(evaluation)`: Format LLM evaluation with emoji
-  - `_display_batch_latency_stats(results, tool_names)`: Percentile statistics (P50, P95, P99)
-  - `_display_llm_evaluation_summary(results, tool_names)`: Win counts and average quality scores
-  - `_generate_and_display_holistic_summary(results, tool_names, output_file)`: Comprehensive markdown summary
-  - `_display_stats_table(stats)`: Performance metrics table
+- **Location**: `src/ragdiff/cli.py`
+- **Purpose**: Typer-based command-line interface
+- **Multi-Tenant Compatibility**:
+  - CLI uses library API functions internally
+  - Environment variables used by default (single-tenant mode)
+  - Could be extended to accept credentials file for multi-tenant CLI usage
+
+## Multi-Tenant Credential Architecture
+
+### Credential Resolution Model
+
+The system implements a clear precedence model for credential resolution:
+
+```
+Priority Order (Highest to Lowest):
+1. Passed credentials dict (via Config constructor)
+2. Process environment variables (os.environ)
+3. .env file (via python-dotenv)
+4. None (causes validation error)
+```
+
+### Thread Safety Guarantees
+
+1. **No Global State**: All credentials stored in instance variables
+2. **Immutable Config**: Config objects are read-only after creation
+3. **Isolated Adapters**: Each adapter instance has its own credentials
+4. **No Environment Pollution**: Passed credentials never modify os.environ
+5. **Concurrent Safety**: Multiple requests can use different credentials simultaneously
+
+### Multi-Tenant Usage Patterns
+
+#### Pattern 1: Web Service (FastAPI)
+```python
+from ragdiff import load_config, query
+
+@app.post("/api/search")
+async def search(request: SearchRequest, tenant_id: str):
+    # Get tenant-specific credentials from database
+    tenant_creds = get_tenant_credentials(tenant_id)
+
+    # Create config with tenant credentials
+    config = load_config("config.yaml", credentials=tenant_creds)
+
+    # Execute query with isolated credentials
+    results = query(config, request.query, tool="vectara")
+    return {"results": [r.to_dict() for r in results]}
+```
+
+#### Pattern 2: Dynamic Configuration
+```python
+# Build config from database
+config_dict = {
+    "tools": {
+        "vectara": {
+            "api_key_env": "VECTARA_API_KEY",
+            "corpus_id": tenant.corpus_id
+        }
+    }
+}
+
+# Load with tenant credentials
+config = load_config(
+    config_dict,  # Dict instead of file
+    credentials={"VECTARA_API_KEY": tenant.api_key}
+)
+
+results = query(config, "query", tool="vectara")
+```
+
+#### Pattern 3: Temporary Credentials
+```python
+# Use short-lived credentials from OAuth/STS
+temp_creds = get_temporary_credentials()
+
+config = load_config(
+    "config.yaml",
+    credentials={
+        "VECTARA_API_KEY": temp_creds.access_token,
+        "ANTHROPIC_API_KEY": temp_creds.llm_token
+    }
+)
+
+# Credentials expire with the Config object
+result = compare(config, "query", evaluate=True)
+```
+
+### Security Considerations
+
+1. **Credential Isolation**: Each Config object has isolated credentials
+2. **No Leakage**: Credentials from one request never affect another
+3. **No Persistence**: Credentials exist only in memory during request
+4. **Validation**: All credentials validated at Config creation time
+5. **Error Messages**: Careful not to expose credential values in errors
+
+### Backward Compatibility
+
+The multi-tenant implementation maintains full backward compatibility:
+
+1. **File Paths Still Work**: `query("config.yaml", "query", tool="vectara")`
+2. **Environment Variables**: Default behavior uses environment variables
+3. **No Breaking Changes**: Existing code continues to work unchanged
+4. **Opt-In Enhancement**: Multi-tenant features only activate when credentials passed
 
 ## Data Flow
 
-### Single Query Comparison Flow
+### Single Query Comparison Flow (Multi-Tenant Enhanced)
 ```
-1. User Input (CLI)
-   └─> compare command with query and options
+1. User Input (API/CLI)
+   └─> query/compare with optional credentials
 
 2. Configuration Loading
-   └─> Config reads YAML file
-   └─> Validates environment variables
-   └─> Creates ToolConfig objects
+   └─> Config created with credentials dict
+   └─> Credentials encapsulated in Config object
+   └─> ${ENV_VAR} resolved using credential precedence
 
 3. Adapter Creation
-   └─> Factory creates adapters from configs
-   └─> Each adapter validates credentials
+   └─> Factory passes credentials to adapter
+   └─> Each adapter has isolated credentials
+   └─> Validates credentials at creation time
 
 4. Comparison Execution
    └─> ComparisonEngine.run_comparison()
-   └─> Parallel/Sequential execution
-   └─> Each adapter.search() returns List[RagResult]
-   └─> Engine collects results + errors + latency
+   └─> Parallel/Sequential execution (thread-safe)
+   └─> Each adapter uses its own credentials
+   └─> No credential sharing between adapters
 
 5. Optional LLM Evaluation
-   └─> LLMEvaluator.evaluate(result)
-   └─> Build prompt with all tool results
-   └─> Claude API call
-   └─> Parse response into LLMEvaluation
+   └─> LLMEvaluator uses Config's credential resolution
+   └─> API key from credentials dict or environment
+   └─> Thread-safe evaluation
 
 6. Output Formatting
-   └─> ComparisonFormatter formats result
-   └─> Display/JSON/Markdown/Summary/CSV
+   └─> ComparisonFormatter (unchanged)
+   └─> No credential exposure in output
 
-7. Display to User
-   └─> Rich console output or file save
+7. Response to User
+   └─> Results contain no credential information
+   └─> Credentials garbage collected with Config
 ```
 
-### Batch Processing Flow
+### Multi-Tenant Request Flow
 ```
-1. Load Queries from File
-   └─> Read line-by-line from input file
+1. Tenant Request Arrives
+   └─> Extract tenant ID from auth/headers
 
-2. Initialize Tools Once
-   └─> Config + Factory + ComparisonEngine
+2. Retrieve Tenant Credentials
+   └─> Database lookup for tenant settings
+   └─> Get API keys, corpus IDs, etc.
 
-3. For Each Query:
-   └─> Run comparison
-   └─> Optional LLM evaluation
-   └─> Collect results in memory
+3. Create Tenant Config
+   └─> load_config() with tenant credentials
+   └─> Config object encapsulates all settings
 
-4. Aggregate Statistics
-   └─> Latency percentiles (P50, P95, P99)
-   └─> Win counts and quality scores
-   └─> Issue tracking (duplicates, fragmentation, citations)
+4. Execute Operations
+   └─> Pass Config to query/compare/run_batch
+   └─> All operations use tenant's credentials
+   └─> Concurrent requests have isolated configs
 
-5. Generate Outputs
-   └─> Individual results (JSONL/CSV/JSON)
-   └─> Holistic summary (Markdown)
-   └─> Terminal display with Rich tables
-
-6. Save to Output Directory
-   └─> Timestamped files in outputs/
+5. Cleanup
+   └─> Config garbage collected after request
+   └─> No credential residue in memory
+   └─> No environment variable changes
 ```
-
-### Adapter Variant Flow
-```
-1. YAML Configuration
-   tool-variant-name:
-     adapter: agentset        # Which adapter class to use
-     options:                 # Custom configuration
-       rerank: true
-
-2. Config Parser
-   └─> Creates ToolConfig with name="tool-variant-name"
-   └─> Sets config.adapter="agentset"
-   └─> Sets config.options={"rerank": true}
-
-3. Factory
-   └─> Uses config.adapter (not tool_name) to lookup class
-   └─> Creates AgentsetAdapter instance
-   └─> Adapter reads config.options for custom settings
-
-4. Adapter Execution
-   └─> Uses self.rerank from config.options
-   └─> Executes search with variant-specific behavior
-
-5. Results Display
-   └─> Uses tool_name (YAML key) for display
-   └─> User sees "tool-variant-name" in results
-```
-
-## Configuration Architecture
-
-### YAML Configuration Structure
-```yaml
-tools:
-  # Standard tool configuration
-  vectara:
-    api_key_env: VECTARA_API_KEY
-    corpus_id: ${VECTARA_CORPUS_ID}
-    base_url: https://api.vectara.io
-    timeout: 30
-
-  # Adapter variant configuration
-  agentset-rerank-on:
-    adapter: agentset              # Which adapter class to use
-    api_key_env: AGENTSET_API_TOKEN
-    namespace_id_env: AGENTSET_NAMESPACE_ID
-    options:                       # Custom adapter options
-      rerank: true
-    timeout: 60
-    default_top_k: 10
-
-llm:
-  model: claude-opus-4-1-20250805  # Or claude-sonnet-4-20250514
-  api_key_env: ANTHROPIC_API_KEY
-```
-
-### Environment Variables
-Required environment variables (set in `.env`):
-- `VECTARA_API_KEY`: Vectara platform API key
-- `VECTARA_CORPUS_ID`: Vectara corpus ID (or use corpus_id in YAML)
-- `GOODMEM_API_KEY`: Goodmem API key
-- `AGENTSET_API_TOKEN`: Agentset API token
-- `AGENTSET_NAMESPACE_ID`: Agentset namespace ID
-- `ANTHROPIC_API_KEY`: Claude API key for LLM evaluation
 
 ## Key Design Decisions
 
-### 1. Adapter Pattern for Extensibility
-**Decision**: Use adapter pattern with factory registry instead of hardcoded tool integrations.
+### 1. Config Object Pattern for Credentials
+**Decision**: Pass credentials at Config creation, then pass Config to API functions.
 
 **Rationale**:
-- Easy to add new RAG tools without modifying core comparison logic
-- Clean separation of concerns between comparison engine and tool-specific code
-- Enables testing with mock adapters
+- Clear separation between config loading and execution
+- Config validation happens once at creation
+- Credentials encapsulated and protected
+- Easier to test and reason about
+- Natural fit for dependency injection patterns
 
-**Implementation**: `BaseRagTool` abstract class + `ADAPTER_REGISTRY` in factory.
+**Alternative Considered**: Pass credentials to each API function
+- Rejected: Would require credentials in every call
+- Rejected: Harder to validate consistently
+- Rejected: More complex API signatures
 
-### 2. SearchVectara Interface Compatibility
-**Decision**: All adapters inherit from SearchVectara base class and implement `run()` and `format_as_tool_result()`.
-
-**Rationale**:
-- Enables seamless integration with Ansari Backend
-- Maintains compatibility with existing Ansari tools
-- Provides familiar interface for Ansari developers
-
-**Tradeoff**: SearchVectara interface designed for Vectara, requires some workarounds for other platforms (e.g., Agentset doesn't use corpus_id).
-
-### 3. Normalized RagResult Data Model
-**Decision**: All adapters convert their native response formats to unified `RagResult` structure.
+### 2. Credential Dictionary Format
+**Decision**: Use environment variable names as keys (e.g., `{"VECTARA_API_KEY": "value"}`).
 
 **Rationale**:
-- Enables fair comparison across different platforms
-- Simplifies display and evaluation logic
-- Hides platform-specific response structures
+- Consistent with existing configuration
+- No new mapping layer needed
+- Clear what each credential is for
+- Works with ${ENV_VAR} substitution
 
-**Tradeoff**: Some platform-specific metadata may be lost in normalization.
+**Alternative Considered**: Use adapter field names
+- Rejected: Would require mapping logic
+- Rejected: Less clear connection to environment
 
-### 4. Optional LLM Evaluation
-**Decision**: Make LLM evaluation opt-in via `--evaluate` flag instead of always-on.
-
-**Rationale**:
-- LLM API calls cost money and add latency
-- Not always needed for quick comparisons
-- Users can choose when to pay for qualitative analysis
-
-**Implementation**: `--evaluate` flag in CLI + conditional evaluator instantiation.
-
-### 5. Adapter Variants via YAML
-**Decision**: Support multiple configurations of same adapter via YAML key + `adapter` field.
+### 3. Precedence Model
+**Decision**: Passed credentials override environment variables.
 
 **Rationale**:
-- Enable A/B testing without code changes (e.g., rerank on vs off)
-- Compare different corpora from same platform
-- Flexible configuration without hardcoding variants in factory
+- Explicit values should override implicit ones
+- Enables multi-tenant without environment changes
+- Predictable and easy to understand
+- Standard practice in configuration systems
 
-**Implementation**: `config.adapter` field overrides YAML key for factory lookup.
-
-### 6. Parallel Search Execution
-**Decision**: Use ThreadPoolExecutor for parallel tool searches with configurable parallel/sequential mode.
-
-**Rationale**:
-- Faster total comparison time when searching multiple tools
-- Each tool's API call is I/O-bound, perfect for threading
-- Sequential mode available for debugging
-
-**Tradeoff**: Thread safety considerations for adapter implementations.
-
-### 7. Percentile Latency Metrics
-**Decision**: Report P50, P95, P99 latencies instead of just averages in batch mode.
+### 4. Thread Safety via Immutability
+**Decision**: Make Config and credentials immutable after creation.
 
 **Rationale**:
-- Percentiles reveal consistency and worst-case performance
-- More useful for production decision-making than averages
-- Industry standard for performance metrics
+- Eliminates race conditions
+- No locks needed
+- Safe to share Config between threads (read-only)
+- Simple mental model
 
-**Implementation**: Only available in batch mode (need multiple data points).
-
-### 8. Holistic Summary Generation
-**Decision**: Generate comprehensive markdown summaries for batch evaluations with query-by-query breakdowns, common themes, and overall verdicts.
-
-**Rationale**:
-- Provides actionable insights beyond raw data
-- Identifies patterns across multiple queries
-- Supports production adoption decisions
-
-**Implementation**: `_generate_and_display_holistic_summary()` with theme tracking and issue analysis.
-
-### 9. Subjective Quality Over Metrics
-**Decision**: Focus on LLM-based subjective quality evaluation instead of quantitative overlap metrics.
+### 5. Backward Compatibility First
+**Decision**: Accept both Config objects and file paths in API functions.
 
 **Rationale**:
-- User feedback indicated subjective quality is more important for decision-making
-- Metrics like overlap@k don't capture coherence, completeness, or source quality
-- Claude can evaluate dimensions that matter for user experience
-
-**Tradeoff**: LLM evaluations are slower and cost money, but provide more actionable insights.
-
-### 10. Fail-Fast Credential Validation
-**Decision**: Validate all credentials at startup before running comparisons.
-
-**Rationale**:
-- Immediate feedback if configuration is incorrect
-- Avoids partial comparison failures
-- Clear error messages guide users to fix issues
-
-**Implementation**: `Config.validate()` checks all environment variables before adapter creation.
+- No breaking changes for existing users
+- Gradual migration path
+- Can ship immediately without deprecation period
+- Reduces friction for adoption
 
 ## Integration Points
 
-### External Services
+### External Services (Multi-Tenant Ready)
 
-#### Vectara Platform (HTTP API)
-- **Endpoint**: `https://api.vectara.io/v2/query`
-- **Authentication**: `x-api-key` header
-- **Protocol**: REST API with JSON payloads
-- **Response Format**: `search_results` array with `text`, `score`, `document_id`, metadata
-- **Adapter**: `VectaraAdapter`
+All external service integrations now support per-request credentials:
 
-#### Goodmem (Python Client)
-- **Library**: `goodmem-client>=1.5.5`
-- **Authentication**: API key via client initialization
-- **Protocol**: Python SDK with streaming and CLI modes
-- **Configuration**: Configurable space_ids for different knowledge bases
-- **Adapter**: `GoodmemAdapter`
+#### Vectara Platform
+- Credentials passed via Config object
+- Each request can use different API key
+- Corpus ID configurable per tenant
 
-#### Agentset (Python SDK)
-- **Library**: `agentset>=0.4.0`
-- **Authentication**: Token + namespace ID
-- **Protocol**: Python SDK with `.data` attribute pattern
-- **Methods**: `client.search.execute(query, top_k, include_metadata, mode)`
-- **Response**: `SearchResponse` with `.data` containing `List[SearchData]`
-- **Adapter**: `AgentsetAdapter`
+#### Goodmem
+- API key from credentials dict or environment
+- Space IDs configurable per tenant
+- Fallback mechanisms unchanged
 
-#### Anthropic Claude (HTTP API)
-- **Library**: `anthropic>=0.25.0`
-- **Authentication**: API key via environment variable
-- **Models**: claude-opus-4-1-20250805, claude-sonnet-4-20250514
-- **Protocol**: Messages API with structured prompts
-- **Usage**: LLM-based quality evaluation
-- **Component**: `LLMEvaluator`
+#### Agentset
+- Both token and namespace ID support credentials
+- Per-tenant namespace isolation
+- Rerank options configurable
 
-### Ansari Backend Integration
-- **Interface**: SearchVectara compatibility layer
-- **Methods**: `run(query, **kwargs)`, `format_as_tool_result(results)`
-- **Purpose**: Enable direct import of adapters into Ansari
-- **Path**: Adapters can be packaged and imported as library
+#### Anthropic Claude
+- LLM API key from Config credential resolution
+- Per-tenant model selection possible
+- Isolated evaluation contexts
 
 ## Development Patterns
 
-### 1. Adding a New RAG Tool Adapter
+### 1. Adding a New Multi-Tenant Ready Adapter
 
-**Steps**:
-1. Create adapter class in `src/ragdiff/adapters/`
 ```python
-from .base import BaseRagTool
-from ..core.models import RagResult
+from typing import Optional
+from .abc import RagAdapter
+from ..core.models import RagResult, ToolConfig
 
-class MyToolAdapter(BaseRagTool):
-    def search(self, query: str, top_k: int = 5) -> List[RagResult]:
-        # 1. Call tool-specific API
-        # 2. Convert response to RagResult objects
-        # 3. Return list of normalized results
+class MyToolAdapter(RagAdapter):
+    ADAPTER_NAME = "mytool"
+    ADAPTER_API_VERSION = "1.0.0"
+
+    def __init__(
+        self,
+        config: ToolConfig,
+        credentials: Optional[dict[str, str]] = None
+    ):
+        super().__init__(config, credentials)
+
+        # Use credential resolution
+        api_key = self._get_credential(config.api_key_env)
+        if not api_key:
+            raise ConfigurationError(
+                f"Missing API key: {config.api_key_env}"
+            )
+
+        self.api_key = api_key
+        # Initialize tool-specific client
+
+    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
+        # Implementation using self.api_key
         pass
 ```
 
-2. Register in factory (`src/ragdiff/adapters/factory.py`):
+### 2. Multi-Tenant Web Service Pattern
+
 ```python
-from .mytool import MyToolAdapter
+from fastapi import FastAPI, Depends
+from ragdiff import load_config, compare
 
-ADAPTER_REGISTRY["mytool"] = MyToolAdapter
+app = FastAPI()
+
+async def get_tenant_config(tenant_id: str = Depends(get_tenant_id)):
+    """Load tenant-specific configuration."""
+    tenant = await db.get_tenant(tenant_id)
+
+    config = load_config(
+        "base_config.yaml",
+        credentials={
+            "VECTARA_API_KEY": tenant.vectara_key,
+            "GOODMEM_API_KEY": tenant.goodmem_key,
+            "ANTHROPIC_API_KEY": tenant.llm_key
+        }
+    )
+    return config
+
+@app.post("/api/compare")
+async def compare_endpoint(
+    request: CompareRequest,
+    config: Config = Depends(get_tenant_config)
+):
+    """Multi-tenant comparison endpoint."""
+    result = compare(
+        config,
+        request.query,
+        tools=request.tools,
+        evaluate=request.evaluate
+    )
+    return result.to_dict()
 ```
 
-3. Add configuration in `configs/tools.yaml`:
-```yaml
-tools:
-  mytool:
-    api_key_env: MYTOOL_API_KEY
-    base_url: https://api.mytool.com
-    timeout: 30
-```
+### 3. Testing Multi-Tenant Functionality
 
-4. Set environment variable:
-```bash
-export MYTOOL_API_KEY=your_api_key
-```
-
-5. Test the adapter:
-```bash
-uv run rag-compare compare "test query" --tool mytool
-```
-
-### 2. Creating Adapter Variants
-
-**Use Case**: Compare same tool with different configurations
-
-**Configuration**:
-```yaml
-mytool-config-a:
-  adapter: mytool           # Which adapter class
-  api_key_env: MYTOOL_API_KEY
-  options:
-    setting: value_a        # Custom option A
-
-mytool-config-b:
-  adapter: mytool           # Same adapter class
-  api_key_env: MYTOOL_API_KEY
-  options:
-    setting: value_b        # Custom option B
-```
-
-**Adapter Implementation**:
 ```python
-def __init__(self, config: ToolConfig):
-    super().__init__(config)
-    # Read custom options
-    if config.options:
-        self.setting = config.options.get('setting', 'default')
-```
-
-### 3. Batch Processing Workflow
-
-**Input File Format** (`inputs/queries.txt`):
-```
-What is Islamic inheritance law?
-Explain the concept of tawhid
-When should I pray Fajr?
-```
-
-**Command**:
-```bash
-uv run rag-compare batch inputs/queries.txt \
-  --config configs/tafsir.yaml \
-  --evaluate \
-  --top-k 10 \
-  --format jsonl
-```
-
-**Output Files**:
-- `outputs/batch_results_20250514_120000.jsonl`: Individual query results
-- `outputs/holistic_summary_20250514_120000.md`: Comprehensive summary
-
-### 4. Custom LLM Evaluation Prompts
-
-**Location**: `src/ragdiff/evaluation/evaluator.py`
-
-**Method**: `_build_evaluation_prompt(result)`
-
-**Customization Points**:
-- Evaluation dimensions (currently: Relevance, Completeness, Accuracy, Coherence, Source Quality)
-- Quality score scale (currently: 0-100)
-- Output format instructions
-- Display name mapping (for tool name normalization)
-
-### 5. Error Handling Pattern
-
-**Philosophy**: Fail fast with clear error messages, no silent fallbacks
-
-**Implementation**:
-```python
-# Credential validation at adapter initialization
-if not os.getenv(config.api_key_env):
-    raise ValueError(
-        f"Missing required environment variable: {config.api_key_env}\n"
-        f"Please set it with your {config.name} API key."
+def test_multi_tenant_isolation():
+    """Test credential isolation between tenants."""
+    # Create configs for different tenants
+    config_a = load_config(
+        {"tools": {"vectara": {...}}},
+        credentials={"VECTARA_API_KEY": "tenant_a_key"}
     )
 
-# API call error handling
-try:
-    response = api_call()
-    response.raise_for_status()
-except requests.exceptions.RequestException as e:
-    logger.error(f"API request failed: {str(e)}")
-    raise  # No fallback, fail fast
-```
+    config_b = load_config(
+        {"tools": {"vectara": {...}}},
+        credentials={"VECTARA_API_KEY": "tenant_b_key"}
+    )
 
-### 6. Testing Pattern
+    # Verify isolation
+    assert config_a._credentials != config_b._credentials
 
-**Test Organization**:
-- `tests/test_cli.py`: CLI command testing
-- `tests/test_adapters.py`: Adapter functionality
-- `tests/test_engine.py`: Comparison engine
-- `tests/test_formatter.py`: Output formatting
+    # Run concurrent queries
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(query, config_a, "query", "vectara")
+        future_b = executor.submit(query, config_b, "query", "vectara")
 
-**Mock Pattern**:
-```python
-from unittest.mock import Mock, patch
+        results_a = future_a.result()
+        results_b = future_b.result()
 
-@patch('ragdiff.adapters.vectara.requests.post')
-def test_vectara_search(mock_post):
-    mock_post.return_value.json.return_value = {
-        'search_results': [...]
-    }
-    adapter = VectaraAdapter(config)
-    results = adapter.search("query", top_k=5)
-    assert len(results) == 5
-```
-
-## File Naming Conventions
-
-### Python Modules
-- **Lowercase with underscores**: `comparison_engine.py`, `base_adapter.py`
-- **Package markers**: `__init__.py` in all package directories
-- **Entry points**: `__main__.py` for `python -m` support
-
-### Configuration Files
-- **Lowercase with hyphens**: `tafsir.yaml`, `mawsuah.yaml`
-- **Descriptive names**: Name reflects purpose (e.g., `tafsir.yaml` for Tafsir corpus comparison)
-
-### Documentation Files
-- **Markdown**: `.md` extension
-- **Numbered specs**: `0001-feature-name.md`, `0002-feature-name.md`
-- **Descriptive names**: `architecture.md`, `holistic_summary_20250514_120000.md`
-
-### Output Files
-- **Timestamped**: `batch_results_YYYYMMDD_HHMMSS.jsonl`
-- **Format suffix**: `.jsonl`, `.csv`, `.json`, `.md`
-- **Descriptive prefix**: `batch_results_`, `holistic_summary_`
-
-## Common Operations
-
-### Run Single Comparison
-```bash
-uv run rag-compare compare "Your query" \
-  --tool vectara --tool goodmem \
-  --top-k 10 \
-  --format markdown \
-  --output results.md
-```
-
-### Run with LLM Evaluation
-```bash
-uv run rag-compare compare "Your query" \
-  --evaluate \
-  --config configs/tafsir.yaml
-```
-
-### Batch Processing
-```bash
-uv run rag-compare batch inputs/queries.txt \
-  --config configs/tafsir.yaml \
-  --evaluate \
-  --top-k 10 \
-  --output-dir outputs \
-  --format jsonl
-```
-
-### List Available Tools
-```bash
-uv run rag-compare list-tools --config configs/tafsir.yaml
-```
-
-### Validate Configuration
-```bash
-uv run rag-compare validate-config --config configs/tafsir.yaml
-```
-
-### Quick Test
-```bash
-uv run rag-compare quick-test --config configs/tafsir.yaml
+    # Verify both completed successfully with own credentials
+    assert results_a and results_b
 ```
 
 ## Performance Considerations
 
-### Latency Optimization
-- **Parallel Execution**: Use `--parallel` (default) for multi-tool comparisons
-- **ThreadPoolExecutor**: I/O-bound API calls benefit from threading
-- **Top-K Limits**: Lower `--top-k` values reduce API response times
+### Multi-Tenant Performance
 
-### Cost Optimization
-- **Optional LLM Eval**: Use `--evaluate` only when needed (costs per query)
-- **Batch Processing**: Amortize setup costs across many queries
-- **Model Selection**: claude-sonnet-4 cheaper than claude-opus-4
+- **Credential Resolution**: O(1) dictionary lookup, negligible overhead
+- **Config Creation**: One-time cost per request, not per query
+- **Memory**: Each Config holds only credential references, minimal overhead
+- **Thread Safety**: No locks needed due to immutability
+- **Garbage Collection**: Configs cleaned up automatically after request
 
-### Memory Management
-- **Streaming JSONL**: Batch mode writes results incrementally
-- **Result Limits**: Top-K limits prevent excessive memory usage
-- **Generator Patterns**: Could be added for very large batches
+### Optimization Strategies
+
+- **Config Reuse**: Same tenant can reuse Config across multiple queries
+- **Connection Pooling**: Adapters can implement per-tenant connection pools
+- **Credential Caching**: Application layer can cache validated credentials
+- **Batch Operations**: Multi-tenant batch processing works efficiently
+
+## Testing Coverage
+
+### Multi-Tenant Test Files
+
+- **`tests/test_multi_tenant.py`**: Config credential tests (15 tests)
+  - Credential dictionary acceptance
+  - Precedence validation
+  - Environment variable substitution
+  - Validation with missing credentials
+  - Config path/dict mutual exclusion
+
+- **`tests/test_api_multi_tenant.py`**: API integration tests (12 tests)
+  - Config object acceptance
+  - Backward compatibility
+  - Multi-tenant isolation
+  - Concurrent request handling
+
+- **`tests/test_thread_safety.py`**: Thread safety tests (8 tests)
+  - Concurrent config creation
+  - Parallel query execution
+  - Adapter thread safety
+  - No credential leakage
+
+- **`tests/test_reentrancy.py`**: Reentrancy tests (5 tests)
+  - Recursive adapter calls
+  - Nested configurations
+  - State isolation verification
+
+## Security Implications
+
+### Credential Security
+
+1. **No Logging**: Credentials never logged, even at debug level
+2. **No Serialization**: Credentials excluded from to_dict() methods
+3. **Memory Only**: Credentials never written to disk
+4. **Scoped Lifetime**: Credentials garbage collected with Config
+5. **Error Sanitization**: Error messages don't expose credential values
+
+### Multi-Tenant Security
+
+1. **Tenant Isolation**: Complete credential isolation between tenants
+2. **No Cross-Contamination**: One tenant cannot access another's credentials
+3. **Audit Trail**: Application layer can log credential usage per tenant
+4. **Rate Limiting**: Can be implemented per tenant at application layer
+5. **Credential Rotation**: Supports dynamic credential updates without restart
 
 ## Future Architecture Considerations
 
-Based on specs and reviews, potential future enhancements:
+### Planned Enhancements
 
-### RAG System Generalization (Spec 0002)
-- Support for LangChain, LlamaIndex, Haystack frameworks
-- HTTP endpoint adapter for custom RAG services
-- Local/self-hosted system support
-- Custom response format mappers
+1. **Credential Providers**: Pluggable credential sources (AWS Secrets, Vault)
+2. **Credential Refresh**: Automatic refresh for expiring credentials
+3. **Audit Logging**: Built-in credential usage audit trail
+4. **Performance Metrics**: Per-tenant usage and performance tracking
+5. **Circuit Breakers**: Per-tenant circuit breakers for failed requests
 
-### Testing Infrastructure
-- Comprehensive test coverage (currently at 90+)
-- Integration tests for all adapters
-- Performance benchmarking suite
+### Potential Extensions
 
-### Advanced Features
-- Result caching for repeated queries
-- Web UI for non-CLI users
-- Progress persistence for interrupted batch runs
-- Parallel LLM evaluation calls
-- Custom evaluation criteria
-- Diff highlighting in display mode
-
-### Integration Enhancements
-- CI/CD pipeline integration
-- Automated regression testing
-- Production monitoring hooks
+1. **Config Caching**: Cache validated configs with TTL
+2. **Lazy Credential Loading**: Load credentials only when needed
+3. **Credential Validation Hooks**: Custom validation per adapter
+4. **Multi-Region Support**: Region-specific credentials
+5. **OAuth/OIDC Integration**: Direct OAuth token support
 
 ---
 
-**Document Status**: Current as of 2025-10-20
-**Project Version**: 0.1.0
-**Last Updated**: Architecture review based on implementation, specs, and plans
-**Next Review**: After significant architectural changes or new component additions
+**Document Status**: Updated with Multi-Tenant Credential Support
+**Project Version**: 0.1.0 (with multi-tenant features)
+**Last Updated**: 2025-10-21 - Added comprehensive multi-tenant architecture
+**Architecture Changes**:
+- Added Config object pattern with credentials dictionary
+- Enhanced all adapters with credential resolution
+- Updated API functions to accept Config objects
+- Maintained full backward compatibility
+**Next Review**: After credential provider implementation or security audit
