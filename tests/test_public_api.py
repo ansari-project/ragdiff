@@ -29,7 +29,7 @@ class TestPublicAPIExports:
         """Test that __version__ is exported."""
         assert hasattr(ragdiff, "__version__")
         assert isinstance(ragdiff.__version__, str)
-        assert ragdiff.__version__ == "1.1.0"
+        assert ragdiff.__version__ == "1.2.0"
 
     def test_adapter_api_version_exported(self):
         """Test that ADAPTER_API_VERSION is exported."""

@@ -1,7 +1,11 @@
 """Tests for CLI functionality."""
 
-import pytest
+from unittest.mock import MagicMock
 
+import pytest
+from typer.testing import CliRunner
+
+from ragdiff.cli import app
 from ragdiff.comparison.engine import ComparisonEngine
 from ragdiff.core.models import ComparisonResult, RagResult
 
@@ -11,7 +15,6 @@ class TestCLIStatsDisplay:
 
     def test_get_summary_stats_format(self):
         """Test that get_summary_stats returns expected format."""
-        from unittest.mock import MagicMock
 
         # Create mock results
         results = {
@@ -204,3 +207,81 @@ class TestAgentsetAdapter:
         assert adapter._normalize_score(75.0) == 0.75  # Percentage
         assert adapter._normalize_score(750.0) == 0.75  # Out of 1000
         assert adapter._normalize_score(-0.1) == 0.0  # Clamp negative
+
+
+class TestCLICommands:
+    """Test CLI command structure and basic functionality."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create a CLI test runner."""
+        return CliRunner()
+
+    def test_query_command_validates_tool_requirement(self, runner):
+        """Test query command requires at least one tool."""
+        result = runner.invoke(app, ["query", "test query"])
+
+        # Should fail without a tool specified
+        assert result.exit_code != 0
+        assert "At least one tool must be specified" in result.stdout
+
+    def test_query_command_has_correct_signature(self):
+        """Test that query command has expected parameters."""
+        from inspect import signature
+
+        from ragdiff.cli import query
+
+        sig = signature(query)
+        params = list(sig.parameters.keys())
+
+        # Verify required and key parameters exist
+        assert "query_text" in params
+        assert "tools" in params
+        assert "config_file" in params
+        assert "top_k" in params
+        assert "evaluate" in params
+        assert "output_file" in params
+        assert "output_format" in params
+
+    def test_run_command_has_correct_signature(self):
+        """Test that run command has expected parameters."""
+        from inspect import signature
+
+        from ragdiff.cli import run
+
+        sig = signature(run)
+        params = list(sig.parameters.keys())
+
+        # Verify required and key parameters exist
+        assert "queries_file" in params
+        assert "config_file" in params
+        assert "tools" in params
+        assert "top_k" in params
+        assert "output_dir" in params
+        assert "output_format" in params
+
+    def test_compare_command_has_correct_signature(self):
+        """Test that compare command has expected parameters."""
+        from inspect import signature
+
+        from ragdiff.cli import compare
+
+        sig = signature(compare)
+        params = list(sig.parameters.keys())
+
+        # Verify required and key parameters exist
+        assert "results_dir" in params
+        assert "output_file" in params
+        assert "output_format" in params
+
+    def test_three_commands_exist(self):
+        """Test that all three main commands are registered."""
+        from typer.main import get_command
+
+        cli = get_command(app)
+        commands = cli.list_commands(None)
+
+        # Verify the three main commands exist
+        assert "query" in commands
+        assert "run" in commands
+        assert "compare" in commands

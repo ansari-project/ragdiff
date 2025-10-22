@@ -41,11 +41,8 @@ cd ragdiff
 # Install dependencies with uv
 uv sync --all-extras  # Install all dependencies including dev tools
 
-# Or install only core dependencies
-uv sync
-
-# Or install with goodmem support
-uv sync --extra goodmem
+# Install the package in editable mode
+uv pip install -e .
 
 # Copy environment template
 cp .env.example .env
@@ -132,7 +129,7 @@ tools:
 
 ```bash
 # Compare two agentset variants
-uv run rag-compare compare "Your query" \
+uv run ragdiff compare "Your query" \
   --tool agentset-rerank-on \
   --tool agentset-rerank-off \
   --config configs/my-variants.yaml
@@ -441,115 +438,121 @@ curl -X POST http://localhost:8000/batch \
 
 ### CLI Usage
 
-For command-line usage, RAGDiff provides a rich CLI interface.
+For command-line usage, RAGDiff provides a rich CLI interface with three main commands:
 
-#### Basic Comparison
+#### 1. Query Command - Interactive Queries
+
+Query one or more RAG systems interactively. If multiple tools are specified, results are compared side-by-side.
 
 ```bash
-# Compare all configured tools
-uv run rag-compare compare "What is Islamic inheritance law?"
+# Query a single tool
+uv run ragdiff query "What is Islamic inheritance law?" --tool vectara
 
-# Compare specific tools
-uv run rag-compare compare "Your query" --tool vectara --tool goodmem --tool agentset
+# Compare multiple tools live
+uv run ragdiff query "Your query" --tool vectara --tool agentset --top-k 10
 
-# Adjust number of results
-uv run rag-compare compare "Your query" --top-k 10
+# Compare with LLM evaluation
+uv run ragdiff query "Your query" --tool vectara --tool agentset --evaluate
+
+# Save results to file
+uv run ragdiff query "Your query" --tool vectara --output results.json --format json
 ```
 
-### Output Formats
+**Output Formats**: `display` (default), `json`, `markdown`
+
+#### 2. Run Command - Batch Processing
+
+Run multiple queries and save results separately per adapter. This is the "expensive" step that calls the RAG systems.
 
 ```bash
-# Default display format (side-by-side)
-uv run rag-compare compare "Your query"
-
-# JSON output
-uv run rag-compare compare "Your query" --format json
-
-# Markdown output
-uv run rag-compare compare "Your query" --format markdown
-
-# Summary output
-uv run rag-compare compare "Your query" --format summary
-
-# Save to file
-uv run rag-compare compare "Your query" --output results.json --format json
-```
-
-### Batch Comparison with LLM Evaluation
-
-Run multiple queries and get comprehensive analysis:
-
-```bash
-# Basic batch comparison
-uv run rag-compare batch inputs/tafsir-test-queries.txt \
+# Basic batch run - saves per-adapter files
+uv run ragdiff run inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
-  --top-k 10 \
-  --format json
-
-# With LLM evaluation (generates holistic summary)
-uv run rag-compare batch inputs/tafsir-test-queries.txt \
-  --config configs/tafsir.yaml \
-  --evaluate \
-  --top-k 10 \
-  --format json
-
-# Custom output directory
-uv run rag-compare batch inputs/tafsir-test-queries.txt \
-  --config configs/tafsir.yaml \
-  --evaluate \
-  --output-dir my-results \
-  --format jsonl
-```
-
-The batch command with `--evaluate` generates:
-- Individual query results in JSON/JSONL/CSV format
-- Latency statistics (P50, P95, P99)
-- LLM evaluation summary showing wins and quality scores
-- **Holistic summary** (markdown file) with:
-  - Query-by-query breakdown with winners and scores
-  - Common themes: win distribution, recurring issues
-  - Key differentiators: what makes winner better vs loser weaknesses
-  - Overall verdict with production recommendation
-
-**Example: 3-Way Tafsir Comparison (Vectara vs Goodmem vs Agentset)**
-
-```bash
-# Compare all three RAG systems with LLM evaluation
-uv run rag-compare batch inputs/tafsir-test-queries.txt \
-  --config configs/tafsir.yaml \
-  --evaluate \
+  --output-dir results/ \
   --top-k 10
+
+# This creates separate files:
+#   results/vectara.jsonl
+#   results/agentset.jsonl
+#   results/goodmem.jsonl
+
+# Run specific tools only
+uv run ragdiff run inputs/queries.txt \
+  --tool vectara --tool agentset \
+  --output-dir results/
 ```
 
-This runs 6 test queries across Vectara, Goodmem, and Agentset, evaluating:
-- Performance: Latency and response times
-- Quality: LLM-scored relevance and coherence (0-100)
-- Issues: Fragmentation, citations, completeness
+**Output Formats**: `jsonl` (default), `json`
 
-Results saved to `outputs/batch_results_TIMESTAMP.jsonl` and `outputs/holistic_summary_TIMESTAMP.md`
+**Key Feature**: Separates expensive RAG queries from evaluation, allowing you to iterate on evaluation without re-running queries.
 
-Convert holistic summary to PDF:
+#### 3. Compare Command - Evaluate Saved Results
+
+Load previously saved results and compare them using LLM evaluation. This is the "cheap" step that you can run multiple times.
+
 ```bash
-# Generate PDF from markdown summary
-python md2pdf.py outputs/holistic_summary_TIMESTAMP.md
+# Evaluate saved results
+uv run ragdiff compare results/ --output evaluation.jsonl
+
+# Generate markdown report
+uv run ragdiff compare results/ --format markdown --output report.md
+
+# JSON evaluation output
+uv run ragdiff compare results/ --format json --output eval.json
 ```
+
+**Output Formats**: `jsonl` (default), `json`, `markdown`
+
+**Benefits**:
+- Run queries once, evaluate multiple times
+- Test different evaluation criteria without API costs
+- Iterate on prompts and scoring without re-querying RAG systems
+
+#### Complete Workflow Example
+
+Here's a complete workflow showing the separation of RAG queries from evaluation:
+
+```bash
+# Step 1: Run queries and save per-adapter results (expensive, run once)
+uv run ragdiff run inputs/tafsir-test-queries.txt \
+  --config configs/tafsir.yaml \
+  --output-dir results/ \
+  --top-k 10
+
+# Step 2: Evaluate and compare results (cheap, run multiple times)
+uv run ragdiff compare results/ \
+  --format markdown \
+  --output evaluation-v1.md
+
+# Step 3: Iterate on evaluation without re-running queries
+# (Maybe tweak LLM model, prompts, or scoring criteria)
+uv run ragdiff compare results/ \
+  --format json \
+  --output evaluation-v2.json
+```
+
+**Why this is better:**
+- **Cost savings**: RAG APIs called once, LLM evaluation can be re-run many times
+- **Speed**: Evaluation takes seconds vs minutes for RAG queries
+- **Experimentation**: Try different evaluation approaches without waiting
+- **Reproducibility**: Same RAG results, different evaluation methods
 
 ### Other Commands
 
 ```bash
 # List available tools
-uv run rag-compare list-tools
+uv run ragdiff list-tools
 
 # Validate configuration
-uv run rag-compare validate-config
+uv run ragdiff validate-config
 
 # Run quick test
-uv run rag-compare quick-test
+uv run ragdiff quick-test
 
 # Get help
-uv run rag-compare --help
-uv run rag-compare compare --help
-uv run rag-compare batch --help
+uv run ragdiff --help
+uv run ragdiff compare --help
+uv run ragdiff run --help
 ```
 
 ## Project Structure

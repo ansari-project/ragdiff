@@ -56,7 +56,9 @@ def setup_logging(verbose: bool = False):
 @app.command()
 def query(
     query_text: str = typer.Argument(..., help="Search query to run"),
-    tool: str = typer.Option(..., "--tool", "-t", help="RAG tool to query"),
+    tools: list[str] = typer.Option(
+        None, "--tool", "-t", help="RAG tools to query (can specify multiple)"
+    ),
     config_file: str = typer.Option(
         "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
     ),
@@ -65,20 +67,36 @@ def query(
         "display",
         "--format",
         "-f",
-        help="Output format: display, json",
+        help="Output format: display, json, markdown",
     ),
     output_file: Optional[str] = typer.Option(
         None, "--output", "-o", help="Save output to file"
+    ),
+    parallel: bool = typer.Option(
+        True,
+        "--parallel/--sequential",
+        help="Run searches in parallel or sequential (for multiple tools)",
+    ),
+    evaluate: bool = typer.Option(
+        False,
+        "--evaluate/--no-evaluate",
+        help="Enable LLM evaluation (for multiple tools)",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose logging"
     ),
 ):
-    """Run a single query against ONE RAG system.
+    """Query one or more RAG systems.
+
+    If one tool is specified, runs a simple query.
+    If multiple tools are specified, compares results side-by-side.
 
     Examples:
-        ragdiff query "What is RAG?" --tool vectara --config config.yaml
-        ragdiff query "coral meaning" -t goodmem -k 10 --format json
+        # Single tool query
+        ragdiff query "What is RAG?" --tool vectara
+
+        # Compare multiple tools
+        ragdiff query "What is RAG?" --tool vectara --tool agentset --evaluate
     """
     setup_logging(verbose)
 
@@ -91,68 +109,146 @@ def query(
         config = Config(Path(config_file))
         config.validate()
 
-        # Check tool exists
-        if tool not in config.tools:
-            console.print(f"[red]Tool '{tool}' not found in configuration[/red]")
+        # Determine which tools to use
+        if not tools:
+            console.print(
+                "[red]Error: At least one tool must be specified with --tool[/red]"
+            )
             console.print(f"Available tools: {', '.join(config.tools.keys())}")
             raise typer.Exit(1)
 
-        # Create adapter
-        console.print(f"[cyan]Querying {tool}...[/cyan]")
-        adapter = create_adapter(tool, config.tools[tool])
+        # Check all tools exist
+        for tool in tools:
+            if tool not in config.tools:
+                console.print(f"[red]Tool '{tool}' not found in configuration[/red]")
+                console.print(f"Available tools: {', '.join(config.tools.keys())}")
+                raise typer.Exit(1)
 
-        # Run query
-        with console.status("[bold cyan]Running query...[/bold cyan]"):
-            results = adapter.search(query_text, top_k=top_k)
+        # Single tool query
+        if len(tools) == 1:
+            tool = tools[0]
+            console.print(f"[cyan]Querying {tool}...[/cyan]")
+            adapter = create_adapter(tool, config.tools[tool])
 
-        # Format output
-        if output_format == "json":
-            output_data = {
-                "query": query_text,
-                "tool": tool,
-                "top_k": top_k,
-                "results": [
-                    {
-                        "id": r.id,
-                        "text": r.text,
-                        "score": r.score,
-                        "source": r.source,
-                        "metadata": r.metadata,
-                    }
-                    for r in results
-                ],
-            }
-            output = json.dumps(output_data, indent=2, ensure_ascii=False)
-        else:  # display
-            # Create simple table
-            table = Table(title=f"Results for: {query_text}")
-            table.add_column("Rank", style="cyan", width=6)
-            table.add_column("Score", style="green", width=8)
-            table.add_column("Source", style="yellow", width=20)
-            table.add_column("Text", style="white")
+            # Run query
+            with console.status("[bold cyan]Running query...[/bold cyan]"):
+                results = adapter.search(query_text, top_k=top_k)
 
-            for idx, result in enumerate(results, 1):
-                table.add_row(
-                    str(idx),
-                    f"{result.score:.3f}",
-                    result.source or "N/A",
-                    result.text[:200] + "..."
-                    if len(result.text) > 200
-                    else result.text,
+            # Format output
+            if output_format == "json":
+                output_data = {
+                    "query": query_text,
+                    "tool": tool,
+                    "top_k": top_k,
+                    "results": [
+                        {
+                            "id": r.id,
+                            "text": r.text,
+                            "score": r.score,
+                            "source": r.source,
+                            "metadata": r.metadata,
+                        }
+                        for r in results
+                    ],
+                }
+                output = json.dumps(output_data, indent=2, ensure_ascii=False)
+
+                if output_file:
+                    Path(output_file).write_text(output)
+                    console.print(f"[green]Results saved to {output_file}[/green]")
+                else:
+                    console.print(output)
+            else:  # display
+                # Create simple table
+                table = Table(title=f"Results for: {query_text}")
+                table.add_column("Rank", style="cyan", width=6)
+                table.add_column("Score", style="green", width=8)
+                table.add_column("Source", style="yellow", width=20)
+                table.add_column("Text", style="white")
+
+                for idx, result in enumerate(results, 1):
+                    table.add_row(
+                        str(idx),
+                        f"{result.score:.3f}",
+                        result.source or "N/A",
+                        result.text[:200] + "..."
+                        if len(result.text) > 200
+                        else result.text,
+                    )
+
+                console.print(table)
+                console.print(
+                    f"\n[green]✓ Retrieved {len(results)} results from {tool}[/green]"
                 )
 
-            console.print(table)
-            console.print(
-                f"\n[green]✓ Retrieved {len(results)} results from {tool}[/green]"
-            )
-            return  # Don't save display output to file
-
-        # Output results
-        if output_file:
-            Path(output_file).write_text(output)
-            console.print(f"[green]Results saved to {output_file}[/green]")
+        # Multiple tool comparison
         else:
-            console.print(output)
+            console.print(f"[cyan]Comparing {len(tools)} tools...[/cyan]")
+
+            # Create adapters
+            adapters = {}
+            for tool_name in tools:
+                try:
+                    adapters[tool_name] = create_adapter(
+                        tool_name, config.tools[tool_name]
+                    )
+                    console.print(f"  ✓ {tool_name}")
+                except Exception as e:
+                    console.print(f"  ✗ {tool_name}: {str(e)}")
+
+            if not adapters:
+                console.print("[red]No tools available[/red]")
+                raise typer.Exit(1)
+
+            # Create comparison engine
+            engine = ComparisonEngine(adapters)
+
+            # Run comparison
+            with console.status("[bold cyan]Running comparison...[/bold cyan]"):
+                result = engine.run_comparison(
+                    query_text, top_k=top_k, parallel=parallel
+                )
+
+            # Run LLM evaluation if requested
+            if evaluate:
+                llm_config = config.get_llm_config()
+                if llm_config:
+                    with console.status(
+                        "[bold cyan]Running LLM evaluation...[/bold cyan]"
+                    ):
+                        try:
+                            evaluator = LLMEvaluator(
+                                model=llm_config.get(
+                                    "model", "claude-sonnet-4-20250514"
+                                ),
+                                api_key=os.getenv(
+                                    llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
+                                ),
+                            )
+                            result.llm_evaluation = evaluator.evaluate(result)
+                            console.print("[green]✓ LLM evaluation complete[/green]")
+                        except Exception as e:
+                            console.print(
+                                f"[yellow]Warning: LLM evaluation failed: {e}[/yellow]"
+                            )
+                else:
+                    console.print(
+                        "[yellow]LLM evaluation requested but not configured[/yellow]"
+                    )
+
+            # Format and display
+            formatter = ComparisonFormatter(result)
+
+            if output_format == "display":
+                formatter.display()
+            else:
+                output = formatter.format(output_format)
+
+                if output_file:
+                    Path(output_file).write_text(output)
+                    console.print(f"[green]Results saved to {output_file}[/green]")
+                else:
+                    console.print(output)
 
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/red]")
@@ -184,8 +280,8 @@ def run(
         "-f",
         help="Output format: jsonl, json",
     ),
-    output_file: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Save output to file"
+    output_dir: Optional[str] = typer.Option(
+        None, "--output-dir", "-o", help="Directory to save per-adapter output files"
     ),
     parallel: bool = typer.Option(
         True, "--parallel/--sequential", help="Run searches in parallel or sequential"
@@ -197,13 +293,19 @@ def run(
         False, "--verbose", "-v", help="Enable verbose logging"
     ),
 ):
-    """Run batch queries from a file.
+    """Run batch queries from a file and save separate results per adapter.
 
     The queries file should contain one query per line.
+    Results are saved as separate files for each adapter in the output directory.
 
     Examples:
-        ragdiff run queries.txt --config config.yaml
-        ragdiff run queries.txt -t vectara -t goodmem --evaluate
+        ragdiff run queries.txt --config config.yaml --output-dir results/
+        ragdiff run queries.txt -t vectara -t goodmem --output-dir results/
+
+    This creates:
+        results/vectara.jsonl
+        results/agentset.jsonl
+        results/goodmem.jsonl
     """
     setup_logging(verbose)
 
@@ -264,60 +366,64 @@ def run(
         # Create comparison engine
         engine = ComparisonEngine(adapters)
 
-        # Run batch comparison
-        results = []
+        # Create output directory if specified
+        if output_dir:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            console.print(f"[cyan]Output directory: {output_dir}[/cyan]")
+
+        # Run batch queries - collect results per adapter
+        adapter_results = {tool_name: [] for tool_name in adapters.keys()}
+
         for idx, query in enumerate(queries, 1):
             console.print(f"\n[cyan]Query {idx}/{len(queries)}: {query}[/cyan]")
 
             with console.status("[bold cyan]Running comparison...[/bold cyan]"):
                 result = engine.run_comparison(query, top_k=top_k, parallel=parallel)
 
-            # Run LLM evaluation if requested
-            if evaluate:
-                llm_config = config.get_llm_config()
-                if llm_config:
-                    with console.status(
-                        "[bold cyan]Running LLM evaluation...[/bold cyan]"
-                    ):
-                        try:
-                            evaluator = LLMEvaluator(
-                                model=llm_config.get(
-                                    "model", "claude-sonnet-4-20250514"
-                                ),
-                                api_key=os.getenv(
-                                    llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
-                                ),
-                            )
-                            result.llm_evaluation = evaluator.evaluate(result)
-                            console.print("[green]✓ LLM evaluation complete[/green]")
-                        except Exception as e:
-                            console.print(
-                                f"[yellow]Warning: LLM evaluation failed: {e}[/yellow]"
-                            )
-                else:
-                    console.print(
-                        "[yellow]LLM evaluation requested but not configured[/yellow]"
-                    )
+            # Store results by adapter
+            for tool_name, tool_results in result.tool_results.items():
+                adapter_results[tool_name].append(
+                    {
+                        "query": query,
+                        "results": [
+                            {
+                                "id": r.id,
+                                "text": r.text,
+                                "score": r.score,
+                                "source": r.source,
+                                "metadata": r.metadata,
+                            }
+                            for r in tool_results
+                        ],
+                        "error": result.errors.get(tool_name),
+                    }
+                )
 
-            results.append(result)
             console.print(f"[green]✓ Query {idx} complete[/green]")
 
-        # Format output
-        if output_format == "json":
-            output = json.dumps(
-                [r.to_dict() for r in results], indent=2, ensure_ascii=False
-            )
-        else:  # jsonl
-            output = "\n".join(
-                json.dumps(r.to_dict(), ensure_ascii=False) for r in results
-            )
+        # Save separate files per adapter
+        if output_dir:
+            for tool_name, results in adapter_results.items():
+                if output_format == "json":
+                    output = json.dumps(results, indent=2, ensure_ascii=False)
+                    file_ext = "json"
+                else:  # jsonl
+                    output = "\n".join(
+                        json.dumps(r, ensure_ascii=False) for r in results
+                    )
+                    file_ext = "jsonl"
 
-        # Output results
-        if output_file:
-            Path(output_file).write_text(output)
-            console.print(f"\n[green]Results saved to {output_file}[/green]")
+                output_file = output_path / f"{tool_name}.{file_ext}"
+                output_file.write_text(output)
+                console.print(
+                    f"[green]  ✓ Saved {tool_name} results to {output_file}[/green]"
+                )
         else:
-            console.print(output)
+            console.print(
+                "[yellow]Warning: No output directory specified. Results not saved.[/yellow]"
+            )
+            console.print("[yellow]Use --output-dir to save results.[/yellow]")
 
         # Summary
         console.print(
@@ -333,45 +439,35 @@ def run(
 
 @app.command()
 def compare(
-    query: str = typer.Argument(..., help="Search query to run against all tools"),
-    tools: list[str] = typer.Option(
-        None,
-        "--tool",
-        "-t",
-        help="Tools to compare (can specify multiple). If not specified, uses all configured tools.",
-    ),
-    top_k: int = typer.Option(
-        5, "--top-k", "-k", help="Number of results to retrieve from each tool"
+    results_dir: str = typer.Argument(
+        ..., help="Directory containing per-adapter result files"
     ),
     config_file: str = typer.Option(
         "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
     ),
+    output_file: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Save evaluation results to file"
+    ),
     output_format: str = typer.Option(
-        "display",
+        "jsonl",
         "--format",
         "-f",
-        help="Output format: display, json, jsonl, csv, markdown, summary",
-    ),
-    output_file: Optional[str] = typer.Option(
-        None, "--output", "-o", help="Save output to file"
-    ),
-    parallel: bool = typer.Option(
-        True, "--parallel/--sequential", help="Run searches in parallel or sequential"
-    ),
-    evaluate: bool = typer.Option(
-        False, "--evaluate/--no-evaluate", help="Enable LLM evaluation using Claude"
+        help="Output format: jsonl, json, markdown",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose logging"
     ),
 ):
-    """Compare multiple RAG systems on the same query.
+    """Compare previously saved RAG results using LLM evaluation.
 
-    Runs the query against all specified tools and shows results side-by-side.
+    Loads per-adapter result files from a directory and compares them
+    using Claude LLM evaluation. This separates the expensive RAG queries
+    from the evaluation step, allowing you to iterate on evaluation without
+    re-running queries.
 
     Examples:
-        ragdiff compare "What is RAG?" --config config.yaml
-        ragdiff compare "coral meaning" -t vectara -t goodmem --evaluate
+        ragdiff compare results/ --output evaluated.jsonl
+        ragdiff compare results/ --format markdown --output report.md
     """
     setup_logging(verbose)
 
@@ -382,135 +478,166 @@ def compare(
             raise typer.Exit(1)
 
         config = Config(Path(config_file))
-        config.validate()
-
-        # Determine which tools to use
-        if tools:
-            # Use specified tools
-            tool_names = tools
-        else:
-            # Use all configured tools
-            tool_names = list(config.tools.keys())
-
-        if len(tool_names) < 2:
-            console.print(
-                "[yellow]Warning: Comparison works best with 2 or more tools[/yellow]"
-            )
-
-        # Create adapters for selected tools
-        console.print(f"[cyan]Initializing {len(tool_names)} tools...[/cyan]")
-        adapters = {}
-        for tool_name in tool_names:
-            if tool_name not in config.tools:
-                console.print(
-                    f"[red]Tool '{tool_name}' not found in configuration[/red]"
-                )
-                raise typer.Exit(1)
-
-            try:
-                adapters[tool_name] = create_adapter(tool_name, config.tools[tool_name])
-                console.print(f"  ✓ {tool_name}")
-            except Exception as e:
-                console.print(f"  ✗ {tool_name}: {str(e)}")
-                if not typer.confirm("Continue without this tool?"):
-                    raise typer.Exit(1) from e
-
-        if not adapters:
-            console.print("[red]No tools available for comparison[/red]")
+        llm_config = config.get_llm_config()
+        if not llm_config:
+            console.print("[red]LLM configuration not found in config file[/red]")
             raise typer.Exit(1)
 
-        # Create comparison engine
-        engine = ComparisonEngine(adapters)
+        # Load all adapter result files
+        results_path = Path(results_dir)
+        if not results_path.exists():
+            console.print(f"[red]Results directory not found: {results_dir}[/red]")
+            raise typer.Exit(1)
 
-        # Run comparison
-        with console.status(f"[bold cyan]Running query: {query}...[/bold cyan]"):
-            result = engine.run_comparison(query, top_k=top_k, parallel=parallel)
+        # Find all .jsonl and .json files
+        result_files = list(results_path.glob("*.jsonl")) + list(
+            results_path.glob("*.json")
+        )
+        if not result_files:
+            console.print(f"[red]No result files found in {results_dir}[/red]")
+            raise typer.Exit(1)
 
-        # Run LLM evaluation if requested
-        if evaluate:
-            llm_config = config.get_llm_config()
-            if llm_config:
-                with console.status("[bold cyan]Running LLM evaluation...[/bold cyan]"):
-                    try:
-                        evaluator = LLMEvaluator(
-                            model=llm_config.get("model", "claude-sonnet-4-20250514"),
-                            api_key=os.getenv(
-                                llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
-                            ),
-                        )
-                        result.llm_evaluation = evaluator.evaluate(result)
-                        console.print("[green]✓ LLM evaluation complete[/green]")
-                    except Exception as e:
-                        console.print(
-                            f"[yellow]Warning: LLM evaluation failed: {e}[/yellow]"
-                        )
-            else:
+        console.print(f"[cyan]Found {len(result_files)} adapter result files[/cyan]")
+
+        # Load results from each file
+        adapter_data = {}
+        for file_path in result_files:
+            tool_name = file_path.stem  # filename without extension
+            console.print(f"  Loading {tool_name}...")
+
+            try:
+                content = file_path.read_text()
+                if file_path.suffix == ".jsonl":
+                    # JSONL: one JSON object per line
+                    adapter_data[tool_name] = [
+                        json.loads(line)
+                        for line in content.splitlines()
+                        if line.strip()
+                    ]
+                else:
+                    # JSON: array of objects
+                    adapter_data[tool_name] = json.loads(content)
+
                 console.print(
-                    "[yellow]LLM evaluation requested but not configured[/yellow]"
+                    f"  ✓ {tool_name}: {len(adapter_data[tool_name])} queries"
+                )
+            except Exception as e:
+                console.print(f"  ✗ {tool_name}: Failed to load - {e}")
+                continue
+
+        if not adapter_data:
+            console.print("[red]No valid adapter data loaded[/red]")
+            raise typer.Exit(1)
+
+        # Verify all adapters have the same number of queries
+        query_counts = {tool: len(data) for tool, data in adapter_data.items()}
+        if len(set(query_counts.values())) > 1:
+            console.print(
+                "[yellow]Warning: Adapters have different numbers of queries:[/yellow]"
+            )
+            for tool, count in query_counts.items():
+                console.print(f"  {tool}: {count} queries")
+
+        # Initialize evaluator
+        evaluator = LLMEvaluator(
+            model=llm_config.get("model", "claude-sonnet-4-20250514"),
+            api_key=os.getenv(llm_config.get("api_key_env", "ANTHROPIC_API_KEY")),
+        )
+
+        # Evaluate each query across all adapters
+        evaluations = []
+        num_queries = min(query_counts.values())
+
+        for query_idx in range(num_queries):
+            # Get the query text (should be same across all adapters)
+            query_text = list(adapter_data.values())[0][query_idx]["query"]
+            console.print(
+                f"\n[cyan]Evaluating query {query_idx + 1}/{num_queries}: {query_text}[/cyan]"
+            )
+
+            # Build ComparisonResult from saved data
+            tool_results = {}
+            errors = {}
+
+            for tool_name, tool_data in adapter_data.items():
+                query_data = tool_data[query_idx]
+
+                if query_data.get("error"):
+                    errors[tool_name] = query_data["error"]
+                    tool_results[tool_name] = []
+                else:
+                    # Convert back to RagResult objects
+                    from .core.models import RagResult
+
+                    tool_results[tool_name] = [
+                        RagResult(
+                            id=r["id"],
+                            text=r["text"],
+                            score=r["score"],
+                            source=r["source"],
+                            metadata=r.get("metadata", {}),
+                        )
+                        for r in query_data["results"]
+                    ]
+
+            # Create ComparisonResult
+            comparison = ComparisonResult(
+                query=query_text,
+                tool_results=tool_results,
+                errors=errors,
+            )
+
+            # Evaluate
+            with console.status("[bold cyan]Running LLM evaluation...[/bold cyan]"):
+                try:
+                    evaluation = evaluator.evaluate(comparison)
+                    console.print(f"[green]✓ Winner: {evaluation.winner}[/green]")
+
+                    evaluations.append(
+                        {
+                            "query": query_text,
+                            "winner": evaluation.winner,
+                            "quality_scores": evaluation.quality_scores,
+                            "analysis": evaluation.analysis,
+                            "model": evaluation.llm_model,
+                        }
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Evaluation failed: {e}[/yellow]")
+
+        # Save evaluations
+        if output_file:
+            if output_format == "json":
+                output = json.dumps(evaluations, indent=2, ensure_ascii=False)
+            elif output_format == "markdown":
+                # Generate markdown report
+                lines = ["# RAG Evaluation Report\n"]
+                for eval_data in evaluations:
+                    lines.append(f"## Query: {eval_data['query']}\n")
+                    lines.append(f"**Winner:** {eval_data['winner']}\n")
+                    lines.append("**Scores:**")
+                    for tool, score in eval_data["quality_scores"].items():
+                        lines.append(f"- {tool}: {score}/100")
+                    lines.append(f"\n**Analysis:**\n{eval_data['analysis']}\n")
+                    lines.append("---\n")
+                output = "\n".join(lines)
+            else:  # jsonl
+                output = "\n".join(
+                    json.dumps(e, ensure_ascii=False) for e in evaluations
                 )
 
-        # Format output
-        formatter = ComparisonFormatter(width=console.width)
-
-        if output_format == "json":
-            output = formatter.format_json(result, pretty=True)
-        elif output_format == "jsonl":
-            output = json.dumps(result.to_dict())
-        elif output_format == "csv":
-            import csv
-            from io import StringIO
-
-            buf = StringIO()
-            writer = csv.writer(buf)
-            tool_names_list = list(result.tool_results.keys())
-            header: list[str] = ["query", "timestamp"]
-            for tool_name in tool_names_list:
-                header.extend([f"{tool_name}_count", f"{tool_name}_latency_ms"])
-            writer.writerow(header)
-            row: list[str] = [result.query, result.timestamp.isoformat()]
-            for tool_name in tool_names_list:
-                tool_results = result.tool_results.get(tool_name, [])
-                count = len(tool_results)
-                latency = tool_results[0].latency_ms if tool_results else 0
-                row.extend([str(count), f"{latency:.1f}"])
-            writer.writerow(row)
-            output = buf.getvalue()
-        elif output_format == "markdown":
-            output = formatter.format_markdown(result)
-        elif output_format == "summary":
-            output = formatter.format_summary(result)
-        else:  # display
-            output = formatter.format_side_by_side(result)
-
-        # Output results
-        if output_file:
             Path(output_file).write_text(output)
-            console.print(f"[green]Results saved to {output_file}[/green]")
+            console.print(f"\n[green]Evaluations saved to {output_file}[/green]")
         else:
-            if output_format == "json":
-                console.print_json(output)
-            elif output_format == "display":
-                # Use rich formatting for display mode
-                _display_rich_results(result)
-            else:
-                console.print(output)
+            # Print to console
+            for eval_data in evaluations:
+                console.print(f"\n[bold]Query:[/bold] {eval_data['query']}")
+                console.print(f"[bold]Winner:[/bold] {eval_data['winner']}")
+                console.print("[bold]Scores:[/bold]")
+                for tool, score in eval_data["quality_scores"].items():
+                    console.print(f"  {tool}: {score}/100")
 
-        # Show LLM evaluation if available
-        if result.llm_evaluation and output_format == "display":
-            _display_llm_evaluation(result.llm_evaluation)
-
-        # Show summary statistics
-        if output_format != "summary":
-            raw_stats = engine.get_summary_stats(result)
-            # Transform stats to format expected by display function
-            stats = {}
-            for tool in raw_stats.get("tools_compared", []):
-                stats[tool] = {
-                    "count": raw_stats.get("result_counts", {}).get(tool, 0),
-                    "avg_score": raw_stats.get("average_scores", {}).get(tool, 0),
-                    "latency_ms": raw_stats.get("latencies_ms", {}).get(tool, 0),
-                }
-            _display_stats_table(stats)
+        console.print(f"\n[green]✓ Evaluated {len(evaluations)} queries[/green]")
 
     except Exception as e:
         console.print(f"[red]Error: {str(e)}[/red]")

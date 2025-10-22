@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ragdiff"
-version = "1.0.0"
+version = "1.2.0"
 description = "Compare and evaluate RAG systems side-by-side with LLM evaluation. Use as a library or CLI tool."
 readme = "README.md"
 requires-python = ">=3.9.2"
@@ -64,14 +64,14 @@ dev = [
 ]
 
 [project.scripts]
-rag-compare = "src.cli:app"
+ragdiff = "ragdiff.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/ansari-project/ragdiff"
 Issues = "https://github.com/ansari-project/ragdiff/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/ragdiff"]
 
 [tool.ruff]
 line-length = 88
