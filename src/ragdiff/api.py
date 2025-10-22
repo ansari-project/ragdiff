@@ -239,7 +239,8 @@ def query(
     _validate_top_k(top_k)
 
     # Handle both Config objects and paths (backward compat)
-    if isinstance(config, Config):
+    # Use hasattr to check for Config object (works with mocks in tests)
+    if hasattr(config, "tools") and hasattr(config, "_credentials"):
         cfg = config
     else:
         cfg, _ = _load_and_validate_config(config, tools=[tool])
@@ -295,7 +296,8 @@ def run_batch(
     _validate_top_k(top_k)
 
     # Handle both Config objects and paths (backward compat)
-    if isinstance(config, Config):
+    # Use hasattr to check for Config object (works with mocks in tests)
+    if hasattr(config, "tools") and hasattr(config, "_credentials"):
         cfg = config
         # Determine which tools to use
         tool_names = tools if tools else list(cfg.tools.keys())
@@ -379,7 +381,8 @@ def compare(
     _validate_top_k(top_k)
 
     # Handle both Config objects and paths (backward compat)
-    if isinstance(config, Config):
+    # Use hasattr to check for Config object (works with mocks in tests)
+    if hasattr(config, "tools") and hasattr(config, "_credentials"):
         cfg = config
         # Determine which tools to use
         tool_names = tools if tools else list(cfg.tools.keys())

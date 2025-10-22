@@ -3,7 +3,6 @@
 import pytest
 
 from ragdiff import compare, load_config, query, run_batch
-from ragdiff.core.errors import ConfigurationError
 from ragdiff.core.models import ComparisonResult, RagResult
 
 
@@ -285,11 +284,6 @@ class TestAdapterCredentialPassing:
             }
         }
 
-        config = load_config(config_dict)
-
-        from ragdiff.adapters.factory import create_adapter
-
-        with pytest.raises(ConfigurationError, match="Missing API key"):
-            create_adapter(
-                "vectara", config.tools["vectara"], credentials=config._credentials
-            )
+        # Config.validate() should raise ValueError for missing credentials
+        with pytest.raises(ValueError, match="Missing required environment variable"):
+            load_config(config_dict)

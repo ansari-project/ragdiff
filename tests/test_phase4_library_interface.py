@@ -104,6 +104,7 @@ class TestQueryFunction:
         mock_validate_path.return_value = Path("config.yaml")
         mock_config = MagicMock()
         mock_config.tools = {"vectara": MagicMock()}
+        mock_config._credentials = {}  # Add credentials attribute
         mock_config_class.return_value = mock_config
 
         mock_adapter = MagicMock()
@@ -122,6 +123,10 @@ class TestQueryFunction:
         assert results[0].text == "Result 1"
         assert results[1].text == "Result 2"
         mock_adapter.search.assert_called_once_with("test query", top_k=2)
+        # Verify credentials passed to adapter
+        mock_create_adapter.assert_called_once_with(
+            "vectara", mock_config.tools["vectara"], credentials={}
+        )
 
     @patch("ragdiff.api._validate_config_path")
     @patch("ragdiff.api.Config")
@@ -130,6 +135,7 @@ class TestQueryFunction:
         mock_validate_path.return_value = Path("config.yaml")
         mock_config = MagicMock()
         mock_config.tools = {"vectara": MagicMock()}
+        mock_config._credentials = {}  # Add credentials attribute
         mock_config_class.return_value = mock_config
 
         with pytest.raises(
@@ -157,6 +163,7 @@ class TestRunBatchFunction:
         mock_validate_path.return_value = Path("config.yaml")
         mock_config = MagicMock()
         mock_config.tools = {"vectara": MagicMock(), "goodmem": MagicMock()}
+        mock_config._credentials = {}  # Add credentials attribute
         mock_config.get_llm_config.return_value = None
         mock_config_class.return_value = mock_config
 
@@ -191,6 +198,7 @@ class TestRunBatchFunction:
         mock_validate_path.return_value = Path("config.yaml")
         mock_config = MagicMock()
         mock_config.tools = {"vectara": MagicMock()}
+        mock_config._credentials = {}  # Add credentials attribute
         mock_config_class.return_value = mock_config
 
         with pytest.raises(
@@ -218,6 +226,7 @@ class TestCompareFunction:
         mock_validate_path.return_value = Path("config.yaml")
         mock_config = MagicMock()
         mock_config.tools = {"vectara": MagicMock(), "goodmem": MagicMock()}
+        mock_config._credentials = {}  # Add credentials attribute
         mock_config.get_llm_config.return_value = None
         mock_config_class.return_value = mock_config
 
@@ -258,6 +267,7 @@ class TestCompareFunction:
                     "goodmem": MagicMock(),
                     "agentset": MagicMock(),
                 }
+                mock_config._credentials = {}  # Add credentials attribute
                 mock_config.get_llm_config.return_value = None
                 mock_config_class.return_value = mock_config
 
@@ -349,9 +359,11 @@ class TestGetAvailableAdapters:
 class TestLoadConfig:
     """Test the load_config() function."""
 
+    @patch("ragdiff.api._validate_config_path")
     @patch("ragdiff.api.Config")
-    def test_load_config_success(self, mock_config_class):
+    def test_load_config_success(self, mock_config_class, mock_validate_path):
         """Test successful config loading."""
+        mock_validate_path.return_value = Path("config.yaml")
         mock_config = MagicMock()
         mock_config_class.return_value = mock_config
 
@@ -360,9 +372,11 @@ class TestLoadConfig:
         assert result == mock_config
         mock_config.validate.assert_called_once()
 
+    @patch("ragdiff.api._validate_config_path")
     @patch("ragdiff.api.Config")
-    def test_load_config_validates(self, mock_config_class):
+    def test_load_config_validates(self, mock_config_class, mock_validate_path):
         """Test that load_config calls validate()."""
+        mock_validate_path.return_value = Path("config.yaml")
         mock_config = MagicMock()
         mock_config_class.return_value = mock_config
 
@@ -555,7 +569,7 @@ tools:
             RagResult(id="g1", text="Goodmem result", score=0.8, source="Goodmem")
         ]
 
-        def create_adapter_side_effect(name, config):
+        def create_adapter_side_effect(name, config, credentials=None):
             if name == "vectara":
                 return mock_vectara
             elif name == "goodmem":

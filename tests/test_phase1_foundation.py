@@ -143,6 +143,7 @@ class TestAdapterABC:
 
     def test_complete_adapter_can_be_instantiated(self):
         """Complete adapter implementation can be instantiated."""
+        from ragdiff.core.models import ToolConfig
 
         class CompleteAdapter(RagAdapter):
             ADAPTER_API_VERSION = "1.0.0"
@@ -154,7 +155,8 @@ class TestAdapterABC:
             def validate_config(self, config):
                 pass
 
-        adapter = CompleteAdapter()
+        config = ToolConfig(name="complete", api_key_env="TEST_KEY")
+        adapter = CompleteAdapter(config)
         assert adapter.ADAPTER_NAME == "complete"
         assert adapter.ADAPTER_API_VERSION == "1.0.0"
 
