@@ -179,6 +179,27 @@ class AgentsetAdapter(RagAdapter):
             logger.error(f"Agentset search failed: {str(e)}")
             raise AdapterError(f"Agentset search failed: {str(e)}") from e
 
+    def _normalize_score(self, score: float) -> float:
+        """Normalize score to 0-1 range.
+
+        Agentset returns scores in 0-1 range, but this method handles
+        other possible scales for consistency.
+
+        Args:
+            score: Raw score
+
+        Returns:
+            Normalized score in 0-1 range
+        """
+        if 0 <= score <= 1:
+            return score
+        elif score > 100:
+            return min(score / 1000, 1.0)  # Assume out of 1000
+        elif score > 1:
+            return min(score / 100, 1.0)  # Assume percentage
+        else:
+            return max(0, score)  # Clamp negative
+
     def validate_config(self, config: dict[str, Any]) -> None:
         """Validate Agentset configuration.
 
