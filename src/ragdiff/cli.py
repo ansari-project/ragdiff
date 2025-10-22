@@ -501,7 +501,15 @@ def compare(
 
         # Show summary statistics
         if output_format != "summary":
-            stats = engine.get_summary_stats(result)
+            raw_stats = engine.get_summary_stats(result)
+            # Transform stats to format expected by display function
+            stats = {}
+            for tool in raw_stats.get("tools_compared", []):
+                stats[tool] = {
+                    "count": raw_stats.get("result_counts", {}).get(tool, 0),
+                    "avg_score": raw_stats.get("average_scores", {}).get(tool, 0),
+                    "latency_ms": raw_stats.get("latencies_ms", {}).get(tool, 0),
+                }
             _display_stats_table(stats)
 
     except Exception as e:
