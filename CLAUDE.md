@@ -16,7 +16,7 @@ uv pip install -e .
 
 # Run CLI commands
 uv run ragdiff query "your query" --tool vectara --config configs/tafsir.yaml
-uv run ragdiff run inputs/tafsir-test-queries.txt --config configs/tafsir.yaml --output-dir results/
+uv run ragdiff batch inputs/tafsir-test-queries.txt --config configs/tafsir.yaml --output-dir results/
 uv run ragdiff compare results/ --output evaluation.jsonl
 uv run ragdiff list-tools
 uv run ragdiff validate-config
@@ -42,12 +42,12 @@ uv run ragdiff query "Your query" --tool vectara --tool agentset --evaluate
 uv run ragdiff query "Your query" --tool vectara --output results.json --format json
 ```
 
-#### 2. `run` - Batch Processing
-Run multiple queries and save results separately per adapter. This is the expensive step.
+#### 2. `batch` - Batch Processing
+Process multiple queries and save results separately per adapter. This is the expensive step.
 
 ```bash
-# Basic batch run - saves per-adapter files
-uv run ragdiff run inputs/tafsir-test-queries.txt \
+# Basic batch processing - saves per-adapter files
+uv run ragdiff batch inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
   --output-dir results/ \
   --top-k 10
@@ -243,8 +243,8 @@ uv run ragdiff query "your query" --tool vectara --config configs/tafsir.yaml --
 uv run ragdiff query "your query" --tool vectara --tool agentset --evaluate --config configs/tafsir.yaml
 
 # Batch processing workflow
-# Step 1: Run queries (expensive)
-uv run ragdiff run inputs/tafsir-test-queries.txt \
+# Step 1: Batch process queries (expensive)
+uv run ragdiff batch inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
   --output-dir results/ \
   --top-k 5

@@ -264,7 +264,7 @@ def query(
 
 
 @app.command()
-def run(
+def batch(
     queries_file: str = typer.Argument(
         ..., help="File containing queries (one per line)"
     ),
@@ -299,14 +299,14 @@ def run(
         False, "--verbose", "-v", help="Enable verbose logging"
     ),
 ):
-    """Run batch queries from a file and save separate results per adapter.
+    """Process batch queries from a file and save separate results per adapter.
 
     The queries file should contain one query per line.
     Results are saved as separate files for each adapter in the output directory.
 
     Examples:
-        ragdiff run queries.txt --config config.yaml --output-dir results/
-        ragdiff run queries.txt -t vectara -t goodmem --output-dir results/
+        ragdiff batch queries.txt --config config.yaml --output-dir results/
+        ragdiff batch queries.txt -t vectara -t goodmem --output-dir results/
 
     This creates:
         results/vectara.jsonl

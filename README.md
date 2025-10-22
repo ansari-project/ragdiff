@@ -460,13 +460,13 @@ uv run ragdiff query "Your query" --tool vectara --output results.json --format 
 
 **Output Formats**: `display` (default), `json`, `markdown`
 
-#### 2. Run Command - Batch Processing
+#### 2. Batch Command - Batch Processing
 
-Run multiple queries and save results separately per adapter. This is the "expensive" step that calls the RAG systems.
+Process multiple queries and save results separately per adapter. This is the "expensive" step that calls the RAG systems.
 
 ```bash
-# Basic batch run - saves per-adapter files
-uv run ragdiff run inputs/tafsir-test-queries.txt \
+# Basic batch processing - saves per-adapter files
+uv run ragdiff batch inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
   --output-dir results/ \
   --top-k 10
@@ -476,8 +476,8 @@ uv run ragdiff run inputs/tafsir-test-queries.txt \
 #   results/agentset.jsonl
 #   results/goodmem.jsonl
 
-# Run specific tools only
-uv run ragdiff run inputs/queries.txt \
+# Process with specific tools only
+uv run ragdiff batch inputs/queries.txt \
   --tool vectara --tool agentset \
   --output-dir results/
 ```
@@ -513,8 +513,8 @@ uv run ragdiff compare results/ --format json --output eval.json
 Here's a complete workflow showing the separation of RAG queries from evaluation:
 
 ```bash
-# Step 1: Run queries and save per-adapter results (expensive, run once)
-uv run ragdiff run inputs/tafsir-test-queries.txt \
+# Step 1: Batch process queries and save per-adapter results (expensive, run once)
+uv run ragdiff batch inputs/tafsir-test-queries.txt \
   --config configs/tafsir.yaml \
   --output-dir results/ \
   --top-k 10
@@ -552,7 +552,7 @@ uv run ragdiff quick-test
 # Get help
 uv run ragdiff --help
 uv run ragdiff compare --help
-uv run ragdiff run --help
+uv run ragdiff batch --help
 ```
 
 ## Project Structure

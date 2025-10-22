@@ -246,13 +246,13 @@ class TestCLICommands:
         assert "output_file" in params
         assert "output_format" in params
 
-    def test_run_command_has_correct_signature(self):
-        """Test that run command has expected parameters."""
+    def test_batch_command_has_correct_signature(self):
+        """Test that batch command has expected parameters."""
         from inspect import signature
 
-        from ragdiff.cli import run
+        from ragdiff.cli import batch
 
-        sig = signature(run)
+        sig = signature(batch)
         params = list(sig.parameters.keys())
 
         # Verify required and key parameters exist
@@ -286,5 +286,5 @@ class TestCLICommands:
 
         # Verify the three main commands exist
         assert "query" in commands
-        assert "run" in commands
+        assert "batch" in commands
         assert "compare" in commands
