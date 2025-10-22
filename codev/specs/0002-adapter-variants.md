@@ -1,6 +1,6 @@
 # TICK Spec: Adapter Variants Support
 
-**ID**: 0004
+**ID**: 0002
 **Created**: 2025-10-19
 **Status**: ✅ Completed
 **Protocol**: TICK
