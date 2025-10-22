@@ -57,7 +57,10 @@ def setup_logging(verbose: bool = False):
 def query(
     query_text: str = typer.Argument(..., help="Search query to run"),
     tools: list[str] = typer.Option(
-        None, "--tool", "-t", help="RAG tools to query (can specify multiple)"
+        None,
+        "--tool",
+        "-t",
+        help="RAG tools to query (defaults to all tools in config)",
     ),
     config_file: str = typer.Option(
         "configs/tafsir.yaml", "--config", "-c", help="Path to configuration file"
@@ -88,14 +91,18 @@ def query(
 ):
     """Query one or more RAG systems.
 
+    If no tools specified, queries all tools in config.
     If one tool is specified, runs a simple query.
     If multiple tools are specified, compares results side-by-side.
 
     Examples:
+        # Query all tools in config
+        ragdiff query "What is RAG?"
+
         # Single tool query
         ragdiff query "What is RAG?" --tool vectara
 
-        # Compare multiple tools
+        # Compare specific tools
         ragdiff query "What is RAG?" --tool vectara --tool agentset --evaluate
     """
     setup_logging(verbose)
@@ -109,13 +116,12 @@ def query(
         config = Config(Path(config_file))
         config.validate()
 
-        # Determine which tools to use
+        # Determine which tools to use (default to all if none specified)
         if not tools:
+            tools = list(config.tools.keys())
             console.print(
-                "[red]Error: At least one tool must be specified with --tool[/red]"
+                f"[dim]No tools specified, using all tools: {', '.join(tools)}[/dim]"
             )
-            console.print(f"Available tools: {', '.join(config.tools.keys())}")
-            raise typer.Exit(1)
 
         # Check all tools exist
         for tool in tools:
