@@ -17,19 +17,61 @@ load_dotenv()
 
 
 class Config:
-    """Manages configuration for the comparison harness."""
+    """Manages configuration for the comparison harness.
 
-    def __init__(self, config_path: Optional[Path] = None):
+    Supports multi-tenant usage by accepting credentials dict that takes
+    precedence over environment variables.
+    """
+
+    def __init__(
+        self,
+        config_path: Optional[Path] = None,
+        config_dict: Optional[dict] = None,
+        credentials: Optional[dict[str, str]] = None,
+    ):
         """Initialize configuration.
 
         Args:
             config_path: Path to configuration file
+            config_dict: Configuration dictionary (alternative to file)
+            credentials: Optional credential overrides (env var name -> value)
+                Takes precedence over environment variables.
+
+        Raises:
+            ValueError: If both config_path and config_dict provided, or neither
+
+        Example:
+            # From file with environment variables
+            config = Config(config_path=Path("config.yaml"))
+
+            # From file with explicit credentials
+            config = Config(
+                config_path=Path("config.yaml"),
+                credentials={"VECTARA_API_KEY": "sk_abc123"}
+            )
+
+            # From dict
+            config = Config(
+                config_dict={"tools": {...}},
+                credentials={"VECTARA_API_KEY": "sk_abc123"}
+            )
         """
-        if config_path is None:
+        # Validation: exactly one source
+        if config_path and config_dict:
+            raise ValueError("Provide either config_path or config_dict, not both")
+        if not config_path and not config_dict:
+            # Default to standard location if neither provided
             config_path = Path(__file__).parent.parent.parent / "configs" / "tools.yaml"
 
         self.config_path = config_path
-        self._raw_config = self._load_config()
+        self._credentials = credentials or {}
+
+        # Load from file or use provided dict
+        if config_path:
+            self._raw_config = self._load_config()
+        else:
+            self._raw_config = config_dict
+
         self._process_env_vars()
         self._parse_config()
 
@@ -46,15 +88,43 @@ class Config:
             config = yaml.safe_load(f)
             return config if isinstance(config, dict) else {}
 
+    def _get_env_value(self, env_var_name: str) -> Optional[str]:
+        """Get environment value from credentials or environment.
+
+        Credentials dict takes precedence over environment variables.
+
+        Args:
+            env_var_name: Name of environment variable
+
+        Returns:
+            Value from credentials dict, environment, or None
+
+        Resolution order:
+            1. Passed credentials dict (highest priority)
+            2. Process environment variables
+            3. .env file (via load_dotenv)
+            4. None (will cause error during validation)
+        """
+        # Check passed credentials first
+        if env_var_name in self._credentials:
+            return self._credentials[env_var_name]
+
+        # Fall back to environment
+        return os.getenv(env_var_name)
+
     def _process_env_vars(self) -> None:
-        """Process environment variable references in config."""
+        """Process environment variable references in config.
+
+        Uses credential resolution to support multi-tenant usage.
+        """
 
         def replace_env_vars(obj):
             """Recursively replace ${ENV_VAR} with actual values."""
             if isinstance(obj, str):
                 if obj.startswith("${") and obj.endswith("}"):
                     env_var = obj[2:-1]
-                    value = os.getenv(env_var)
+                    # Use _get_env_value instead of os.getenv
+                    value = self._get_env_value(env_var)
                     if value is None:
                         # Keep the placeholder if env var not set
                         return obj
@@ -149,6 +219,9 @@ class Config:
     def validate(self) -> None:
         """Validate the configuration.
 
+        Validates that all required credentials are available from either
+        the credentials dict or environment variables.
+
         Raises:
             ValueError: If configuration is invalid
         """
@@ -158,16 +231,17 @@ class Config:
 
         # Validate each configured tool
         for _tool_name, config in self.tools.items():
-            # Check API key is set in environment
-            if not os.getenv(config.api_key_env):
+            # Check API key is set in environment OR credentials
+            if not self._get_env_value(config.api_key_env):
                 raise ValueError(
-                    f"Missing required environment variable: {config.api_key_env}"
+                    f"Missing required environment variable: {config.api_key_env}. "
+                    f"Set it in environment or pass via credentials parameter."
                 )
 
         # Check LLM config if present (optional)
         llm_config = self.get_llm_config()
         if llm_config and llm_config.get("api_key_env"):
-            if not os.getenv(llm_config["api_key_env"]):
+            if not self._get_env_value(llm_config["api_key_env"]):
                 logger.warning(
                     f"LLM evaluation configured but API key not set: {llm_config['api_key_env']}"
                 )

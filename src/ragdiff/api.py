@@ -82,10 +82,55 @@ def _validate_queries_list(queries: list[str]) -> None:
         raise ValidationError("queries list cannot be empty")
 
 
+def load_config(
+    config: str | Path | dict,
+    credentials: Optional[dict[str, str]] = None,
+) -> Config:
+    """Load and validate configuration.
+
+    Supports multi-tenant usage by accepting credentials dict that takes
+    precedence over environment variables.
+
+    Args:
+        config: Path to YAML file OR config dictionary
+        credentials: Optional credential overrides (env var name -> value)
+            Takes precedence over environment variables.
+
+    Returns:
+        Validated Config object
+
+    Raises:
+        ConfigurationError: If config is invalid
+
+    Example:
+        # From file with environment variables
+        config = load_config("config.yaml")
+
+        # From file with explicit credentials (multi-tenant)
+        config = load_config("config.yaml", credentials={
+            "VECTARA_API_KEY": "sk_abc123"
+        })
+
+        # From dict
+        config_dict = {"tools": {"vectara": {...}}}
+        config = load_config(config_dict, credentials={...})
+    """
+    if isinstance(config, dict):
+        cfg = Config(config_dict=config, credentials=credentials)
+    else:
+        path = _validate_config_path(config)
+        cfg = Config(config_path=path, credentials=credentials)
+
+    cfg.validate()
+    return cfg
+
+
 def _load_and_validate_config(
     config_path: str | Path, tools: Optional[list[str]] = None
 ) -> tuple[Config, list[str]]:
     """Load config and validate tools exist.
+
+    DEPRECATED: Use load_config() instead for new code.
 
     Args:
         config_path: Path to YAML configuration file
@@ -97,12 +142,8 @@ def _load_and_validate_config(
     Raises:
         ConfigurationError: If config is invalid or tools not found
     """
-    # Validate path exists
-    path = _validate_config_path(config_path)
-
-    # Load and validate configuration
-    config = Config(path)
-    config.validate()
+    # Use load_config for consistency
+    config = load_config(config_path)
 
     # Determine which tools to use
     if tools is None:
@@ -146,9 +187,9 @@ def _create_llm_evaluator(config: Config, evaluate: bool) -> Optional[LLMEvaluat
         )
         return None
 
-    # Get API key from environment
+    # Get API key from config credential resolution
     api_key_env = llm_config.get("api_key_env", "ANTHROPIC_API_KEY")
-    api_key = os.getenv(api_key_env)
+    api_key = config._get_env_value(api_key_env)
 
     if not api_key:
         raise ConfigurationError(
@@ -161,7 +202,7 @@ def _create_llm_evaluator(config: Config, evaluate: bool) -> Optional[LLMEvaluat
 
 
 def query(
-    config_path: str | Path,
+    config: Config | str | Path,
     query_text: str,
     tool: str,
     top_k: int = 5,
@@ -169,7 +210,7 @@ def query(
     """Run a single query against one RAG system.
 
     Args:
-        config_path: Path to YAML configuration file
+        config: Config object OR path to YAML file (backward compatible)
         query_text: The search query to execute
         tool: Name of the tool to query (must be configured in config)
         top_k: Number of results to return (default: 5)
@@ -183,7 +224,12 @@ def query(
         AdapterError: If the adapter fails to execute the query
 
     Example:
-        >>> from ragdiff import query
+        # New: Using Config object with credentials
+        >>> from ragdiff import load_config, query
+        >>> config = load_config("config.yaml", credentials={"VECTARA_API_KEY": "key"})
+        >>> results = query(config, "What is RAG?", tool="vectara")
+
+        # Old: Still works with file path (backward compatible)
         >>> results = query("config.yaml", "What is RAG?", tool="vectara", top_k=5)
         >>> for result in results:
         ...     print(f"{result.score:.3f}: {result.text[:100]}")
@@ -192,16 +238,26 @@ def query(
     _validate_query_text(query_text)
     _validate_top_k(top_k)
 
-    # Load and validate configuration
-    config, _ = _load_and_validate_config(config_path, tools=[tool])
+    # Handle both Config objects and paths (backward compat)
+    if isinstance(config, Config):
+        cfg = config
+    else:
+        cfg, _ = _load_and_validate_config(config, tools=[tool])
 
-    # Create adapter and run query
-    adapter = create_adapter(tool, config.tools[tool])
+    # Validate tool exists
+    if tool not in cfg.tools:
+        raise ConfigurationError(
+            f"Tool '{tool}' not found in configuration. "
+            f"Available tools: {', '.join(cfg.tools.keys())}"
+        )
+
+    # Create adapter with credentials from Config and run query
+    adapter = create_adapter(tool, cfg.tools[tool], credentials=cfg._credentials)
     return adapter.search(query_text, top_k=top_k)
 
 
 def run_batch(
-    config_path: str | Path,
+    config: Config | str | Path,
     queries: list[str],
     tools: Optional[list[str]] = None,
     top_k: int = 5,
@@ -211,7 +267,7 @@ def run_batch(
     """Run multiple queries against multiple RAG systems.
 
     Args:
-        config_path: Path to YAML configuration file
+        config: Config object OR path to YAML file (backward compatible)
         queries: List of query strings to execute
         tools: List of tool names to use (default: all configured tools)
         top_k: Number of results per query (default: 5)
@@ -238,19 +294,26 @@ def run_batch(
     _validate_queries_list(queries)
     _validate_top_k(top_k)
 
-    # Load and validate configuration
-    config, tool_names = _load_and_validate_config(config_path, tools)
+    # Handle both Config objects and paths (backward compat)
+    if isinstance(config, Config):
+        cfg = config
+        # Determine which tools to use
+        tool_names = tools if tools else list(cfg.tools.keys())
+    else:
+        cfg, tool_names = _load_and_validate_config(config, tools)
 
-    # Create adapters
+    # Create adapters with credentials from Config
     adapters = {}
     for tool_name in tool_names:
-        adapters[tool_name] = create_adapter(tool_name, config.tools[tool_name])
+        adapters[tool_name] = create_adapter(
+            tool_name, cfg.tools[tool_name], credentials=cfg._credentials
+        )
 
     # Create comparison engine
     engine = ComparisonEngine(adapters)
 
     # Create LLM evaluator if needed
-    evaluator = _create_llm_evaluator(config, evaluate)
+    evaluator = _create_llm_evaluator(cfg, evaluate)
 
     # Run queries
     results = []
@@ -267,7 +330,7 @@ def run_batch(
 
 
 def compare(
-    config_path: str | Path,
+    config: Config | str | Path,
     query_text: str,
     tools: Optional[list[str]] = None,
     top_k: int = 5,
@@ -277,7 +340,7 @@ def compare(
     """Compare multiple RAG systems on a single query.
 
     Args:
-        config_path: Path to YAML configuration file
+        config: Config object OR path to YAML file (backward compatible)
         query_text: The search query to execute
         tools: List of tool names to compare (default: all configured tools)
         top_k: Number of results per tool (default: 5)
@@ -293,7 +356,12 @@ def compare(
         AdapterError: If any adapter fails to execute the query
 
     Example:
-        >>> from ragdiff import compare
+        # New: Using Config object with credentials
+        >>> from ragdiff import load_config, compare
+        >>> config = load_config("config.yaml", credentials={"VECTARA_API_KEY": "key"})
+        >>> result = compare(config, "What is RAG?", tools=["vectara", "goodmem"])
+
+        # Old: Still works with file path (backward compatible)
         >>> result = compare(
         ...     "config.yaml",
         ...     "What is RAG?",
@@ -310,13 +378,20 @@ def compare(
     _validate_query_text(query_text)
     _validate_top_k(top_k)
 
-    # Load and validate configuration
-    config, tool_names = _load_and_validate_config(config_path, tools)
+    # Handle both Config objects and paths (backward compat)
+    if isinstance(config, Config):
+        cfg = config
+        # Determine which tools to use
+        tool_names = tools if tools else list(cfg.tools.keys())
+    else:
+        cfg, tool_names = _load_and_validate_config(config, tools)
 
-    # Create adapters
+    # Create adapters with credentials from Config
     adapters = {}
     for tool_name in tool_names:
-        adapters[tool_name] = create_adapter(tool_name, config.tools[tool_name])
+        adapters[tool_name] = create_adapter(
+            tool_name, cfg.tools[tool_name], credentials=cfg._credentials
+        )
 
     # Create comparison engine
     engine = ComparisonEngine(adapters)
@@ -325,7 +400,7 @@ def compare(
     result = engine.run_comparison(query_text, top_k=top_k, parallel=parallel)
 
     # Optionally run LLM evaluation
-    evaluator = _create_llm_evaluator(config, evaluate)
+    evaluator = _create_llm_evaluator(cfg, evaluate)
     if evaluator:
         result.llm_evaluation = evaluator.evaluate(result)
 
@@ -452,28 +527,6 @@ def get_available_adapters() -> list[dict[str, Any]]:
         adapters_info.append(metadata)
 
     return adapters_info
-
-
-def load_config(config_path: str | Path) -> Config:
-    """Load and validate a configuration file.
-
-    Args:
-        config_path: Path to YAML configuration file
-
-    Returns:
-        Validated Config object
-
-    Raises:
-        ConfigurationError: If config file is invalid
-
-    Example:
-        >>> from ragdiff import load_config
-        >>> config = load_config("config.yaml")
-        >>> print(f"Configured tools: {', '.join(config.tools.keys())}")
-    """
-    config = Config(Path(config_path))
-    config.validate()
-    return config
 
 
 def validate_config(config_path: str | Path) -> dict[str, Any]:

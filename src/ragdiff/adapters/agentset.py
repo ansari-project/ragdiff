@@ -20,21 +20,22 @@ class AgentsetAdapter(RagAdapter):
     ADAPTER_API_VERSION = "1.0.0"
     ADAPTER_NAME = "agentset"
 
-    def __init__(self, config: ToolConfig):
+    def __init__(self, config: ToolConfig, credentials: dict[str, str] | None = None):
         """Initialize Agentset adapter.
 
         Args:
             config: Tool configuration
+            credentials: Optional credential overrides
 
         Raises:
             ConfigurationError: If required environment variables are missing
         """
         # Store config and validate
-        self.config = config
+        super().__init__(config, credentials)
         self.validate_config(config.__dict__)
 
-        # Get API credentials from environment
-        api_token = os.getenv(config.api_key_env)
+        # Get API credentials from override or environment
+        api_token = self._get_credential(config.api_key_env)
         if not api_token:
             raise ConfigurationError(
                 f"Missing required environment variable: {config.api_key_env}"
@@ -45,7 +46,7 @@ class AgentsetAdapter(RagAdapter):
         namespace_id_env = (
             getattr(config, "namespace_id_env", None) or "AGENTSET_NAMESPACE_ID"
         )
-        namespace_id = os.getenv(namespace_id_env)
+        namespace_id = self._get_credential(namespace_id_env)
         if not namespace_id:
             raise ConfigurationError(
                 f"Missing required environment variable: {namespace_id_env}"

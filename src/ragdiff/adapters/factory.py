@@ -1,6 +1,7 @@
 """Factory for creating RAG tool adapters."""
 
 import logging
+from typing import Optional
 
 from ..core.errors import AdapterRegistryError
 from ..core.models import ToolConfig
@@ -14,18 +15,35 @@ logger = logging.getLogger(__name__)
 from . import agentset, goodmem, vectara  # noqa: F401
 
 
-def create_adapter(tool_name: str, config: ToolConfig) -> RagAdapter:
+def create_adapter(
+    tool_name: str,
+    config: ToolConfig,
+    credentials: Optional[dict[str, str]] = None,
+) -> RagAdapter:
     """Create a RAG tool adapter.
 
     Args:
         tool_name: Name of the tool (display name from YAML key)
         config: Tool configuration
+        credentials: Optional credential overrides (env var name -> value)
+            Takes precedence over environment variables.
 
     Returns:
         Initialized adapter instance
 
     Raises:
         AdapterRegistryError: If adapter is not registered
+
+    Example:
+        # Using environment variables
+        adapter = create_adapter("vectara", config)
+
+        # Using explicit credentials (multi-tenant)
+        adapter = create_adapter(
+            "vectara",
+            config,
+            credentials={"VECTARA_API_KEY": tenant_key}
+        )
     """
     # Use config.adapter field if available, otherwise default to tool_name
     # This enables variants like "agentset-rerank" and "agentset-no-rerank"
@@ -42,7 +60,7 @@ def create_adapter(tool_name: str, config: ToolConfig) -> RagAdapter:
     logger.info(f"Creating {adapter_name} adapter for tool '{tool_name}'")
 
     try:
-        adapter = adapter_class(config)
+        adapter = adapter_class(config, credentials=credentials)
         return adapter
     except Exception as e:
         logger.error(f"Failed to create adapter for {tool_name}: {e}")

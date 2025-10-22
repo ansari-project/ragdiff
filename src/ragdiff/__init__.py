@@ -48,7 +48,7 @@ from .api import (
     compare,
     evaluate_with_llm,
     get_available_adapters,
-    load_config,
+    load_config,  # Already exported
     query,
     run_batch,
     validate_config,

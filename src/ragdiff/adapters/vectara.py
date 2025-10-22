@@ -26,17 +26,18 @@ class VectaraAdapter(RagAdapter):
     ADAPTER_API_VERSION = "1.0.0"
     ADAPTER_NAME = "vectara"
 
-    def __init__(self, config: ToolConfig):
+    def __init__(self, config: ToolConfig, credentials: dict[str, str] | None = None):
         """Initialize Vectara adapter.
 
         Args:
             config: Tool configuration
+            credentials: Optional credential overrides
         """
-        self.config = config
+        super().__init__(config, credentials)
         self.validate_config(config.__dict__)
 
-        # Get credentials from environment
-        api_key = os.getenv(config.api_key_env)
+        # Get credentials from override or environment
+        api_key = self._get_credential(config.api_key_env)
         if not api_key:
             raise ConfigurationError(
                 f"Missing API key environment variable: {config.api_key_env}"

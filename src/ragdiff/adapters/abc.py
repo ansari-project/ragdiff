@@ -4,10 +4,11 @@ This module defines the stable adapter interface that all RAG system adapters
 must implement. The interface is versioned to support backwards compatibility.
 """
 
+import os
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
-from ..core.models import RagResult
+from ..core.models import RagResult, ToolConfig
 
 
 class RagAdapter(ABC):
@@ -16,15 +17,55 @@ class RagAdapter(ABC):
     All adapters must implement this interface to ensure compatibility
     with the RAGDiff framework.
 
+    Supports multi-tenant usage by accepting optional credentials dict
+    that takes precedence over environment variables.
+
     Attributes:
         ADAPTER_API_VERSION: Version of the adapter API this adapter implements.
                             Must match the registry's supported version.
         ADAPTER_NAME: Unique name for this adapter (e.g., "vectara", "goodmem").
+        config: Tool configuration
+        _credentials: Optional credential overrides
     """
 
     # Class attributes that must be set by subclasses
     ADAPTER_API_VERSION: str = "1.0.0"
     ADAPTER_NAME: str = ""  # Must be overridden by subclass
+
+    def __init__(
+        self,
+        config: ToolConfig,
+        credentials: Optional[dict[str, str]] = None,
+    ):
+        """Initialize the adapter.
+
+        Args:
+            config: Tool configuration
+            credentials: Optional credential overrides (env var name -> value)
+                Takes precedence over environment variables.
+        """
+        self.config = config
+        self._credentials = credentials or {}
+
+    def _get_credential(self, env_var_name: str) -> Optional[str]:
+        """Get credential from override dict or environment.
+
+        Args:
+            env_var_name: Name of environment variable
+
+        Returns:
+            Credential value or None
+
+        Resolution order:
+            1. Passed credentials dict (highest priority)
+            2. Environment variables
+        """
+        # Check credentials dict first
+        if env_var_name in self._credentials:
+            return self._credentials[env_var_name]
+
+        # Fall back to environment
+        return os.getenv(env_var_name)
 
     @abstractmethod
     def search(self, query: str, top_k: int = 5) -> list[RagResult]:
