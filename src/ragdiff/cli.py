@@ -613,9 +613,18 @@ def compare(
 
         # Save evaluations
         if output_file:
-            if output_format == "json":
+            # Auto-detect format from file extension if not explicitly set
+            detected_format = output_format
+            if output_format == "jsonl":  # default value
+                ext = Path(output_file).suffix.lower()
+                if ext == ".md":
+                    detected_format = "markdown"
+                elif ext == ".json":
+                    detected_format = "json"
+
+            if detected_format == "json":
                 output = json.dumps(evaluations, indent=2, ensure_ascii=False)
-            elif output_format == "markdown":
+            elif detected_format == "markdown":
                 # Generate markdown report
                 lines = ["# RAG Evaluation Report\n"]
                 for eval_data in evaluations:
