@@ -1,10 +1,22 @@
-# RAGDiff - Claude Code Instructions
+# RAGDiff v2.0 - Claude Code Instructions
 
 This file contains project-specific instructions for Claude Code when working on the RAGDiff codebase.
 
 ## Project Overview
 
-RAGDiff is a flexible framework for comparing Retrieval-Augmented Generation (RAG) systems side-by-side with LLM evaluation support. It provides both a CLI tool and a Python library API.
+RAGDiff v2.0 is a domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support. It provides a CLI tool and Python library API for systematic RAG system comparison.
+
+## What's New in v2.0
+
+RAGDiff v2.0 introduces a **domain-based architecture** that organizes RAG comparisons around problem domains:
+
+- **Domains**: Separate workspaces for different problem areas (e.g., tafsir, legal, medical)
+- **Systems**: RAG system configurations (e.g., vectara-default, mongodb-local)
+- **Query Sets**: Collections of test queries for evaluation
+- **Runs**: Executions of query sets against systems
+- **Comparisons**: LLM-based evaluations of multiple runs
+
+This architecture replaces the v1.x adapter-based approach with a more structured, reproducible workflow.
 
 ## Running the CLI
 
@@ -14,140 +26,199 @@ RAGDiff is a flexible framework for comparing Retrieval-Augmented Generation (RA
 # Install in editable mode (do this once after cloning)
 uv pip install -e .
 
-# Run CLI commands
-uv run ragdiff query "your query" --tool vectara --config configs/tafsir.yaml
-uv run ragdiff batch inputs/tafsir-test-queries.txt --config configs/tafsir.yaml --output-dir results/
-uv run ragdiff compare results/ --output evaluation.jsonl
-uv run ragdiff list-tools
-uv run ragdiff validate-config
+# Run v2.0 CLI commands
+uv run ragdiff run tafsir vectara-default test-queries
+uv run ragdiff compare tafsir <run-id-1> <run-id-2>
 ```
 
 **DO NOT** use the old hacky method with `sys.path.insert(0, 'src')` - the package is properly configured in `pyproject.toml` with the correct entry points.
 
 ### CLI Command Structure
 
-RAGDiff has three main commands designed to separate expensive RAG queries from cheap LLM evaluation:
+RAGDiff v2.0 has two main commands:
 
-#### 1. `query` - Interactive Queries
-Query one or more RAG systems interactively.
+#### 1. `run` - Execute Query Sets
 
-```bash
-# Query a single tool
-uv run ragdiff query "What is Islamic inheritance law?" --tool vectara --top-k 10
-
-# Compare multiple tools live
-uv run ragdiff query "Your query" --tool vectara --tool agentset --evaluate
-
-# Save results to file
-uv run ragdiff query "Your query" --tool vectara --output results.json --format json
-```
-
-#### 2. `batch` - Batch Processing
-Process multiple queries and save results separately per adapter. This is the expensive step.
+Execute a query set against a system and save results:
 
 ```bash
-# Basic batch processing - saves per-adapter files
-uv run ragdiff batch inputs/tafsir-test-queries.txt \
-  --config configs/tafsir.yaml \
-  --output-dir results/ \
-  --top-k 10
+# Basic run
+uv run ragdiff run <domain> <system> <query-set>
 
-# This creates: results/vectara.jsonl, results/agentset.jsonl, etc.
+# Examples
+uv run ragdiff run tafsir vectara-default test-queries
+uv run ragdiff run tafsir mongodb-local test-queries --concurrency 5
+
+# With options
+uv run ragdiff run tafsir vectara-default test-queries \
+  --domains-dir ./domains \
+  --concurrency 10 \
+  --timeout 30 \
+  --quiet
 ```
 
-#### 3. `compare` - Evaluate Saved Results
-Load previously saved results and compare them using LLM evaluation. This is the cheap step you can run multiple times.
+**What it does:**
+- Loads system configuration from `domains/<domain>/systems/<system>.yaml`
+- Loads queries from `domains/<domain>/query-sets/<query-set>.txt`
+- Executes all queries against the system
+- Saves run results to `domains/<domain>/runs/<run-id>.json`
+- Shows progress bar and summary table
+
+#### 2. `compare` - Evaluate Runs
+
+Compare multiple runs using LLM evaluation:
 
 ```bash
-# Evaluate saved results
-uv run ragdiff compare results/ --output evaluation.jsonl
+# Basic comparison
+uv run ragdiff compare <domain> <run-id-1> <run-id-2> [<run-id-3> ...]
 
-# Generate markdown report
-uv run ragdiff compare results/ --format markdown --output report.md
+# Examples
+uv run ragdiff compare tafsir abc123 def456
+uv run ragdiff compare tafsir abc123 def456 --format json --output comparison.json
+
+# With options
+uv run ragdiff compare tafsir abc123 def456 \
+  --domains-dir ./domains \
+  --model gpt-4 \
+  --temperature 0.0 \
+  --format markdown \
+  --output report.md
 ```
 
-**Why this separation?**
-- **Cost savings**: RAG APIs called once, LLM evaluation can be re-run many times
-- **Speed**: Evaluation takes seconds vs minutes for RAG queries
-- **Experimentation**: Try different evaluation approaches without waiting
+**Output formats:**
+- `table`: Rich table to console (default)
+- `json`: JSON to file or console
+- `markdown`: Markdown report to file or console
+
+**What it does:**
+- Loads runs from `domains/<domain>/runs/`
+- Uses LLM (via LiteLLM) to evaluate which system performed better
+- Saves comparison to `domains/<domain>/comparisons/<comparison-id>.json`
+- Outputs results in specified format
+
+### Domain Directory Structure
+
+```
+domains/
+├── tafsir/                    # Domain: Islamic tafsir
+│   ├── domain.yaml            # Domain config (evaluator settings)
+│   ├── systems/               # System configurations
+│   │   ├── vectara-default.yaml
+│   │   ├── mongodb-local.yaml
+│   │   └── agentset-prod.yaml
+│   ├── query-sets/            # Query collections
+│   │   ├── test-queries.txt
+│   │   └── production-queries.txt
+│   ├── runs/                  # Run results (auto-created)
+│   │   ├── <run-id-1>.json
+│   │   └── <run-id-2>.json
+│   └── comparisons/           # Comparison results (auto-created)
+│       └── <comparison-id>.json
+└── legal/                     # Domain: Legal documents
+    ├── domain.yaml
+    ├── systems/
+    └── query-sets/
+```
 
 ## Project Structure
 
 ```
 ragdiff/
-├── src/ragdiff/          # Main package (note: src/ragdiff not just src/)
-│   ├── __init__.py       # Public API exports
-│   ├── api.py            # Library interface functions
-│   ├── cli.py            # Typer CLI implementation
-│   ├── version.py        # Version info
-│   ├── core/             # Core models and configuration
-│   │   ├── models.py     # Data models (RagResult, ComparisonResult, etc.)
-│   │   ├── config.py     # Configuration management
-│   │   ├── errors.py     # Custom exceptions
-│   │   └── serialization.py  # JSON/dict conversion
-│   ├── adapters/         # RAG tool adapters
-│   │   ├── abc.py        # Abstract base class RagAdapter
-│   │   ├── registry.py   # Adapter registration system
-│   │   ├── factory.py    # Adapter factory
-│   │   ├── vectara.py    # Vectara adapter
-│   │   ├── goodmem.py    # Goodmem adapter
-│   │   └── agentset.py   # Agentset adapter
-│   ├── comparison/       # Comparison engine
-│   │   └── engine.py     # Parallel/sequential search execution
-│   ├── evaluation/       # LLM evaluation
-│   │   └── evaluator.py  # Claude-based evaluation
-│   └── display/          # Output formatting
-│       └── formatter.py  # Multiple output format support
-├── tests/                # Test suite
-│   ├── test_core_components.py  # Core functionality tests
-│   ├── test_adapters.py         # Adapter tests
-│   ├── test_public_api.py       # Library API tests
-│   └── test_cli.py              # CLI tests
-├── configs/              # Configuration files
-│   ├── tafsir.yaml       # Tafsir comparison config
-│   └── mawsuah.yaml      # Mawsuah comparison config
-├── inputs/               # Input query files
-│   └── tafsir-test-queries.txt
-└── pyproject.toml        # Package configuration
+├── src/ragdiff/              # Main package
+│   ├── __init__.py           # Public API exports
+│   ├── cli.py                # Main CLI entry point (imports cli_v2)
+│   ├── cli_v2.py             # v2.0 CLI implementation
+│   ├── version.py            # Version info
+│   ├── core/                 # Core v2.0 models
+│   │   ├── models_v2.py      # Domain-based models (Run, Comparison, etc.)
+│   │   ├── loaders.py        # File loading utilities
+│   │   ├── storage.py        # Persistence utilities
+│   │   ├── errors.py         # Custom exceptions
+│   │   └── logging.py        # Logging configuration
+│   ├── systems/              # System implementations
+│   │   ├── abc.py            # System abstract base class
+│   │   ├── registry.py       # System registration
+│   │   ├── factory.py        # System factory
+│   │   ├── vectara.py        # Vectara system
+│   │   ├── mongodb.py        # MongoDB system
+│   │   └── agentset.py       # Agentset system
+│   ├── execution/            # Run execution
+│   │   └── executor.py       # Parallel query execution
+│   ├── comparison/           # Comparison engine
+│   │   └── evaluator.py      # LLM-based evaluation
+│   └── display/              # Output formatting (v1.x, kept for compatibility)
+├── tests/                    # Test suite
+│   ├── test_core_v2.py       # Core v2.0 tests
+│   ├── test_systems.py       # System tests
+│   ├── test_execution.py     # Execution engine tests
+│   └── test_cli_v2.py        # CLI tests
+├── domains/                  # Domain workspaces
+│   └── example-domain/       # Example domain structure
+└── pyproject.toml            # Package configuration
 ```
 
 ## Architecture
 
-### Adapter Pattern
+### Domain-Based Architecture
 
-All RAG tools implement the `RagAdapter` abstract base class:
+RAGDiff v2.0 organizes everything around **domains**:
+
+1. **Domain** (`domains/<domain>/domain.yaml`):
+   - Name and description
+   - Evaluator configuration (LLM model, temperature, prompt template)
+
+2. **System** (`domains/<domain>/systems/<system>.yaml`):
+   - Name, tool type (vectara, mongodb, agentset)
+   - Configuration (API keys, endpoints, etc.)
+
+3. **Query Set** (`domains/<domain>/query-sets/<name>.txt`):
+   - Text file with one query per line
+   - Used for consistent evaluation across systems
+
+4. **Run** (`domains/<domain>/runs/<run-id>.json`):
+   - Results of executing a query set against a system
+   - Includes all query results, errors, timing info
+   - Snapshots system config and query set for reproducibility
+
+5. **Comparison** (`domains/<domain>/comparisons/<comparison-id>.json`):
+   - LLM evaluation of multiple runs
+   - Per-query winner determination
+   - Quality scores and analysis
+
+### System Pattern
+
+All RAG systems implement the `System` abstract base class:
 
 ```python
-class RagAdapter(ABC):
+class System(ABC):
     @abstractmethod
-    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         """Execute search and return normalized results."""
         pass
 ```
 
-New adapters are automatically registered via:
+New systems are automatically registered via:
 ```python
-from .registry import register_adapter
-register_adapter(MyAdapter)
+from .registry import register_tool
+register_tool("mongodb", MongoDBSystem)
 ```
 
 ### Configuration System
 
-- YAML-based configuration in `configs/`
-- Environment variable substitution with `${VAR_NAME}`
-- Multi-tenant credential support (can override credentials per-adapter)
-- Adapter variants (same adapter, different config names)
+- **YAML-based** configuration in domain directories
+- **Environment variable substitution** with `${VAR_NAME}` (preserved in snapshots)
+- **LiteLLM integration** for multi-provider LLM support
+- **Config snapshotting** for reproducibility
 
 ### Version Management
 
 Version is defined in `src/ragdiff/version.py`:
 ```python
-__version__ = "1.1.1"  # Current version
-ADAPTER_API_VERSION = "1.0.0"
+__version__ = "2.0.0"  # Current version
 ```
 
 Follow semantic versioning:
-- MAJOR: Breaking changes to public API or adapter interface
+- MAJOR: Breaking changes to public API or system interface
 - MINOR: New features, backward compatible
 - PATCH: Bug fixes
 
@@ -157,8 +228,8 @@ Follow semantic versioning:
 # Run all tests
 uv run pytest tests/
 
-# Run specific test file
-uv run pytest tests/test_cli.py
+# Run v2.0 tests only
+uv run pytest tests/test_core_v2.py tests/test_systems.py tests/test_execution.py tests/test_cli_v2.py
 
 # Run with coverage
 uv run pytest tests/ --cov=src
@@ -167,7 +238,7 @@ uv run pytest tests/ --cov=src
 uv run pytest tests/ -v
 ```
 
-All tests must pass before committing. Current test count: 245 tests.
+All v2.0 tests must pass before committing. Current v2.0 test count: 78 tests.
 
 ## Code Quality
 
@@ -193,64 +264,97 @@ Pre-commit hooks will automatically:
 
 ## Common Tasks
 
-### Adding a New Adapter
+### Creating a New Domain
 
-1. Create `src/ragdiff/adapters/mytool.py`:
-```python
-from ..core.models import RagResult, ToolConfig
-from .abc import RagAdapter
+```bash
+# Create domain structure
+mkdir -p domains/my-domain/{systems,query-sets,runs,comparisons}
 
-class MyToolAdapter(RagAdapter):
-    ADAPTER_API_VERSION = "1.0.0"
-    ADAPTER_NAME = "mytool"
+# Create domain.yaml
+cat > domains/my-domain/domain.yaml <<EOF
+name: my-domain
+description: Description of my domain
+evaluator:
+  model: gpt-4
+  temperature: 0.0
+  prompt_template: |
+    Compare these RAG results...
+EOF
 
-    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
-        # Implement search logic
-        pass
-
-# Register at module bottom
-from .registry import register_adapter
-register_adapter(MyToolAdapter)
-```
-
-2. Import in `src/ragdiff/adapters/__init__.py`:
-```python
-from . import mytool  # noqa: F401
-```
-
-3. Add config in `configs/tools.yaml`:
-```yaml
-mytool:
-  api_key_env: MYTOOL_API_KEY
+# Create a system config
+cat > domains/my-domain/systems/vectara-test.yaml <<EOF
+name: vectara-test
+tool: vectara
+config:
+  api_key: \${VECTARA_API_KEY}
+  corpus_id: \${VECTARA_CORPUS_ID}
   timeout: 30
+EOF
+
+# Create a query set
+cat > domains/my-domain/query-sets/test-queries.txt <<EOF
+Query 1
+Query 2
+Query 3
+EOF
 ```
 
-4. Add tests in `tests/test_adapters.py`
+### Adding a New System Implementation
 
-### Updating Documentation
+1. Create `src/ragdiff/systems/mysystem.py`:
+```python
+from ..core.models_v2 import RetrievedChunk
+from ..core.errors import ConfigError, RunError
+from .abc import System
 
-- **README.md**: User-facing documentation, examples, installation
-- **CLAUDE.md** (this file): Claude Code instructions
-- **codev/resources/arch.md**: Architecture documentation (auto-generated)
+class MySystem(System):
+    def __init__(self, config: dict):
+        super().__init__(config)
+        # Validate config
+        if "api_key" not in config:
+            raise ConfigError("Missing required field: api_key")
+        self.api_key = config["api_key"]
+
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+        # Implement search logic
+        results = self._call_api(query, top_k)
+        return [
+            RetrievedChunk(
+                content=r["text"],
+                score=r["score"],
+                metadata={"source": r["source"]}
+            )
+            for r in results
+        ]
+
+# Register the system
+from .registry import register_tool
+register_tool("mysystem", MySystem)
+```
+
+2. Import in `src/ragdiff/systems/__init__.py`:
+```python
+from . import mysystem  # noqa: F401
+```
+
+3. Add tests in `tests/test_systems.py`
 
 ### Running Comparisons
 
 ```bash
-# Interactive query (single tool)
-uv run ragdiff query "your query" --tool vectara --config configs/tafsir.yaml --top-k 5
+# Step 1: Run query sets against different systems
+uv run ragdiff run tafsir vectara-default test-queries
+uv run ragdiff run tafsir mongodb-local test-queries
+uv run ragdiff run tafsir agentset-prod test-queries
 
-# Interactive comparison (multiple tools)
-uv run ragdiff query "your query" --tool vectara --tool agentset --evaluate --config configs/tafsir.yaml
+# Note the run IDs from the output (or check domains/tafsir/runs/)
 
-# Batch processing workflow
-# Step 1: Batch process queries (expensive)
-uv run ragdiff batch inputs/tafsir-test-queries.txt \
-  --config configs/tafsir.yaml \
-  --output-dir results/ \
-  --top-k 5
+# Step 2: Compare the runs
+uv run ragdiff compare tafsir <run-id-1> <run-id-2> <run-id-3>
 
-# Step 2: Evaluate results (cheap, can repeat)
-uv run ragdiff compare results/ --output evaluation.jsonl
+# Step 3: Export to different formats
+uv run ragdiff compare tafsir <run-id-1> <run-id-2> --format json --output comparison.json
+uv run ragdiff compare tafsir <run-id-1> <run-id-2> --format markdown --output report.md
 ```
 
 ## Environment Variables
@@ -262,36 +366,28 @@ Required in `.env` file:
 VECTARA_API_KEY=your_key
 VECTARA_CORPUS_ID=your_corpus_id
 
-# Goodmem
-GOODMEM_API_KEY=your_key
+# MongoDB Atlas
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
 
 # Agentset
 AGENTSET_API_TOKEN=your_token
 AGENTSET_NAMESPACE_ID=your_namespace_id
 
-# MongoDB Atlas
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
-
-# OpenAI (for MongoDB embeddings and FAISS if using OpenAI service)
-OPENAI_API_KEY=your_key
-
-# Anthropic (for LLM evaluation with Claude)
-ANTHROPIC_API_KEY=your_key
-
-# Google Gemini (for LLM evaluation with Gemini via LiteLLM)
-GEMINI_API_KEY=your_key
-
-# OpenRouter (optional - for multi-provider access via single key)
-OPENROUTER_API_KEY=your_key
+# LLM Providers (for evaluation via LiteLLM)
+OPENAI_API_KEY=your_key          # For GPT models
+ANTHROPIC_API_KEY=your_key       # For Claude models
+GEMINI_API_KEY=your_key          # For Gemini models
+OPENROUTER_API_KEY=your_key      # For OpenRouter (optional)
 ```
 
 ## Key Design Principles
 
-1. **Fail Fast**: No fallbacks, clear error messages
-2. **Type Safety**: Use Pydantic models, type hints everywhere
-3. **Testability**: Every feature has tests
-4. **Separation of Concerns**: Clean boundaries between components
-5. **Library First**: CLI is thin wrapper around library API
+1. **Domain-Driven**: Organize work around problem domains
+2. **Reproducibility**: Snapshot configs and queries in runs
+3. **Fail Fast**: No fallbacks, clear error messages
+4. **Type Safety**: Pydantic models, type hints everywhere
+5. **Testability**: Every feature has tests
+6. **Separation of Concerns**: Clean boundaries between components
 
 ## Common Issues
 
@@ -306,15 +402,21 @@ uv pip install -e .
 
 **Fix**: Use `uv run ragdiff` (not just `ragdiff`)
 
-### Pre-commit hook failures
+### "Domain not found"
 
-**Fix**: Hooks auto-fix most issues. If tests fail, fix the code and try again.
+**Fix**: Ensure domain directory exists at `domains/<domain>/` with `domain.yaml`
 
-### Version mismatch in tests
+### "System config not found"
 
-**Fix**: Update version in both:
-- `src/ragdiff/version.py`
-- `tests/test_public_api.py` (version assertion)
+**Fix**: Ensure system config exists at `domains/<domain>/systems/<system>.yaml`
+
+### "Query set not found"
+
+**Fix**: Ensure query set exists at `domains/<domain>/query-sets/<query-set>.txt`
+
+### LiteLLM errors
+
+**Fix**: Ensure LiteLLM is installed (`uv pip install litellm`) and API keys are set
 
 ## SPIDER Protocol
 
@@ -322,16 +424,27 @@ This project follows the SPIDER protocol for systematic development:
 
 - **Specification**: Clear goals documented in codev/specs/
 - **Planning**: Implementation plans in codev/plans/
-- **Implementation**: Phased development with clear milestones
-- **Defense**: Comprehensive test coverage (236 tests)
+- **Implementation**: Phased development with clear milestones (6 phases)
+- **Defense**: Comprehensive test coverage (78 v2.0 tests)
 - **Evaluation**: Code reviews in codev/reviews/
 - **Reflection**: Architecture documentation in codev/resources/arch.md
+
+## v2.0 Implementation Status
+
+- ✅ Phase 1: Core data models, file loading, storage (29 tests)
+- ✅ Phase 2: System interface, tool registry (29 tests)
+- ✅ Phase 3: Run execution engine (12 tests)
+- ✅ Phase 4: Comparison engine with LiteLLM (5 tests)
+- ✅ Phase 5: CLI commands (8 tests)
+- 🔄 Phase 6: Documentation & CI/CD (in progress)
 
 ## Notes for Claude Code
 
 - The CLI entry point is `ragdiff` (defined in `pyproject.toml`)
 - Always use `uv run ragdiff` for CLI commands
+- v2.0 uses domain-based architecture (not adapters)
 - Source code is in `src/ragdiff/` (note the nested structure)
-- When reading imports, remember the package name is `ragdiff` not `src`
+- v2.0 models are in `core/models_v2.py`, systems are in `systems/`
 - Tests are comprehensive - run them after any changes
 - Pre-commit hooks enforce code quality - let them do their job
+- v1.x code still exists but is not the primary interface
