@@ -29,7 +29,22 @@ This plan breaks down the v2.0.0 restructure into 6 logical phases, each indepen
 
 ### Tasks
 
-1. **Create Pydantic Models**
+1. **Custom Exception Hierarchy**
+   - `RagDiffError` base exception
+   - `ConfigError` for config-related issues
+   - `RunError` for execution errors
+   - `ComparisonError` for evaluation errors
+   - `ValidationError` for input validation
+   - Each with helpful error messages
+
+2. **Logging Configuration**
+   - Set up Python logging module
+   - Configure log levels (DEBUG, INFO, WARNING, ERROR)
+   - Log to console and file (configurable)
+   - Include timestamps, module names, levels
+   - Use throughout all subsequent phases
+
+3. **Create Pydantic Models**
    - `Query` model with text, reference, metadata
    - `QuerySet` model with validation (max 1000 queries)
    - `Domain` model with evaluator config
@@ -40,37 +55,44 @@ This plan breaks down the v2.0.0 restructure into 6 logical phases, each indepen
    - `Comparison` model
    - `EvaluationResult` model
    - `EvaluatorConfig` model
+   - Add name validators (alphanumeric, hyphens, underscores only)
 
-2. **Environment Variable Substitution**
+4. **Environment Variable Substitution**
    - Function to resolve `${VAR_NAME}` in config
    - Support for .env files (python-dotenv)
    - Validation that required vars exist
-   - Clear error messages for missing vars
+   - Raise ConfigError for missing vars with clear messages
 
-3. **File Loaders**
+5. **File Loaders**
    - `load_domain(domain_name: str) -> Domain`
    - `load_system(domain: str, system_name: str) -> SystemConfig`
    - `load_query_set(domain: str, query_set_name: str) -> QuerySet`
    - Auto-detection of .txt vs .jsonl for query sets
    - YAML parsing with validation
-   - File-not-found error handling
+   - Raise ConfigError for missing/invalid files
+   - Fail-fast validation (check before processing)
 
-4. **File Structure Utilities**
+6. **File Structure Utilities**
    - Function to create domain directory structure
    - Function to get run file path (with date organization)
    - Function to get comparison file path (with date organization)
+   - Validate directory paths (no traversal attacks)
 
 ### Success Criteria
 
+- [ ] Custom exception hierarchy defined
+- [ ] Logging configured and working
 - [ ] All Pydantic models defined with proper types
-- [ ] Field validators working (max queries, non-empty text, etc.)
+- [ ] Field validators working (max queries, non-empty text, name format)
+- [ ] Name validation working (no special chars, slashes, spaces)
 - [ ] Environment variable substitution working
 - [ ] Can load domain.yaml with all fields
 - [ ] Can load system YAML with env var resolution
 - [ ] Can load .txt query sets → `list[Query]`
 - [ ] Can load .jsonl query sets → `list[Query]`
 - [ ] 1000 query limit enforced
-- [ ] Clear error messages for missing files
+- [ ] ConfigError raised for missing files with clear messages
+- [ ] ConfigError raised for missing env vars
 - [ ] All models serialize/deserialize to/from JSON correctly
 
 ### Test Coverage
@@ -199,7 +221,10 @@ Single commit after user approval:
    - Create System instance
    - Initialize Run with `pending` status
    - Update to `running` status
-   - Execute queries sequentially (or parallel if time allows)
+   - **Execute queries sequentially** (start simple, safe)
+     - Design allows future parallelization
+     - Document thread-safety requirements for Systems
+     - Parallel execution deferred to future version
    - Handle per-query errors (mark query as failed, continue)
    - Update to `completed`, `failed`, or `partial` status
    - Calculate metadata (duration, success count, etc.)
@@ -302,9 +327,16 @@ Single commit after user approval:
      - Load reference answer (if exists)
      - Load retrieved chunks from each run
      - Format prompt using evaluator.prompt_template
-     - Call LLM (using Anthropic API)
+     - Call LLM (using Anthropic API) with error handling:
+       - **Retry logic**: Max 3 retries with exponential backoff (2s, 4s, 8s)
+       - **Rate limits**: Catch and retry with backoff
+       - **Parse errors**: Mark evaluation as error, log details, continue
+       - **Unparseable responses**: Mark as tie or error, don't crash
+       - **"I don't know" responses**: Mark as tie
+       - **Timeouts**: Fail after max retries
      - Parse response for winner, scores, reasoning
-   - Handle evaluation errors gracefully
+   - Raise ComparisonError only for fatal errors (auth failure, etc.)
+   - Log non-fatal errors, continue with remaining queries
 
 3. **Result Aggregation**
    - Count wins/ties/losses per system
@@ -671,6 +703,149 @@ All existing dependencies from v1.x (vectara, mongodb, etc.)
 
 ---
 
+## Self-Review Notes
+
+### Critical Gaps Identified
+
+**1. Exception Hierarchy** (CRITICAL)
+- **Problem**: No mention of custom exception design
+- **Impact**: Error handling will be inconsistent
+- **Solution**: Add to Phase 1:
+  - `RagDiffError` base exception
+  - `ConfigError` (missing files, invalid YAML, missing env vars)
+  - `RunError` (system errors, timeouts)
+  - `ComparisonError` (LLM errors, incompatible runs)
+  - `ValidationError` (query limits, invalid formats)
+
+**2. Phase 3 Too Large**
+- **Problem**: Run execution engine has too many responsibilities
+- **Impact**: Phase will take too long, hard to test incrementally
+- **Solution**: Consider splitting into:
+  - Phase 3A: Basic run execution (sequential queries, simple error handling)
+  - Phase 3B: Advanced features (progress reporting, partial failures, run loading)
+- **Decision**: Keep as one phase for now, but monitor during implementation
+
+**3. Concurrency Model Undefined**
+- **Problem**: No decision on parallel query execution
+- **Impact**: Performance unclear, thread safety unknown
+- **Solution**: Add to Phase 3 notes:
+  - Start with sequential execution (simple, safe)
+  - Design for future parallelization
+  - Document thread-safety requirements
+
+**4. Logging Strategy Missing**
+- **Problem**: No mention of logging throughout
+- **Impact**: Debugging will be difficult
+- **Solution**: Add to Phase 1:
+  - Configure Python logging
+  - Log levels: DEBUG, INFO, WARNING, ERROR
+  - Log to file and console (configurable)
+  - Include in all phases going forward
+
+**5. LLM Error Handling Incomplete**
+- **Problem**: Phase 4 doesn't fully specify LLM failure modes
+- **Impact**: Comparisons might fail unexpectedly
+- **Solution**: Add to Phase 4:
+  - Handle API rate limits (retry with backoff)
+  - Handle unparseable responses (mark as error, not crash)
+  - Handle "I don't know" responses (mark as tie or error)
+  - Handle cost limits (fail gracefully)
+  - Add max retries configuration
+
+**6. Validation Scope Unclear**
+- **Problem**: What validation happens when?
+- **Impact**: Errors might be caught too late
+- **Solution**: Define validation layers:
+  - Load-time: YAML syntax, schema validation
+  - Pre-run: System exists, query set exists, env vars present
+  - Run-time: Per-query errors only
+  - Fail-fast: Don't start run if config is invalid
+
+**7. CI/CD Updates Not Mentioned**
+- **Problem**: Pre-commit hooks, GitHub Actions might break
+- **Impact**: CI might fail after merge
+- **Solution**: Add to Phase 6:
+  - Update pre-commit hooks if needed
+  - Update GitHub Actions workflows
+  - Test full CI pipeline before merge
+
+**8. Shell Completion Missing**
+- **Problem**: No tab completion for CLI
+- **Impact**: UX could be better
+- **Solution**: Add to Phase 5 (optional):
+  - Typer supports auto-completion
+  - Generate completion scripts for bash/zsh
+  - Document installation
+
+**9. Name Validation Missing**
+- **Problem**: Domain/system/query-set names not validated
+- **Impact**: Special characters could break file paths
+- **Solution**: Add to Phase 1:
+  - Validate names: alphanumeric, hyphens, underscores only
+  - No slashes, spaces, or special chars
+  - Enforce in Pydantic validators
+
+**10. Migration Helper Complexity Unknown**
+- **Problem**: Phase 6 migration helper scope unclear
+- **Impact**: Might be harder than expected
+- **Solution**: Mark as optional in Phase 6
+  - If v1.x config is complex, might be too much work
+  - Provide manual migration guide instead
+  - User can always migrate manually
+
+### Strengths
+
+- Clear phase boundaries
+- Good dependency management
+- Comprehensive test coverage plans
+- Each phase delivers value
+- Success criteria are measurable
+- No time estimates (per SPIDER-SOLO)
+
+### Phase-Specific Notes
+
+**Phase 1 Additions Needed**:
+- Custom exception hierarchy
+- Logging configuration
+- Name validation (domain, system, query-set)
+
+**Phase 3 Monitoring**:
+- Watch for phase becoming too large
+- Consider split if needed during implementation
+- Document concurrency decisions
+
+**Phase 4 Additions Needed**:
+- LLM retry logic with backoff
+- Error classification (rate limit vs. parse error)
+- Cost tracking/limits
+
+**Phase 5 Optional Additions**:
+- Shell completion scripts
+- JSON output mode for scripting
+
+**Phase 6 Adjustments**:
+- Mark migration helper as optional
+- Add CI/CD updates
+- Add pre-commit hook verification
+
+### Updated Success Criteria
+
+In addition to existing criteria:
+
+- [ ] Exception hierarchy is comprehensive
+- [ ] Logging works throughout
+- [ ] Names are validated (no special chars)
+- [ ] LLM errors handled gracefully
+- [ ] Validation happens at appropriate times
+- [ ] CI/CD pipelines updated and passing
+
+### Remaining Questions
+
+1. **Parallel execution**: Implement in v2.0.0 or defer to v2.1.0?
+2. **Migration helper**: Required or optional?
+3. **LLM provider**: Support only Claude or allow OpenAI/others?
+4. **Cost tracking**: Log LLM costs or ignore for v2.0.0?
+
 ## Notes
 
 - **No time estimates** - progress measured by completed phases
@@ -678,3 +853,4 @@ All existing dependencies from v1.x (vectara, mongodb, etc.)
 - Phases can be demoed to user after completion
 - Test-driven development encouraged
 - Commit frequently during implementation, but only one commit per phase during evaluation
+- Self-review identified 10 gaps - address during implementation
