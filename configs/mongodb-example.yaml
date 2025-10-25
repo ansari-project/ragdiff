@@ -1,0 +1,83 @@
+# MongoDB Atlas Vector Search configuration example
+#
+# Prerequisites:
+# 1. MongoDB Atlas cluster (M10 or higher tier for vector search)
+# 2. Vector search index created on your collection
+# 3. Documents with embedded vectors in your collection
+# 4. OpenAI API key (or other embedding provider)
+#
+# Environment variables required:
+# - MONGODB_URI: MongoDB Atlas connection string (e.g., mongodb+srv://user:pass@cluster.mongodb.net/)
+# - OPENAI_API_KEY: OpenAI API key for generating query embeddings
+
+tools:
+  # MongoDB Atlas Vector Search configuration
+  mongodb:
+    # MongoDB connection string environment variable
+    api_key_env: MONGODB_URI
+
+    # MongoDB database and collection settings (required)
+    options:
+      database: tafsir_db              # Your database name
+      collection: documents             # Your collection name
+      index_name: vector_index          # Vector search index name
+
+      # Field mappings (optional - these are the defaults)
+      vector_field: embedding           # Field containing vector embeddings
+      text_field: text                  # Field containing text content
+      source_field: source              # Field containing source information
+
+      # Vector search tuning
+      num_candidates: 150               # Number of candidates for vector search
+                                        # Recommended: 10-20x the limit (top_k)
+
+      # Metadata fields to include in results (optional)
+      metadata_fields:
+        - surah                         # Surah number
+        - ayah                          # Ayah number
+        - tafsir_name                   # Name of the tafsir
+        - author                        # Author name
+
+      # Embedding configuration
+      embedding_provider: openai        # Embedding provider (currently only 'openai' supported)
+      embedding_model: text-embedding-3-small  # OpenAI embedding model
+      embedding_api_key_env: OPENAI_API_KEY    # Environment variable for embedding API key
+
+    # General settings
+    timeout: 60
+    default_top_k: 10
+
+# LLM evaluation configuration (optional - used for quality scoring)
+llm:
+  model: claude-sonnet-4-5
+  api_key_env: ANTHROPIC_API_KEY
+  max_tokens: 16384
+  temperature: 0.1
+
+# Notes on MongoDB Vector Search Index:
+#
+# You must create a vector search index in MongoDB Atlas before using this adapter.
+#
+# Example index definition (create via Atlas UI or mongosh):
+# {
+#   "fields": [
+#     {
+#       "type": "vector",
+#       "path": "embedding",
+#       "numDimensions": 1536,        # Must match your embedding model
+#       "similarity": "dotProduct"     # or "cosine" or "euclidean"
+#     },
+#     {
+#       "type": "filter",
+#       "path": "surah"                # Optional: for metadata filtering
+#     }
+#   ]
+# }
+#
+# Embedding dimensions by model:
+# - text-embedding-3-small: 1536 dimensions
+# - text-embedding-3-large: 3072 dimensions
+# - text-embedding-ada-002: 1536 dimensions
+#
+# For more information:
+# https://www.mongodb.com/docs/atlas/atlas-vector-search/

@@ -269,6 +269,12 @@ GOODMEM_API_KEY=your_key
 AGENTSET_API_TOKEN=your_token
 AGENTSET_NAMESPACE_ID=your_namespace_id
 
+# MongoDB Atlas
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
+
+# OpenAI (for MongoDB embeddings)
+OPENAI_API_KEY=your_key
+
 # Anthropic (for LLM evaluation)
 ANTHROPIC_API_KEY=your_key
 ```

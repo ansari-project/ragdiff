@@ -12,6 +12,7 @@ from ragdiff.adapters import get_adapter, list_available_adapters
 from ragdiff.adapters.abc import RagAdapter
 from ragdiff.adapters.agentset import AgentsetAdapter
 from ragdiff.adapters.goodmem import GoodmemAdapter
+from ragdiff.adapters.mongodb import MongoDBAdapter
 from ragdiff.adapters.vectara import VectaraAdapter
 from ragdiff.core.errors import ConfigurationError
 from ragdiff.core.models import ToolConfig
@@ -21,11 +22,12 @@ class TestAdapterRegistration:
     """Test that all adapters are properly registered."""
 
     def test_all_adapters_registered(self):
-        """Verify all three adapters are auto-registered."""
+        """Verify all adapters are auto-registered."""
         available = list_available_adapters()
         assert "vectara" in available
         assert "goodmem" in available
         assert "agentset" in available
+        assert "mongodb" in available
 
     def test_get_vectara_adapter(self):
         """Verify Vectara adapter can be retrieved from registry."""
@@ -45,6 +47,12 @@ class TestAdapterRegistration:
         assert adapter_class is not None
         assert adapter_class == AgentsetAdapter
 
+    def test_get_mongodb_adapter(self):
+        """Verify MongoDB adapter can be retrieved from registry."""
+        adapter_class = get_adapter("mongodb")
+        assert adapter_class is not None
+        assert adapter_class == MongoDBAdapter
+
 
 class TestAdapterInheritance:
     """Test that all adapters properly inherit from RagAdapter."""
@@ -60,6 +68,10 @@ class TestAdapterInheritance:
     def test_agentset_inherits_from_rag_adapter(self):
         """Verify AgentsetAdapter inherits from RagAdapter."""
         assert issubclass(AgentsetAdapter, RagAdapter)
+
+    def test_mongodb_inherits_from_rag_adapter(self):
+        """Verify MongoDBAdapter inherits from RagAdapter."""
+        assert issubclass(MongoDBAdapter, RagAdapter)
 
 
 class TestAdapterMetadata:
@@ -79,6 +91,11 @@ class TestAdapterMetadata:
         """Verify Agentset adapter has correct metadata."""
         assert AgentsetAdapter.ADAPTER_API_VERSION == "1.0.0"
         assert AgentsetAdapter.ADAPTER_NAME == "agentset"
+
+    def test_mongodb_metadata(self):
+        """Verify MongoDB adapter has correct metadata."""
+        assert MongoDBAdapter.ADAPTER_API_VERSION == "1.0.0"
+        assert MongoDBAdapter.ADAPTER_NAME == "mongodb"
 
 
 class TestVectaraAdapter:
@@ -356,6 +373,280 @@ class TestFactoryWithRegistry:
         adapter = create_adapter("vectara-tafsir", config)
         assert isinstance(adapter, VectaraAdapter)
         assert adapter.corpus_id == "tafsir-corpus"
+
+
+class TestMongoDBAdapter:
+    """Test MongoDBAdapter implementation."""
+
+    def test_validate_config_missing_api_key_env(self):
+        """Test validation fails when api_key_env is missing."""
+        config = {
+            "options": {
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+            }
+        }
+        with pytest.raises(
+            ConfigurationError, match="missing required field: api_key_env"
+        ):
+            MongoDBAdapter.validate_config(MongoDBAdapter, config)
+
+    def test_validate_config_missing_database(self):
+        """Test validation fails when database option is missing."""
+        config = {
+            "api_key_env": "MONGODB_URI",
+            "options": {
+                "collection": "test_collection",
+                "index_name": "test_index",
+            },
+        }
+        with pytest.raises(
+            ConfigurationError, match="missing required option: database"
+        ):
+            MongoDBAdapter.validate_config(MongoDBAdapter, config)
+
+    def test_validate_config_missing_collection(self):
+        """Test validation fails when collection option is missing."""
+        config = {
+            "api_key_env": "MONGODB_URI",
+            "options": {
+                "database": "test_db",
+                "index_name": "test_index",
+            },
+        }
+        with pytest.raises(
+            ConfigurationError, match="missing required option: collection"
+        ):
+            MongoDBAdapter.validate_config(MongoDBAdapter, config)
+
+    def test_validate_config_missing_index_name(self):
+        """Test validation fails when index_name option is missing."""
+        config = {
+            "api_key_env": "MONGODB_URI",
+            "options": {
+                "database": "test_db",
+                "collection": "test_collection",
+            },
+        }
+        with pytest.raises(
+            ConfigurationError, match="missing required option: index_name"
+        ):
+            MongoDBAdapter.validate_config(MongoDBAdapter, config)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_validate_config_mongodb_uri_not_set(self):
+        """Test validation fails when MongoDB URI env var is not set."""
+        config = {
+            "api_key_env": "MONGODB_URI",
+            "options": {
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+            },
+        }
+        with pytest.raises(
+            ConfigurationError, match="Environment variable MONGODB_URI is not set"
+        ):
+            MongoDBAdapter.validate_config(MongoDBAdapter, config)
+
+    @patch.dict(
+        os.environ,
+        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+        clear=True,
+    )
+    def test_validate_config_embedding_api_key_not_set(self):
+        """Test validation fails when embedding API key env var is not set."""
+        config = {
+            "api_key_env": "MONGODB_URI",
+            "options": {
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+                "embedding_api_key_env": "MISSING_KEY",
+            },
+        }
+        with pytest.raises(
+            ConfigurationError, match="Environment variable MISSING_KEY is not set"
+        ):
+            MongoDBAdapter.validate_config(MongoDBAdapter, config)
+
+    @patch("ragdiff.adapters.mongodb.MongoClient")
+    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch.dict(
+        os.environ,
+        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+    )
+    def test_validate_config_success(self, mock_openai, mock_mongo):
+        """Test validation succeeds with valid config."""
+        # Mock MongoDB client
+        mock_client = mock_mongo.return_value
+        mock_client.admin.command.return_value = {"ok": 1}
+
+        config = ToolConfig(
+            name="mongodb-test",
+            api_key_env="MONGODB_URI",
+            options={
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+            },
+        )
+        # Should not raise
+        adapter = MongoDBAdapter(config)
+        assert adapter.database_name == "test_db"
+        assert adapter.collection_name == "test_collection"
+        assert adapter.index_name == "test_index"
+
+    @patch("ragdiff.adapters.mongodb.MongoClient")
+    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch.dict(
+        os.environ,
+        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+    )
+    def test_get_required_env_vars(self, mock_openai, mock_mongo):
+        """Test get_required_env_vars returns correct list."""
+        mock_client = mock_mongo.return_value
+        mock_client.admin.command.return_value = {"ok": 1}
+
+        config = ToolConfig(
+            name="mongodb-test",
+            api_key_env="MONGODB_URI",
+            options={
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+            },
+        )
+        adapter = MongoDBAdapter(config)
+        env_vars = adapter.get_required_env_vars()
+        assert "MONGODB_URI" in env_vars
+        assert "OPENAI_API_KEY" in env_vars
+
+    def test_get_options_schema(self):
+        """Test get_options_schema returns valid JSON schema."""
+        schema = MongoDBAdapter.get_options_schema(MongoDBAdapter)
+        assert schema["type"] == "object"
+        assert "database" in schema["properties"]
+        assert "collection" in schema["properties"]
+        assert "index_name" in schema["properties"]
+        assert "vector_field" in schema["properties"]
+        assert "text_field" in schema["properties"]
+        assert "num_candidates" in schema["properties"]
+        assert "embedding_provider" in schema["properties"]
+        assert "embedding_model" in schema["properties"]
+        assert schema["required"] == ["database", "collection", "index_name"]
+
+    @patch("ragdiff.adapters.mongodb.MongoClient")
+    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch.dict(
+        os.environ,
+        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+    )
+    def test_default_field_mappings(self, mock_openai, mock_mongo):
+        """Test default field mappings are applied."""
+        mock_client = mock_mongo.return_value
+        mock_client.admin.command.return_value = {"ok": 1}
+
+        config = ToolConfig(
+            name="mongodb-test",
+            api_key_env="MONGODB_URI",
+            options={
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+            },
+        )
+        adapter = MongoDBAdapter(config)
+        assert adapter.vector_field == "embedding"
+        assert adapter.text_field == "text"
+        assert adapter.source_field == "source"
+        assert adapter.num_candidates == 150
+
+    @patch("ragdiff.adapters.mongodb.MongoClient")
+    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch.dict(
+        os.environ,
+        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+    )
+    def test_custom_field_mappings(self, mock_openai, mock_mongo):
+        """Test custom field mappings can be configured."""
+        mock_client = mock_mongo.return_value
+        mock_client.admin.command.return_value = {"ok": 1}
+
+        config = ToolConfig(
+            name="mongodb-test",
+            api_key_env="MONGODB_URI",
+            options={
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+                "vector_field": "custom_embedding",
+                "text_field": "content",
+                "source_field": "document_source",
+                "num_candidates": 200,
+            },
+        )
+        adapter = MongoDBAdapter(config)
+        assert adapter.vector_field == "custom_embedding"
+        assert adapter.text_field == "content"
+        assert adapter.source_field == "document_source"
+        assert adapter.num_candidates == 200
+
+    @patch("ragdiff.adapters.mongodb.MongoClient")
+    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch.dict(
+        os.environ,
+        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+    )
+    def test_embedding_provider_openai_default(self, mock_openai, mock_mongo):
+        """Test OpenAI is the default embedding provider."""
+        mock_client = mock_mongo.return_value
+        mock_client.admin.command.return_value = {"ok": 1}
+
+        config = ToolConfig(
+            name="mongodb-test",
+            api_key_env="MONGODB_URI",
+            options={
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+            },
+        )
+        adapter = MongoDBAdapter(config)
+        assert adapter.embedding_provider == "openai"
+        assert adapter.embedding_model == "text-embedding-3-small"
+        mock_openai.assert_called_once_with(api_key="test-key")
+
+
+class TestMongoDBAdapterFactory:
+    """Test MongoDB adapter creation via factory."""
+
+    @patch("ragdiff.adapters.mongodb.MongoClient")
+    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch.dict(
+        os.environ,
+        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+    )
+    def test_create_mongodb_adapter(self, mock_openai, mock_mongo):
+        """Test factory creates MongoDB adapter using registry."""
+        from ragdiff.adapters.factory import create_adapter
+
+        mock_client = mock_mongo.return_value
+        mock_client.admin.command.return_value = {"ok": 1}
+
+        config = ToolConfig(
+            name="mongodb-test",
+            api_key_env="MONGODB_URI",
+            options={
+                "database": "test_db",
+                "collection": "test_collection",
+                "index_name": "test_index",
+            },
+        )
+        adapter = create_adapter("mongodb", config)
+        assert isinstance(adapter, MongoDBAdapter)
+        assert isinstance(adapter, RagAdapter)
 
 
 class TestBackwardCompatibility:
