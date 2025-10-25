@@ -72,6 +72,18 @@ tools:
     namespace_id_env: AGENTSET_NAMESPACE_ID
     timeout: 60
 
+  # MongoDB Atlas Vector Search
+  mongodb:
+    api_key_env: MONGODB_URI  # MongoDB connection string
+    options:
+      database: your_database
+      collection: your_collection
+      index_name: vector_index
+      embedding_provider: openai
+      embedding_model: text-embedding-3-small
+      embedding_api_key_env: OPENAI_API_KEY
+    timeout: 60
+
   # FAISS local vector search (supports sentence-transformers, OpenAI, etc.)
   faiss:
     adapter: faiss
@@ -604,7 +616,7 @@ The tool follows the SPIDER protocol for systematic development:
 ### Key Components
 
 - **BaseRagTool**: Abstract base implementing SearchVectara interface
-- **Adapters**: Tool-specific implementations (Vectara, Goodmem, Agentset)
+- **Adapters**: Tool-specific implementations (Vectara, Goodmem, Agentset, MongoDB Atlas)
 - **ComparisonEngine**: Orchestrates parallel/sequential searches
 - **ComparisonFormatter**: Handles multiple output formats
 - **Config**: Manages YAML configuration with environment variables

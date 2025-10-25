@@ -2,7 +2,7 @@
 
 ## Overview
 
-RAGDiff is a flexible framework for comparing Retrieval-Augmented Generation (RAG) systems side-by-side with subjective quality evaluation using LLMs. The architecture follows a clean adapter pattern that enables extensible comparison of multiple RAG tools (Vectara, Goodmem, Agentset) through a unified interface.
+RAGDiff is a flexible framework for comparing Retrieval-Augmented Generation (RAG) systems side-by-side with subjective quality evaluation using LLMs. The architecture follows a clean adapter pattern that enables extensible comparison of multiple RAG tools (Vectara, Goodmem, Agentset, MongoDB Atlas) through a unified interface.
 
 The system emphasizes:
 - **Adapter Pattern**: Clean separation between comparison logic and tool-specific implementations
@@ -30,8 +30,12 @@ The system emphasizes:
 - **goodmem-client**: 1.5.5+ (Goodmem RAG platform)
 - **agentset**: 0.4.0+ (Agentset RAG-as-a-Service)
 
+### Optional Dependencies
+- **pymongo**: 4.0.0+ (MongoDB Atlas Vector Search adapter)
+- **openai**: 1.0.0+ (Embeddings for MongoDB vector search)
+
 ### Development Tools
-- **pytest**: 7.4.0+ (Testing framework with 230+ tests)
+- **pytest**: 7.4.0+ (Testing framework with 246+ tests)
 - **pytest-cov**: 4.1.0+ (Test coverage reporting)
 - **black**: 23.0.0+ (Code formatting)
 - **ruff**: 0.1.0+ (Fast Python linter)
@@ -87,6 +91,7 @@ ragdiff/
 │       │   ├── vectara.py     # Vectara platform adapter
 │       │   ├── goodmem.py     # Goodmem adapter
 │       │   ├── agentset.py    # Agentset adapter
+│       │   ├── mongodb.py     # MongoDB Atlas Vector Search adapter
 │       │   └── search_vectara_mock.py  # Mock SearchVectara for testing
 │       ├── comparison/        # Comparison engine
 │       │   ├── __init__.py
@@ -108,9 +113,14 @@ ragdiff/
 │   └── ...
 ├── configs/                   # Configuration files
 │   ├── tafsir.yaml           # Tafsir corpus configuration
-│   └── mawsuah.yaml          # Mawsuah corpus configuration
+│   ├── mawsuah.yaml          # Mawsuah corpus configuration
+│   └── mongodb-example.yaml  # MongoDB Atlas Vector Search example config
 ├── inputs/                    # Test queries and batch input files
 │   └── tafsir-test-queries.txt
+├── sampledata/                # Sample data scripts and utilities
+│   ├── README.md              # Documentation for sample data setup
+│   ├── load_squad_to_mongodb.py  # Load SQuAD dataset with embeddings
+│   └── sample_squad_questions.py  # Sample questions for testing
 ├── outputs/                   # Generated results and summaries
 │   ├── batch_results_*.jsonl
 │   └── holistic_summary_*.md
@@ -234,6 +244,22 @@ All adapters now support multi-tenant credentials through the base class:
 - **Dual Credentials**: Handles both API token and namespace ID
 - **Credential Resolution**: Resolves both credentials independently
 
+#### MongoDB Adapter (`src/ragdiff/adapters/mongodb.py`)
+- **Constructor**: `__init__(config, credentials=None)`
+- **Vector Search**: MongoDB Atlas Vector Search with semantic retrieval
+- **Embedding Support**: Automatic query embedding generation via OpenAI
+- **Field Mappings**: Configurable field mappings for text, source, metadata
+- **Dual Credentials**: MongoDB connection URI and embedding API key
+- **Configuration Options**:
+  - Required: `database`, `collection`, `index_name`
+  - Optional: `vector_field`, `text_field`, `source_field`, `metadata_fields`
+  - Embedding: `embedding_provider`, `embedding_model`, `embedding_api_key_env`
+- **Features**:
+  - Supports pre-configured vector search indexes in MongoDB Atlas
+  - Dynamic embedding generation for queries
+  - Configurable metadata extraction
+  - Score normalization for consistent comparison
+
 ### 7. Comparison Engine (`src/ragdiff/comparison/engine.py`)
 - **Location**: `src/ragdiff/comparison/engine.py`
 - **Purpose**: Orchestrate parallel or sequential RAG tool searches
@@ -313,6 +339,29 @@ All adapters now support multi-tenant credentials through the base class:
   - Normalizes scores from different scales to 0-1 range
   - Handles "0-1", "0-100", "0-1000" scales
   - Class method for consistent normalization
+
+### Sample Data Utilities (`sampledata/`)
+
+#### SQuAD Dataset Loader (`load_squad_to_mongodb.py`)
+- **Purpose**: Load SQuAD v2.0 dataset into MongoDB with embeddings
+- **Key Features**:
+  - Downloads SQuAD dataset automatically
+  - Generates OpenAI embeddings for each context
+  - Batch processing with progress tracking
+  - Configurable database/collection names
+  - Prints vector search index definition
+- **Usage**: `python sampledata/load_squad_to_mongodb.py --limit 100`
+- **Cost Estimate**: ~$0.15-0.20 for full dataset, ~$0.003 for 100 docs
+
+#### Question Sampler (`sample_squad_questions.py`)
+- **Purpose**: Sample random questions from SQuAD for testing
+- **Key Features**:
+  - Random or seeded sampling
+  - Filter answerable vs unanswerable questions
+  - Plain text or JSONL output format
+  - Configurable sample size
+- **Usage**: `python sampledata/sample_squad_questions.py --count 100 --answerable-only`
+- **Output Formats**: Plain text list or JSONL with metadata
 
 ## Multi-Tenant Credential Architecture
 
@@ -595,6 +644,22 @@ The system maintains minimal state:
 - Avoids circular import issues
 - More flexible for testing
 
+### 7. MongoDB Adapter with Embedding Integration
+**Decision**: MongoDB adapter generates embeddings on-the-fly for queries rather than requiring pre-computed query embeddings.
+
+**Rationale**:
+- Seamless integration with existing RAG comparison workflow
+- No changes needed to the comparison engine
+- Consistent interface with other adapters
+- Flexibility to use different embedding models
+- Trade-off: Slightly higher latency for embedding generation
+
+**Implementation Details**:
+- Supports OpenAI embeddings (extensible to other providers)
+- Configurable embedding model and API key
+- Automatic vector field mapping
+- Metadata field extraction configuration
+
 ## Integration Points
 
 ### External Services (Multi-Tenant Ready)
@@ -619,6 +684,19 @@ All external service integrations now support per-request credentials:
 - **Multi-Tenant**: Both credentials support override
 - **Reranking**: Optional rerank configuration
 
+#### MongoDB Atlas
+- **Endpoint**: MongoDB Atlas cluster (M10+ tier required)
+- **Authentication**: Connection URI from credentials or environment
+- **Vector Search**: Pre-configured vector search indexes
+- **Embedding Integration**: OpenAI API for query embeddings
+- **Multi-Tenant**: Per-tenant database/collection configuration
+
+#### OpenAI (for MongoDB embeddings)
+- **API**: Embeddings API for query vectorization
+- **Authentication**: API key from credentials or environment
+- **Models**: text-embedding-3-small, text-embedding-3-large
+- **Usage**: Dynamic embedding generation for MongoDB vector search
+
 #### Anthropic Claude
 - **API**: Claude Sonnet for evaluation
 - **Authentication**: API key from Config resolution
@@ -627,7 +705,18 @@ All external service integrations now support per-request credentials:
 
 ## Development Patterns
 
-### 1. Adding a New Multi-Tenant Ready Adapter
+### 1. Installing Optional Dependencies
+
+```bash
+# Install MongoDB adapter dependencies
+uv pip install -e ".[mongodb]"
+
+# This installs:
+# - pymongo>=4.0.0 (MongoDB driver)
+# - openai>=1.0.0 (Embedding generation)
+```
+
+### 2. Adding a New Multi-Tenant Ready Adapter
 
 ```python
 from typing import Optional
@@ -776,17 +865,19 @@ def test_multi_tenant_isolation():
 
 ### Test Categories
 
-1. **Unit Tests** (150+ tests)
+1. **Unit Tests** (160+ tests)
    - Model validation
    - Configuration parsing
    - Adapter functionality
    - Score normalization
+   - MongoDB configuration validation
 
-2. **Integration Tests** (50+ tests)
+2. **Integration Tests** (56+ tests)
    - API functions
    - Multi-tool comparison
    - Batch processing
    - Error handling
+   - MongoDB adapter factory integration
 
 3. **Multi-Tenant Tests** (30+ tests)
    - Credential isolation
@@ -835,6 +926,25 @@ def test_multi_tenant_isolation():
 
 ## Version History
 
+### v1.2.1 (2025-10-25) - MongoDB Atlas Vector Search Support
+**Major Feature**: MongoDB Atlas Vector Search adapter with embedding integration
+
+**Key Changes**:
+- New MongoDB adapter with vector search capabilities
+- Automatic query embedding generation via OpenAI
+- Configurable field mappings and metadata extraction
+- Sample data scripts for SQuAD dataset loading and testing
+- Optional dependency group for MongoDB (pymongo, openai)
+- 16 new tests for MongoDB functionality
+
+**Files Added**:
+- `src/ragdiff/adapters/mongodb.py` - MongoDB adapter implementation
+- `configs/mongodb-example.yaml` - Example configuration
+- `sampledata/` - Scripts for loading SQuAD dataset with embeddings
+- Test coverage in `tests/test_adapters.py`
+
+**Total Tests**: 246 passing
+
 ### v1.1.0 (2025-10-22) - Multi-Tenant Support
 **Major Feature**: Complete multi-tenant credential support
 
@@ -870,7 +980,13 @@ def test_multi_tenant_isolation():
 
 ### Planned Features
 
-1. **Credential Providers**
+1. **MongoDB Enhancements**
+   - Support for additional embedding providers (Cohere, HuggingFace)
+   - Metadata filtering in vector search queries
+   - Hybrid search combining vector and text search
+   - Support for multiple embedding models in same collection
+
+2. **Credential Providers**
    - AWS Secrets Manager integration
    - HashiCorp Vault support
    - Azure Key Vault connector
@@ -897,7 +1013,7 @@ def test_multi_tenant_isolation():
 
 ---
 
-**Document Status**: Complete with Multi-Tenant v1.1.0
-**Last Updated**: 2025-10-22
+**Document Status**: Complete with MongoDB Atlas Support v1.2.1
+**Last Updated**: 2025-10-25
 **Next Review**: After next major feature implementation
 **Maintained By**: Architecture Documenter Agent

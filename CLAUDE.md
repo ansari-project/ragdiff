@@ -269,8 +269,11 @@ GOODMEM_API_KEY=your_key
 AGENTSET_API_TOKEN=your_token
 AGENTSET_NAMESPACE_ID=your_namespace_id
 
-# FAISS (optional - only for OpenAI embeddings)
-OPENAI_API_KEY=your_key  # Only needed if using embedding_service: openai
+# MongoDB Atlas
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
+
+# OpenAI (for MongoDB embeddings and FAISS if using OpenAI service)
+OPENAI_API_KEY=your_key
 
 # Anthropic (for LLM evaluation)
 ANTHROPIC_API_KEY=your_key
