@@ -1,16 +1,29 @@
-# RAGDiff
+# RAGDiff v2.0
 
-A flexible framework for comparing Retrieval-Augmented Generation (RAG) systems side-by-side, with support for subjective quality evaluation using LLMs.
+A domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support.
+
+## What's New in v2.0
+
+RAGDiff v2.0 introduces a **domain-based architecture** that organizes RAG system comparison around problem domains:
+
+- **Domains**: Separate workspaces for different problem areas (e.g., tafsir, legal, medical)
+- **Systems**: RAG system configurations that can be version-controlled
+- **Query Sets**: Reusable collections of test queries
+- **Runs**: Reproducible executions with config snapshots
+- **Comparisons**: LLM-based evaluations with detailed analysis
+
+This replaces the v1.x adapter-based approach with a more structured, reproducible workflow perfect for systematic RAG system development and A/B testing.
 
 ## Features
 
-- **Multi-tool Support**: Compare multiple RAG tools in parallel
-- **Flexible Adapters**: Easy-to-extend adapter pattern for adding new tools
-- **Multiple Output Formats**: Display, JSON, Markdown, and summary formats
-- **Performance Metrics**: Automatic latency measurement and result statistics
-- **LLM Evaluation**: Support for subjective quality assessment using Claude 4.1 Opus
-- **Rich CLI**: Beautiful terminal output with tables and panels
-- **Comprehensive Testing**: 90+ tests ensuring reliability
+- **Domain-Driven Organization**: Separate workspaces for different problem domains
+- **Reproducible Runs**: Config and query set snapshots for full reproducibility
+- **Multi-System Support**: Compare Vectara, MongoDB, Agentset, and more
+- **LLM Evaluation**: Subjective quality assessment via LiteLLM (GPT, Claude, Gemini)
+- **Rich CLI**: Beautiful terminal output with progress bars and summary tables
+- **Multiple Output Formats**: Table, JSON, and Markdown reports
+- **Comprehensive Testing**: 78 tests ensuring reliability
+- **Parallel Execution**: Fast query execution with configurable concurrency
 
 ## Installation
 
@@ -49,606 +62,393 @@ cp .env.example .env
 # Edit .env and add your API keys
 ```
 
+## Quick Start
+
+### 1. Create a Domain
+
+```bash
+# Create domain directory structure
+mkdir -p domains/my-domain/{systems,query-sets,runs,comparisons}
+
+# Create domain config
+cat > domains/my-domain/domain.yaml <<EOF
+name: my-domain
+description: My RAG comparison domain
+evaluator:
+  model: gpt-4
+  temperature: 0.0
+  prompt_template: |
+    Compare these RAG results for relevance and accuracy.
+    Query: {query}
+
+    Results:
+    {results}
+
+    Provide winner and analysis.
+EOF
+```
+
+### 2. Configure Systems
+
+```bash
+# Create Vectara system config
+cat > domains/my-domain/systems/vectara-default.yaml <<EOF
+name: vectara-default
+tool: vectara
+config:
+  api_key: \${VECTARA_API_KEY}
+  corpus_id: \${VECTARA_CORPUS_ID}
+  timeout: 30
+EOF
+
+# Create MongoDB system config
+cat > domains/my-domain/systems/mongodb-local.yaml <<EOF
+name: mongodb-local
+tool: mongodb
+config:
+  connection_uri: \${MONGODB_URI}
+  database: my_db
+  collection: documents
+  index_name: vector_index
+  embedding_model: all-MiniLM-L6-v2
+  timeout: 60
+EOF
+```
+
+### 3. Create Query Sets
+
+```bash
+# Create test queries
+cat > domains/my-domain/query-sets/test-queries.txt <<EOF
+What is machine learning?
+Explain neural networks
+How does backpropagation work?
+EOF
+```
+
+### 4. Run Comparisons
+
+```bash
+# Execute query sets against different systems
+uv run ragdiff run my-domain vectara-default test-queries
+uv run ragdiff run my-domain mongodb-local test-queries
+
+# Compare the runs (use run IDs from output or check domains/my-domain/runs/)
+uv run ragdiff compare my-domain <run-id-1> <run-id-2>
+
+# Export comparison to different formats
+uv run ragdiff compare my-domain <run-id-1> <run-id-2> --format markdown --output report.md
+uv run ragdiff compare my-domain <run-id-1> <run-id-2> --format json --output comparison.json
+```
+
+## CLI Commands
+
+RAGDiff v2.0 provides two main CLI commands:
+
+### `run` - Execute Query Sets
+
+Execute a query set against a system:
+
+```bash
+# Basic usage
+uv run ragdiff run <domain> <system> <query-set>
+
+# Examples
+uv run ragdiff run tafsir vectara-default test-queries
+uv run ragdiff run tafsir mongodb-local test-queries --concurrency 5
+
+# With options
+uv run ragdiff run tafsir vectara-default test-queries \
+  --domains-dir ./domains \
+  --concurrency 10 \
+  --timeout 30 \
+  --quiet
+```
+
+**What it does:**
+- Loads system config from `domains/<domain>/systems/<system>.yaml`
+- Loads queries from `domains/<domain>/query-sets/<query-set>.txt`
+- Executes all queries with progress bar
+- Saves results to `domains/<domain>/runs/<run-id>.json`
+- Displays summary table
+
+**Options:**
+- `--concurrency N`: Max concurrent queries (default: 10)
+- `--timeout N`: Timeout per query in seconds (default: 30.0)
+- `--domains-dir PATH`: Custom domains directory (default: ./domains)
+- `--quiet`: Suppress progress output
+
+### `compare` - Evaluate Runs
+
+Compare multiple runs using LLM evaluation:
+
+```bash
+# Basic usage
+uv run ragdiff compare <domain> <run-id-1> <run-id-2> [<run-id-3> ...]
+
+# Examples
+uv run ragdiff compare tafsir abc123 def456
+uv run ragdiff compare tafsir abc123 def456 --format json --output comparison.json
+
+# With options
+uv run ragdiff compare tafsir abc123 def456 \
+  --model gpt-4 \
+  --temperature 0.0 \
+  --format markdown \
+  --output report.md
+```
+
+**What it does:**
+- Loads runs from `domains/<domain>/runs/`
+- Uses LLM (via LiteLLM) for evaluation
+- Saves comparison to `domains/<domain>/comparisons/<comparison-id>.json`
+- Outputs in specified format
+
+**Output formats:**
+- `table`: Rich console table (default)
+- `json`: JSON output
+- `markdown`: Markdown report
+
+**Options:**
+- `--model MODEL`: Override LLM model
+- `--temperature N`: Override temperature
+- `--format FORMAT`: Output format (table, json, markdown)
+- `--output PATH`: Save to file
+- `--domains-dir PATH`: Custom domains directory
+- `--quiet`: Suppress progress output
+
+## Domain Directory Structure
+
+```
+domains/
+├── tafsir/                    # Domain: Islamic tafsir
+│   ├── domain.yaml            # Domain config (evaluator settings)
+│   ├── systems/               # System configurations
+│   │   ├── vectara-default.yaml
+│   │   ├── mongodb-local.yaml
+│   │   └── agentset-prod.yaml
+│   ├── query-sets/            # Query collections
+│   │   ├── test-queries.txt
+│   │   └── production-queries.txt
+│   ├── runs/                  # Run results (auto-created)
+│   │   ├── <run-id-1>.json
+│   │   └── <run-id-2>.json
+│   └── comparisons/           # Comparison results (auto-created)
+│       └── <comparison-id>.json
+└── legal/                     # Domain: Legal documents
+    ├── domain.yaml
+    ├── systems/
+    └── query-sets/
+```
+
 ## Configuration
 
-Create a `configs/tools.yaml` file:
+### Domain Configuration
+
+`domains/<domain>/domain.yaml`:
 
 ```yaml
-tools:
-  # Vectara platform (can use different corpus names: vectara, tafsir, mawsuah)
-  vectara:
-    api_key_env: VECTARA_API_KEY
-    corpus_id: ${VECTARA_CORPUS_ID}
-    base_url: https://api.vectara.io
-    timeout: 30
+name: tafsir
+description: Islamic tafsir RAG systems
+evaluator:
+  model: gpt-4                    # LLM model for evaluation
+  temperature: 0.0                # Temperature for evaluation
+  prompt_template: |              # Evaluation prompt template
+    Compare these RAG results for the query: {query}
 
-  goodmem:
-    api_key_env: GOODMEM_API_KEY
-    base_url: https://api.goodmem.ai
-    timeout: 30
+    Results:
+    {results}
 
-  agentset:
-    api_key_env: AGENTSET_API_TOKEN
-    namespace_id_env: AGENTSET_NAMESPACE_ID
-    timeout: 60
-
-  # MongoDB Atlas Vector Search
-  mongodb:
-    api_key_env: MONGODB_URI  # MongoDB connection string
-    options:
-      database: your_database
-      collection: your_collection
-      index_name: vector_index
-      embedding_provider: openai
-      embedding_model: text-embedding-3-small
-      embedding_api_key_env: OPENAI_API_KEY
-    timeout: 60
-
-  # FAISS local vector search (supports sentence-transformers, OpenAI, etc.)
-  faiss:
-    adapter: faiss
-    api_key_env: FAISS_DUMMY_KEY  # Not needed for sentence-transformers
-    timeout: 30
-    options:
-      index_path: /path/to/your/index.faiss
-      documents_path: /path/to/your/documents.jsonl
-      embedding_service: sentence-transformers  # or "openai"
-      embedding_model: all-MiniLM-L6-v2  # or "text-embedding-3-small" for OpenAI
-
-llm:
-  model: claude-opus-4-1-20250805
-  api_key_env: ANTHROPIC_API_KEY
+    Determine which system provided better results and explain why.
 ```
 
-### Adapter Variants
+### System Configuration
 
-RAGDiff supports adapter variants, allowing you to compare different configurations of the same RAG tool. This is useful for A/B testing different settings (e.g., reranking on vs off) without code changes.
+`domains/<domain>/systems/<system>.yaml`:
 
-**Configuration Format:**
-
+**Vectara:**
 ```yaml
-tools:
-  # Variant 1: Agentset with reranking enabled
-  agentset-rerank-on:
-    adapter: agentset           # Which adapter class to use
-    api_key_env: AGENTSET_API_TOKEN
-    namespace_id_env: AGENTSET_NAMESPACE_ID
-    options:                    # Custom adapter-specific options
-      rerank: true
-    timeout: 60
-    default_top_k: 10
-
-  # Variant 2: Agentset with reranking disabled
-  agentset-rerank-off:
-    adapter: agentset           # Same adapter, different config
-    api_key_env: AGENTSET_API_TOKEN
-    namespace_id_env: AGENTSET_NAMESPACE_ID
-    options:
-      rerank: false
-    timeout: 60
-    default_top_k: 10
-
-  # Variant 3: Vectara with different corpus
-  tafsir-corpus:
-    adapter: vectara            # Use vectara adapter
-    api_key_env: VECTARA_API_KEY
-    corpus_id: tafsir_v1
-    timeout: 30
-
-  mawsuah-corpus:
-    adapter: vectara            # Same adapter, different corpus
-    api_key_env: VECTARA_API_KEY
-    corpus_id: mawsuah_v1
-    timeout: 30
+name: vectara-default
+tool: vectara
+config:
+  api_key: ${VECTARA_API_KEY}
+  corpus_id: ${VECTARA_CORPUS_ID}
+  timeout: 30
 ```
 
-**Key Concepts:**
-
-- **YAML key**: Becomes the display name in results (e.g., `agentset-rerank-on`)
-- **adapter field**: Specifies which adapter class to use (defaults to YAML key if omitted)
-- **options dict**: Custom configuration passed to the adapter
-
-**Usage Example:**
-
-```bash
-# Compare two agentset variants
-uv run ragdiff compare "Your query" \
-  --tool agentset-rerank-on \
-  --tool agentset-rerank-off \
-  --config configs/my-variants.yaml
-```
-
-**Backward Compatibility:**
-
-Existing configurations without the `adapter` field continue to work. The adapter name defaults to the YAML key:
-
+**MongoDB:**
 ```yaml
-# This still works - adapter defaults to "vectara"
-vectara:
-  api_key_env: VECTARA_API_KEY
-  corpus_id: my_corpus
+name: mongodb-local
+tool: mongodb
+config:
+  connection_uri: ${MONGODB_URI}
+  database: my_db
+  collection: documents
+  index_name: vector_index
+  embedding_model: all-MiniLM-L6-v2  # sentence-transformers model
+  timeout: 60
 ```
 
-## Usage
+**Agentset:**
+```yaml
+name: agentset-prod
+tool: agentset
+config:
+  api_token: ${AGENTSET_API_TOKEN}
+  namespace_id: ${AGENTSET_NAMESPACE_ID}
+  rerank: true
+  timeout: 60
+```
 
-RAGDiff can be used both as a **CLI tool** and as a **Python library**. Choose the interface that best fits your workflow.
+### Query Sets
 
-### Library API
+`domains/<domain>/query-sets/<name>.txt`:
 
-Use RAGDiff programmatically in your Python applications for maximum flexibility and integration.
+Simple text files with one query per line:
 
-#### Installation as a Library
+```
+What is Islamic inheritance law?
+Explain the concept of zakat
+What are the five pillars of Islam?
+```
+
+## Environment Variables
+
+Create a `.env` file with:
 
 ```bash
-# Install from source
-cd ragdiff
-uv pip install -e .
+# Vectara
+VECTARA_API_KEY=your_key
+VECTARA_CORPUS_ID=your_corpus_id
 
-# Or in your project
-pip install ragdiff  # When published to PyPI
+# MongoDB Atlas
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
+
+# Agentset
+AGENTSET_API_TOKEN=your_token
+AGENTSET_NAMESPACE_ID=your_namespace_id
+
+# LLM Providers (for evaluation via LiteLLM)
+OPENAI_API_KEY=your_key          # For GPT models
+ANTHROPIC_API_KEY=your_key       # For Claude models
+GEMINI_API_KEY=your_key          # For Gemini models
 ```
 
-#### Quick Start
+## Supported RAG Systems
+
+RAGDiff v2.0 supports the following RAG systems:
+
+- **Vectara**: Enterprise RAG platform with built-in neural search
+- **MongoDB Atlas**: Vector search with MongoDB Atlas and sentence-transformers
+- **Agentset**: RAG-as-a-Service platform
+
+### Adding New Systems
+
+1. Create system implementation in `src/ragdiff/systems/`:
 
 ```python
-from ragdiff import query, compare, run_batch
+from ..core.models_v2 import RetrievedChunk
+from ..core.errors import ConfigError, RunError
+from .abc import System
 
-# Single query against one tool
-results = query("config.yaml", "What is RAG?", tool="vectara", top_k=5)
-for result in results:
-    print(f"{result.score:.3f}: {result.text[:100]}")
+class MySystem(System):
+    def __init__(self, config: dict):
+        super().__init__(config)
+        if "api_key" not in config:
+            raise ConfigError("Missing required field: api_key")
+        self.api_key = config["api_key"]
 
-# Compare multiple tools
-comparison = compare(
-    "config.yaml",
-    "What is RAG?",
-    tools=["vectara", "goodmem"],
-    top_k=5,
-    evaluate=True  # Run LLM evaluation
-)
-print(f"Winner: {comparison.llm_evaluation.winner}")
-print(f"Vectara score: {comparison.llm_evaluation.quality_scores['vectara']}")
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+        # Implement search logic
+        results = self._call_api(query, top_k)
+        return [
+            RetrievedChunk(
+                content=r["text"],
+                score=r["score"],
+                metadata={"source": r["source"]}
+            )
+            for r in results
+        ]
 
-# Batch processing
-queries = ["What is RAG?", "What is vector search?", "Explain embeddings"]
-results = run_batch(
-    "config.yaml",
-    queries,
-    tools=["vectara", "goodmem"],
-    parallel=True,
-    evaluate=True
-)
-for result in results:
-    print(f"Query: {result.query}")
-    print(f"Winner: {result.llm_evaluation.winner if result.llm_evaluation else 'N/A'}")
+# Register the system
+from .registry import register_tool
+register_tool("mysystem", MySystem)
 ```
 
-#### Core Functions
-
-**`query(config_path, query_text, tool, top_k=5)`**
-
-Run a single query against one RAG system.
-
+2. Import in `src/ragdiff/systems/__init__.py`:
 ```python
-from ragdiff import query
-
-results = query(
-    config_path="config.yaml",
-    query_text="What is Islamic inheritance law?",
-    tool="vectara",
-    top_k=10
-)
-
-for idx, result in enumerate(results, 1):
-    print(f"{idx}. [{result.score:.3f}] {result.text[:200]}")
-    print(f"   Source: {result.source}")
+from . import mysystem  # noqa: F401
 ```
 
-**`compare(config_path, query_text, tools=None, top_k=5, parallel=True, evaluate=False)`**
+3. Add tests in `tests/test_systems.py`
 
-Compare multiple RAG systems on a single query.
+## Example Workflows
 
-```python
-from ragdiff import compare
-
-comparison = compare(
-    config_path="config.yaml",
-    query_text="Explain Quranic inheritance",
-    tools=["vectara", "goodmem", "agentset"],  # None = all tools
-    top_k=5,
-    parallel=True,  # Run searches in parallel
-    evaluate=True   # Run LLM evaluation
-)
-
-# Access results
-print(f"Query: {comparison.query}")
-print(f"Tools compared: {list(comparison.tool_results.keys())}")
-
-for tool_name, results in comparison.tool_results.items():
-    print(f"\n{tool_name}: {len(results)} results")
-    if results:
-        print(f"  Top result: {results[0].text[:100]}")
-
-# LLM evaluation (if evaluate=True)
-if comparison.llm_evaluation:
-    print(f"\nWinner: {comparison.llm_evaluation.winner}")
-    print(f"Analysis: {comparison.llm_evaluation.analysis}")
-    for tool, score in comparison.llm_evaluation.quality_scores.items():
-        print(f"  {tool}: {score}/100")
-```
-
-**`run_batch(config_path, queries, tools=None, top_k=5, parallel=True, evaluate=False)`**
-
-Run multiple queries against multiple RAG systems.
-
-```python
-from ragdiff import run_batch
-
-queries = [
-    "What is zakat?",
-    "Explain hajj requirements",
-    "What is the shahada?"
-]
-
-results = run_batch(
-    config_path="config.yaml",
-    queries=queries,
-    tools=["vectara", "goodmem"],
-    top_k=5,
-    parallel=True,
-    evaluate=True
-)
-
-# Process results
-for comparison in results:
-    print(f"\nQuery: {comparison.query}")
-    print(f"Results: {comparison.get_result_counts()}")
-
-    if comparison.llm_evaluation:
-        print(f"Winner: {comparison.llm_evaluation.winner}")
-        print(f"Scores: {comparison.llm_evaluation.quality_scores}")
-```
-
-**`evaluate_with_llm(comparison_result, model=None, api_key=None)`**
-
-Evaluate comparison results using an LLM.
-
-```python
-from ragdiff import compare, evaluate_with_llm
-
-# Run comparison without evaluation
-comparison = compare("config.yaml", "What is RAG?", tools=["vectara", "goodmem"])
-
-# Evaluate later
-evaluation = evaluate_with_llm(
-    comparison,
-    model="claude-sonnet-4-20250514",  # Optional, uses config default
-    api_key=None  # Optional, uses ANTHROPIC_API_KEY env var
-)
-
-print(f"Winner: {evaluation.winner}")
-print(f"Analysis: {evaluation.analysis}")
-```
-
-#### Configuration Management
-
-```python
-from ragdiff import load_config, validate_config, get_available_adapters
-
-# Load and validate configuration
-config = load_config("config.yaml")
-validate_config("config.yaml")
-
-# Get available adapters
-adapters = get_available_adapters()
-for adapter_name, info in adapters.items():
-    print(f"{adapter_name}: {info['description']}")
-    print(f"  Required env vars: {info['required_env_vars']}")
-```
-
-#### Working with Results
-
-```python
-from ragdiff import compare
-from ragdiff.core.serialization import to_json
-
-comparison = compare("config.yaml", "test query", tools=["vectara"])
-
-# Convert to JSON
-json_output = to_json(comparison, pretty=True)
-print(json_output)
-
-# Convert to dict
-data = comparison.to_dict()
-
-# Access specific fields
-print(f"Query: {comparison.query}")
-print(f"Timestamp: {comparison.timestamp}")
-print(f"Errors: {comparison.errors}")
-print(f"Has errors: {comparison.has_errors()}")
-```
-
-#### Thread-Safe Usage
-
-RAGDiff is thread-safe and can be used in multi-threaded applications:
-
-```python
-from concurrent.futures import ThreadPoolExecutor
-from ragdiff import query
-
-def run_query(query_text):
-    return query("config.yaml", query_text, tool="vectara", top_k=5)
-
-# Safe concurrent execution
-with ThreadPoolExecutor(max_workers=10) as executor:
-    queries = [f"Query {i}" for i in range(100)]
-    results = list(executor.map(run_query, queries))
-
-print(f"Completed {len(results)} queries concurrently")
-```
-
-#### Error Handling
-
-```python
-from ragdiff import query, compare
-from ragdiff.core.errors import (
-    ConfigurationError,
-    AdapterError,
-    ValidationError,
-    EvaluationError
-)
-
-try:
-    results = query("config.yaml", "test", tool="invalid_tool")
-except ConfigurationError as e:
-    print(f"Configuration error: {e}")
-except AdapterError as e:
-    print(f"Adapter failed: {e}")
-except ValidationError as e:
-    print(f"Invalid input: {e}")
-
-# Errors are also captured in comparison results
-comparison = compare("config.yaml", "test", tools=["vectara", "goodmem"])
-if comparison.has_errors():
-    for tool, error in comparison.errors.items():
-        print(f"{tool} failed: {error}")
-```
-
-#### FastAPI Integration
-
-See `examples/fastapi_integration.py` for a complete FastAPI service example:
+### A/B Testing Different System Configurations
 
 ```bash
-# Install FastAPI dependencies
-uv pip install fastapi uvicorn
+# Create two MongoDB variants with different embedding models
+cat > domains/ml/systems/mongodb-minilm.yaml <<EOF
+name: mongodb-minilm
+tool: mongodb
+config:
+  connection_uri: \${MONGODB_URI}
+  database: ml_docs
+  collection: articles
+  index_name: vector_index
+  embedding_model: all-MiniLM-L6-v2
+EOF
 
-# Run the API server
-uvicorn examples.fastapi_integration:app --reload
+cat > domains/ml/systems/mongodb-mpnet.yaml <<EOF
+name: mongodb-mpnet
+tool: mongodb
+config:
+  connection_uri: \${MONGODB_URI}
+  database: ml_docs
+  collection: articles
+  index_name: vector_index
+  embedding_model: all-mpnet-base-v2
+EOF
 
-# Or run directly
-python examples/fastapi_integration.py
+# Run both systems
+uv run ragdiff run ml mongodb-minilm test-queries
+uv run ragdiff run ml mongodb-mpnet test-queries
+
+# Compare results
+uv run ragdiff compare ml <run-id-1> <run-id-2> --format markdown --output ab-test-results.md
 ```
 
-The example includes:
-- Thread-safe concurrent request handling
-- Structured JSON request/response models
-- Comprehensive error handling
-- Configuration validation on startup
-- Health check endpoint
-- API documentation at `/docs`
-
-**Example API calls:**
+### Systematic RAG System Development
 
 ```bash
-# Health check
-curl http://localhost:8000/health
+# 1. Create baseline run
+uv run ragdiff run legal vectara-baseline prod-queries
 
-# Query single tool
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What is RAG?", "tool": "vectara", "top_k": 5}'
+# 2. Make improvements to your RAG system
+# (update embeddings, indexing, etc.)
 
-# Compare multiple tools
-curl -X POST http://localhost:8000/compare \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What is RAG?", "tools": ["vectara", "goodmem"], "evaluate": true}'
+# 3. Create new run with improved system
+uv run ragdiff run legal vectara-improved prod-queries
 
-# Batch queries
-curl -X POST http://localhost:8000/batch \
-  -H "Content-Type: application/json" \
-  -d '{"queries": ["What is RAG?", "Explain vectors"], "tools": ["vectara"]}'
+# 4. Compare baseline vs improved
+uv run ragdiff compare legal <baseline-id> <improved-id> --format markdown --output improvements.md
+
+# 5. If improved system is better, make it the new baseline
+cp domains/legal/systems/vectara-improved.yaml domains/legal/systems/vectara-baseline.yaml
 ```
 
-### CLI Usage
-
-For command-line usage, RAGDiff provides a rich CLI interface with three main commands:
-
-#### 1. Query Command - Interactive Queries
-
-Query one or more RAG systems interactively. If multiple tools are specified, results are compared side-by-side.
+### Multi-System Comparison
 
 ```bash
-# Query a single tool
-uv run ragdiff query "What is Islamic inheritance law?" --tool vectara
+# Run same query set across all systems
+uv run ragdiff run tafsir vectara-default test-queries
+uv run ragdiff run tafsir mongodb-local test-queries
+uv run ragdiff run tafsir agentset-prod test-queries
 
-# Compare multiple tools live
-uv run ragdiff query "Your query" --tool vectara --tool agentset --top-k 10
-
-# Compare with LLM evaluation
-uv run ragdiff query "Your query" --tool vectara --tool agentset --evaluate
-
-# Save results to file
-uv run ragdiff query "Your query" --tool vectara --output results.json --format json
-```
-
-**Output Formats**: `display` (default), `json`, `markdown`
-
-#### 2. Batch Command - Batch Processing
-
-Process multiple queries and save results separately per adapter. This is the "expensive" step that calls the RAG systems.
-
-```bash
-# Basic batch processing - saves per-adapter files
-uv run ragdiff batch inputs/tafsir-test-queries.txt \
-  --config configs/tafsir.yaml \
-  --output-dir results/ \
-  --top-k 10
-
-# This creates separate files:
-#   results/vectara.jsonl
-#   results/agentset.jsonl
-#   results/goodmem.jsonl
-
-# Process with specific tools only
-uv run ragdiff batch inputs/queries.txt \
-  --tool vectara --tool agentset \
-  --output-dir results/
-```
-
-**Output Formats**: `jsonl` (default), `json`
-
-**Key Feature**: Separates expensive RAG queries from evaluation, allowing you to iterate on evaluation without re-running queries.
-
-#### 3. Compare Command - Evaluate Saved Results
-
-Load previously saved results and compare them using LLM evaluation. This is the "cheap" step that you can run multiple times.
-
-```bash
-# Evaluate saved results
-uv run ragdiff compare results/ --output evaluation.jsonl
-
-# Generate markdown report
-uv run ragdiff compare results/ --format markdown --output report.md
-
-# JSON evaluation output
-uv run ragdiff compare results/ --format json --output eval.json
-```
-
-**Output Formats**: `jsonl` (default), `json`, `markdown`
-
-**Benefits**:
-- Run queries once, evaluate multiple times
-- Test different evaluation criteria without API costs
-- Iterate on prompts and scoring without re-querying RAG systems
-
-#### Complete Workflow Example
-
-Here's a complete workflow showing the separation of RAG queries from evaluation:
-
-```bash
-# Step 1: Batch process queries and save per-adapter results (expensive, run once)
-uv run ragdiff batch inputs/tafsir-test-queries.txt \
-  --config configs/tafsir.yaml \
-  --output-dir results/ \
-  --top-k 10
-
-# Step 2: Evaluate and compare results (cheap, run multiple times)
-uv run ragdiff compare results/ \
+# Compare all three
+uv run ragdiff compare tafsir <vectara-id> <mongodb-id> <agentset-id> \
   --format markdown \
-  --output evaluation-v1.md
-
-# Step 3: Iterate on evaluation without re-running queries
-# (Maybe tweak LLM model, prompts, or scoring criteria)
-uv run ragdiff compare results/ \
-  --format json \
-  --output evaluation-v2.json
-```
-
-**Why this is better:**
-- **Cost savings**: RAG APIs called once, LLM evaluation can be re-run many times
-- **Speed**: Evaluation takes seconds vs minutes for RAG queries
-- **Experimentation**: Try different evaluation approaches without waiting
-- **Reproducibility**: Same RAG results, different evaluation methods
-
-### Other Commands
-
-```bash
-# List available tools
-uv run ragdiff list-tools
-
-# Validate configuration
-uv run ragdiff validate-config
-
-# Run quick test
-uv run ragdiff quick-test
-
-# Get help
-uv run ragdiff --help
-uv run ragdiff compare --help
-uv run ragdiff batch --help
-```
-
-## Project Structure
-
-```
-ragdiff/
-├── src/
-│   ├── core/           # Core models and configuration
-│   │   ├── models.py    # Data models (RagResult, ComparisonResult, etc.)
-│   │   └── config.py    # Configuration management
-│   ├── adapters/        # Tool adapters
-│   │   ├── base.py      # Base adapter implementing SearchVectara interface
-│   │   ├── vectara.py   # Vectara platform adapter
-│   │   ├── goodmem.py   # Goodmem adapter with mock fallback
-│   │   ├── agentset.py  # Agentset adapter
-│   │   └── factory.py   # Adapter factory
-│   ├── comparison/      # Comparison engine
-│   │   └── engine.py    # Parallel/sequential search execution
-│   ├── display/         # Display formatters
-│   │   └── formatter.py # Multiple output format support
-│   └── cli.py          # Typer CLI implementation
-├── tests/              # Comprehensive test suite
-├── configs/            # Configuration files
-└── requirements.txt    # Python dependencies
-```
-
-## Architecture
-
-The tool follows the SPIDER protocol for systematic development:
-
-1. **Specification**: Clear goals for subjective RAG comparison
-2. **Planning**: Phased implementation approach
-3. **Implementation**: Clean architecture with separation of concerns
-4. **Defense**: Comprehensive test coverage (90+ tests)
-5. **Evaluation**: Expert review and validation
-6. **Commit**: Version control with clear history
-
-### Key Components
-
-- **BaseRagTool**: Abstract base implementing SearchVectara interface
-- **Adapters**: Tool-specific implementations (Vectara, Goodmem, Agentset, MongoDB Atlas)
-- **ComparisonEngine**: Orchestrates parallel/sequential searches
-- **ComparisonFormatter**: Handles multiple output formats
-- **Config**: Manages YAML configuration with environment variables
-
-## Adding New RAG Tools
-
-1. Create a new adapter in `src/adapters/`:
-
-```python
-from .base import BaseRagTool
-from ..core.models import RagResult
-
-class MyToolAdapter(BaseRagTool):
-    def search(self, query: str, top_k: int = 5) -> List[RagResult]:
-        # Implement tool-specific search
-        results = self.client.search(query, limit=top_k)
-        return [self._convert_to_rag_result(r) for r in results]
-```
-
-2. Register in `src/adapters/factory.py`:
-
-```python
-ADAPTER_REGISTRY["mytool"] = MyToolAdapter
-```
-
-3. Add configuration in `configs/tools.yaml`:
-
-```yaml
-tools:
-  mytool:
-    api_key_env: MYTOOL_API_KEY
-    base_url: https://api.mytool.com
+  --output three-way-comparison.md
 ```
 
 ## Development
@@ -659,50 +459,101 @@ tools:
 # Run all tests
 uv run pytest tests/
 
-# Run specific test file
-uv run pytest tests/test_cli.py
+# Run v2.0 tests only
+uv run pytest tests/test_core_v2.py tests/test_systems.py tests/test_execution.py tests/test_cli_v2.py
 
 # Run with coverage
 uv run pytest tests/ --cov=src
+
+# Run with verbose output
+uv run pytest tests/ -v
 ```
 
-### Code Style
+### Code Quality
 
-The project uses:
-- Black for formatting
-- Ruff for linting
-- MyPy for type checking
+The project uses pre-commit hooks:
+- `ruff` for linting and formatting
+- `pytest` for testing
+- Whitespace and YAML validation
 
 ```bash
-# Format code with Black
-uv run black src/ tests/
+# Install pre-commit hooks
+pre-commit install
 
-# Check linting with Ruff
-uv run ruff check src/ tests/
-
-# Type checking with MyPy
-uv run mypy src/
+# Run manually
+pre-commit run --all-files
 ```
 
-## Environment Variables
+### Project Structure
 
-Required environment variables:
+```
+ragdiff/
+├── src/ragdiff/              # Main package
+│   ├── cli.py                # Main CLI entry point
+│   ├── cli_v2.py             # v2.0 CLI implementation
+│   ├── core/                 # Core v2.0 models
+│   │   ├── models_v2.py      # Domain-based models
+│   │   ├── loaders.py        # File loading utilities
+│   │   ├── storage.py        # Persistence utilities
+│   │   └── errors.py         # Custom exceptions
+│   ├── systems/              # System implementations
+│   │   ├── abc.py            # System abstract base class
+│   │   ├── registry.py       # System registration
+│   │   ├── vectara.py        # Vectara system
+│   │   ├── mongodb.py        # MongoDB system
+│   │   └── agentset.py       # Agentset system
+│   ├── execution/            # Run execution engine
+│   └── comparison/           # Comparison engine
+├── tests/                    # Test suite (78 v2.0 tests)
+├── domains/                  # Domain workspaces
+└── pyproject.toml            # Package configuration
+```
 
-- `VECTARA_API_KEY`: For Vectara platform access
-- `VECTARA_CORPUS_ID`: Vectara corpus ID (or use corpus key)
-- `GOODMEM_API_KEY`: For Goodmem access (optional, uses mock if not set)
-- `AGENTSET_API_TOKEN`: For Agentset access
-- `AGENTSET_NAMESPACE_ID`: Agentset namespace ID
-- `ANTHROPIC_API_KEY`: For LLM evaluation (optional)
+## Architecture
+
+RAGDiff v2.0 follows the SPIDER protocol for systematic development:
+
+- **Specification**: Clear goals documented in codev/specs/
+- **Planning**: Phased implementation (6 phases)
+- **Implementation**: Clean domain-based architecture
+- **Defense**: Comprehensive test coverage (78 v2.0 tests)
+- **Evaluation**: Code reviews and validation
+- **Reflection**: Architecture documentation
+
+### Key Design Principles
+
+1. **Domain-Driven**: Organize work around problem domains
+2. **Reproducibility**: Snapshot configs and queries in runs
+3. **Fail Fast**: Clear error messages, no silent failures
+4. **Type Safety**: Pydantic models with validation
+5. **Testability**: Every feature has tests
+6. **Separation of Concerns**: Clean module boundaries
+
+## Migration from v1.x
+
+RAGDiff v2.0 is a complete rewrite with a different architecture. Key changes:
+
+- **Architecture**: Adapter-based → Domain-based
+- **CLI**: `query`/`batch`/`compare` → `run`/`compare`
+- **Organization**: Config files → Domain directories
+- **Reproducibility**: None → Full config snapshots
+
+See `MIGRATION.md` for detailed migration guide.
 
 ## License
 
-[Your License]
+MIT License - see LICENSE file for details
 
 ## Contributing
 
-Contributions welcome! Please follow the existing code style and add tests for new features.
+Contributions welcome! Please:
+1. Follow existing code style (ruff formatting)
+2. Add tests for new features
+3. Update documentation
+4. Ensure all tests pass
 
 ## Acknowledgments
 
 Built following the SPIDER protocol for systematic development.
+
+Supported RAG platforms: Vectara, MongoDB Atlas, Agentset
