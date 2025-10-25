@@ -167,7 +167,7 @@ uv run pytest tests/ --cov=src
 uv run pytest tests/ -v
 ```
 
-All tests must pass before committing. Current test count: 236 tests.
+All tests must pass before committing. Current test count: 245 tests.
 
 ## Code Quality
 
@@ -272,7 +272,7 @@ AGENTSET_NAMESPACE_ID=your_namespace_id
 # MongoDB Atlas
 MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
 
-# OpenAI (for MongoDB embeddings)
+# OpenAI (for MongoDB embeddings and FAISS if using OpenAI service)
 OPENAI_API_KEY=your_key
 
 # Anthropic (for LLM evaluation)
