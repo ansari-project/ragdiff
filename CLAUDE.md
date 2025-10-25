@@ -275,8 +275,14 @@ MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
 # OpenAI (for MongoDB embeddings and FAISS if using OpenAI service)
 OPENAI_API_KEY=your_key
 
-# Anthropic (for LLM evaluation)
+# Anthropic (for LLM evaluation with Claude)
 ANTHROPIC_API_KEY=your_key
+
+# Google Gemini (for LLM evaluation with Gemini via LiteLLM)
+GEMINI_API_KEY=your_key
+
+# OpenRouter (optional - for multi-provider access via single key)
+OPENROUTER_API_KEY=your_key
 ```
 
 ## Key Design Principles
