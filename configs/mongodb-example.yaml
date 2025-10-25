@@ -1,25 +1,26 @@
-# MongoDB Atlas Vector Search configuration example
+# MongoDB Vector Search configuration example
 #
 # Prerequisites:
-# 1. MongoDB Atlas cluster (M10 or higher tier for vector search)
-# 2. Vector search index created on your collection
+# 1. Local MongoDB Community Edition OR MongoDB Atlas
+# 2. Vector index created on your collection (see notes below)
 # 3. Documents with embedded vectors in your collection
-# 4. OpenAI API key (or other embedding provider)
+# 4. sentence-transformers library installed
 #
 # Environment variables required:
-# - MONGODB_URI: MongoDB Atlas connection string (e.g., mongodb+srv://user:pass@cluster.mongodb.net/)
-# - OPENAI_API_KEY: OpenAI API key for generating query embeddings
+# - MONGODB_URI: MongoDB connection string
+#   Local: mongodb://localhost:27017/
+#   Atlas: mongodb+srv://user:pass@cluster.mongodb.net/
 
 tools:
-  # MongoDB Atlas Vector Search configuration
+  # MongoDB Vector Search with sentence-transformers (local, free)
   mongodb:
     # MongoDB connection string environment variable
     api_key_env: MONGODB_URI
 
     # MongoDB database and collection settings (required)
     options:
-      database: tafsir_db              # Your database name
-      collection: documents             # Your collection name
+      database: squad_db               # Your database name
+      collection: contexts             # Your collection name
       index_name: vector_index          # Vector search index name
 
       # Field mappings (optional - these are the defaults)
@@ -27,25 +28,21 @@ tools:
       text_field: text                  # Field containing text content
       source_field: source              # Field containing source information
 
-      # Vector search tuning
-      num_candidates: 150               # Number of candidates for vector search
-                                        # Recommended: 10-20x the limit (top_k)
-
       # Metadata fields to include in results (optional)
       metadata_fields:
-        - surah                         # Surah number
-        - ayah                          # Ayah number
-        - tafsir_name                   # Name of the tafsir
-        - author                        # Author name
+        - article_title                 # Article title
+        - num_questions                 # Number of questions
 
-      # Embedding configuration
-      embedding_provider: openai        # Embedding provider (currently only 'openai' supported)
-      embedding_model: text-embedding-3-small  # OpenAI embedding model
-      embedding_api_key_env: OPENAI_API_KEY    # Environment variable for embedding API key
+      # Embedding configuration (sentence-transformers)
+      embedding_model: all-MiniLM-L6-v2  # Sentence-transformer model
+      # Options:
+      #   - all-MiniLM-L6-v2 (384 dims, fast, default)
+      #   - all-mpnet-base-v2 (768 dims, better quality)
+      #   - all-MiniLM-L12-v2 (384 dims, good balance)
 
     # General settings
     timeout: 60
-    default_top_k: 10
+    default_top_k: 5
 
 # LLM evaluation configuration (optional - used for quality scoring)
 llm:
@@ -54,30 +51,42 @@ llm:
   max_tokens: 16384
   temperature: 0.1
 
-# Notes on MongoDB Vector Search Index:
+# Notes on MongoDB Vector Index:
 #
-# You must create a vector search index in MongoDB Atlas before using this adapter.
+# For LOCAL MongoDB Community Edition:
+# Use a basic index (vector search is limited in community edition):
 #
-# Example index definition (create via Atlas UI or mongosh):
+# mongosh
+# use squad_db
+# db.contexts.createIndex({ "embedding": "2dsphere" }, { name: "vector_index" })
+#
+# For MongoDB Atlas (advanced vector search):
+# Create a vector search index via Atlas UI:
 # {
 #   "fields": [
 #     {
 #       "type": "vector",
 #       "path": "embedding",
-#       "numDimensions": 1536,        # Must match your embedding model
-#       "similarity": "dotProduct"     # or "cosine" or "euclidean"
+#       "numDimensions": 384,           # Must match your model (384 for all-MiniLM-L6-v2)
+#       "similarity": "cosine"          # or "dotProduct" or "euclidean"
 #     },
 #     {
 #       "type": "filter",
-#       "path": "surah"                # Optional: for metadata filtering
+#       "path": "article_title"         # Optional: for metadata filtering
 #     }
 #   ]
 # }
 #
-# Embedding dimensions by model:
-# - text-embedding-3-small: 1536 dimensions
-# - text-embedding-3-large: 3072 dimensions
-# - text-embedding-ada-002: 1536 dimensions
+# Embedding dimensions by sentence-transformer model:
+# - all-MiniLM-L6-v2: 384 dimensions
+# - all-mpnet-base-v2: 768 dimensions
+# - all-MiniLM-L12-v2: 384 dimensions
+#
+# Cost:
+# - sentence-transformers: FREE (runs locally)
+# - Local MongoDB: FREE
+# - MongoDB Atlas: Varies by tier
 #
 # For more information:
-# https://www.mongodb.com/docs/atlas/atlas-vector-search/
+# - MongoDB Community: https://www.mongodb.com/try/download/community
+# - Sentence-Transformers: https://www.sbert.net/

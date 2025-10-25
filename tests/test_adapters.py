@@ -379,6 +379,47 @@ class TestFactoryWithRegistry:
 class TestMongoDBAdapter:
     """Test MongoDBAdapter implementation."""
 
+    @pytest.fixture(autouse=True)
+    def mock_mongodb_deps(self):
+        """Mock MongoDB dependencies for all tests."""
+        import sys
+        from unittest.mock import MagicMock, patch
+        import ragdiff.adapters.mongodb
+
+        # Mock sentence_transformers
+        mock_st_module = MagicMock()
+        mock_st_class = MagicMock()
+        mock_st_module.SentenceTransformer = mock_st_class
+        sys.modules['sentence_transformers'] = mock_st_module
+
+        # Mock pymongo
+        mock_pymongo = MagicMock()
+        mock_pymongo_errors = MagicMock()
+        mock_pymongo.errors.PyMongoError = Exception
+        sys.modules['pymongo'] = mock_pymongo
+        sys.modules['pymongo.errors'] = mock_pymongo_errors
+
+        # Inject SentenceTransformer into mongodb module namespace
+        original_st = getattr(ragdiff.adapters.mongodb, 'SentenceTransformer', None)
+        ragdiff.adapters.mongodb.SentenceTransformer = mock_st_class
+
+        # Mock availability flags
+        with patch('ragdiff.adapters.mongodb.SENTENCE_TRANSFORMERS_AVAILABLE', True):
+            with patch('ragdiff.adapters.mongodb.PYMONGO_AVAILABLE', True):
+                with patch('ragdiff.adapters.mongodb.PyMongoError', Exception):
+                    yield
+
+        # Restore original
+        if original_st is not None:
+            ragdiff.adapters.mongodb.SentenceTransformer = original_st
+        elif hasattr(ragdiff.adapters.mongodb, 'SentenceTransformer'):
+            delattr(ragdiff.adapters.mongodb, 'SentenceTransformer')
+
+        # Cleanup
+        for module in ['sentence_transformers', 'pymongo', 'pymongo.errors']:
+            if module in sys.modules:
+                del sys.modules[module]
+
     def test_validate_config_missing_api_key_env(self):
         """Test validation fails when api_key_env is missing."""
         config = {
@@ -451,34 +492,13 @@ class TestMongoDBAdapter:
         ):
             MongoDBAdapter.validate_config(MongoDBAdapter, config)
 
-    @patch.dict(
-        os.environ,
-        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
-        clear=True,
-    )
-    def test_validate_config_embedding_api_key_not_set(self):
-        """Test validation fails when embedding API key env var is not set."""
-        config = {
-            "api_key_env": "MONGODB_URI",
-            "options": {
-                "database": "test_db",
-                "collection": "test_collection",
-                "index_name": "test_index",
-                "embedding_api_key_env": "MISSING_KEY",
-            },
-        }
-        with pytest.raises(
-            ConfigurationError, match="Environment variable MISSING_KEY is not set"
-        ):
-            MongoDBAdapter.validate_config(MongoDBAdapter, config)
-
     @patch("ragdiff.adapters.mongodb.MongoClient")
-    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch("sentence_transformers.SentenceTransformer")
     @patch.dict(
         os.environ,
-        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+        {"MONGODB_URI": "mongodb://localhost"},
     )
-    def test_validate_config_success(self, mock_openai, mock_mongo):
+    def test_validate_config_success(self, mock_st, mock_mongo):
         """Test validation succeeds with valid config."""
         # Mock MongoDB client
         mock_client = mock_mongo.return_value
@@ -500,12 +520,12 @@ class TestMongoDBAdapter:
         assert adapter.index_name == "test_index"
 
     @patch("ragdiff.adapters.mongodb.MongoClient")
-    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch("sentence_transformers.SentenceTransformer")
     @patch.dict(
         os.environ,
-        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+        {"MONGODB_URI": "mongodb://localhost"},
     )
-    def test_get_required_env_vars(self, mock_openai, mock_mongo):
+    def test_get_required_env_vars(self, mock_st, mock_mongo):
         """Test get_required_env_vars returns correct list."""
         mock_client = mock_mongo.return_value
         mock_client.admin.command.return_value = {"ok": 1}
@@ -522,7 +542,6 @@ class TestMongoDBAdapter:
         adapter = MongoDBAdapter(config)
         env_vars = adapter.get_required_env_vars()
         assert "MONGODB_URI" in env_vars
-        assert "OPENAI_API_KEY" in env_vars
 
     def test_get_options_schema(self):
         """Test get_options_schema returns valid JSON schema."""
@@ -533,18 +552,16 @@ class TestMongoDBAdapter:
         assert "index_name" in schema["properties"]
         assert "vector_field" in schema["properties"]
         assert "text_field" in schema["properties"]
-        assert "num_candidates" in schema["properties"]
-        assert "embedding_provider" in schema["properties"]
         assert "embedding_model" in schema["properties"]
         assert schema["required"] == ["database", "collection", "index_name"]
 
     @patch("ragdiff.adapters.mongodb.MongoClient")
-    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch("sentence_transformers.SentenceTransformer")
     @patch.dict(
         os.environ,
-        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+        {"MONGODB_URI": "mongodb://localhost"},
     )
-    def test_default_field_mappings(self, mock_openai, mock_mongo):
+    def test_default_field_mappings(self, mock_st, mock_mongo):
         """Test default field mappings are applied."""
         mock_client = mock_mongo.return_value
         mock_client.admin.command.return_value = {"ok": 1}
@@ -562,15 +579,15 @@ class TestMongoDBAdapter:
         assert adapter.vector_field == "embedding"
         assert adapter.text_field == "text"
         assert adapter.source_field == "source"
-        assert adapter.num_candidates == 150
+        assert adapter.embedding_model_name == "all-MiniLM-L6-v2"
 
     @patch("ragdiff.adapters.mongodb.MongoClient")
-    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch("sentence_transformers.SentenceTransformer")
     @patch.dict(
         os.environ,
-        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+        {"MONGODB_URI": "mongodb://localhost"},
     )
-    def test_custom_field_mappings(self, mock_openai, mock_mongo):
+    def test_custom_field_mappings(self, mock_st, mock_mongo):
         """Test custom field mappings can be configured."""
         mock_client = mock_mongo.return_value
         mock_client.admin.command.return_value = {"ok": 1}
@@ -585,23 +602,23 @@ class TestMongoDBAdapter:
                 "vector_field": "custom_embedding",
                 "text_field": "content",
                 "source_field": "document_source",
-                "num_candidates": 200,
+                "embedding_model": "all-mpnet-base-v2",
             },
         )
         adapter = MongoDBAdapter(config)
         assert adapter.vector_field == "custom_embedding"
         assert adapter.text_field == "content"
         assert adapter.source_field == "document_source"
-        assert adapter.num_candidates == 200
+        assert adapter.embedding_model_name == "all-mpnet-base-v2"
 
     @patch("ragdiff.adapters.mongodb.MongoClient")
-    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch("sentence_transformers.SentenceTransformer")
     @patch.dict(
         os.environ,
-        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+        {"MONGODB_URI": "mongodb://localhost"},
     )
-    def test_embedding_provider_openai_default(self, mock_openai, mock_mongo):
-        """Test OpenAI is the default embedding provider."""
+    def test_embedding_model_default(self, mock_st, mock_mongo):
+        """Test all-MiniLM-L6-v2 is the default embedding model."""
         mock_client = mock_mongo.return_value
         mock_client.admin.command.return_value = {"ok": 1}
 
@@ -615,21 +632,60 @@ class TestMongoDBAdapter:
             },
         )
         adapter = MongoDBAdapter(config)
-        assert adapter.embedding_provider == "openai"
-        assert adapter.embedding_model == "text-embedding-3-small"
-        mock_openai.assert_called_once_with(api_key="test-key")
+        assert adapter.embedding_model_name == "all-MiniLM-L6-v2"
 
 
 class TestMongoDBAdapterFactory:
     """Test MongoDB adapter creation via factory."""
 
+    @pytest.fixture(autouse=True)
+    def mock_mongodb_deps(self):
+        """Mock MongoDB dependencies for all tests."""
+        import sys
+        from unittest.mock import MagicMock, patch
+        import ragdiff.adapters.mongodb
+
+        # Mock sentence_transformers
+        mock_st_module = MagicMock()
+        mock_st_class = MagicMock()
+        mock_st_module.SentenceTransformer = mock_st_class
+        sys.modules['sentence_transformers'] = mock_st_module
+
+        # Mock pymongo
+        mock_pymongo = MagicMock()
+        mock_pymongo_errors = MagicMock()
+        mock_pymongo.errors.PyMongoError = Exception
+        sys.modules['pymongo'] = mock_pymongo
+        sys.modules['pymongo.errors'] = mock_pymongo_errors
+
+        # Inject SentenceTransformer into mongodb module namespace
+        original_st = getattr(ragdiff.adapters.mongodb, 'SentenceTransformer', None)
+        ragdiff.adapters.mongodb.SentenceTransformer = mock_st_class
+
+        # Mock availability flags
+        with patch('ragdiff.adapters.mongodb.SENTENCE_TRANSFORMERS_AVAILABLE', True):
+            with patch('ragdiff.adapters.mongodb.PYMONGO_AVAILABLE', True):
+                with patch('ragdiff.adapters.mongodb.PyMongoError', Exception):
+                    yield
+
+        # Restore original
+        if original_st is not None:
+            ragdiff.adapters.mongodb.SentenceTransformer = original_st
+        elif hasattr(ragdiff.adapters.mongodb, 'SentenceTransformer'):
+            delattr(ragdiff.adapters.mongodb, 'SentenceTransformer')
+
+        # Cleanup
+        for module in ['sentence_transformers', 'pymongo', 'pymongo.errors']:
+            if module in sys.modules:
+                del sys.modules[module]
+
     @patch("ragdiff.adapters.mongodb.MongoClient")
-    @patch("ragdiff.adapters.mongodb.openai.OpenAI")
+    @patch("sentence_transformers.SentenceTransformer")
     @patch.dict(
         os.environ,
-        {"MONGODB_URI": "mongodb://localhost", "OPENAI_API_KEY": "test-key"},
+        {"MONGODB_URI": "mongodb://localhost"},
     )
-    def test_create_mongodb_adapter(self, mock_openai, mock_mongo):
+    def test_create_mongodb_adapter(self, mock_st, mock_mongo):
         """Test factory creates MongoDB adapter using registry."""
         from ragdiff.adapters.factory import create_adapter
 

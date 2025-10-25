@@ -1,18 +1,18 @@
-"""MongoDB Atlas Vector Search adapter for RAG search.
+"""MongoDB Vector Search adapter for RAG search.
 
-This adapter connects to MongoDB Atlas and uses Vector Search for semantic retrieval.
-Requires a pre-configured vector search index in MongoDB Atlas.
+This adapter connects to MongoDB (local or Atlas) and uses vector similarity search
+for semantic retrieval. Uses sentence-transformers for local embedding generation.
 
 Features:
-- Vector similarity search using MongoDB Atlas Vector Search
-- Support for multiple embedding providers (OpenAI, Cohere, etc.)
+- Vector similarity search using MongoDB
+- Local embedding generation with sentence-transformers
 - Configurable vector index and field mappings
 - Metadata filtering and extraction
 """
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from ..core.errors import AdapterError, ConfigurationError
 from ..core.models import RagResult, ToolConfig
@@ -31,20 +31,21 @@ except ImportError:
     logger.warning("pymongo not installed. Install with: pip install pymongo")
 
 try:
-    import openai
+    from sentence_transformers import SentenceTransformer
 
-    OPENAI_AVAILABLE = True
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
-    logger.warning("openai not installed. Install with: pip install openai")
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    logger.warning(
+        "sentence-transformers not installed. Install with: pip install sentence-transformers"
+    )
 
 
 class MongoDBAdapter(RagAdapter):
-    """Adapter for MongoDB Atlas Vector Search.
+    """Adapter for MongoDB Vector Search.
 
-    Supports semantic search using pre-configured vector search indexes
-    in MongoDB Atlas. Requires embeddings to be generated using a supported
-    embedding provider (OpenAI, Cohere, etc.).
+    Supports semantic search using vector similarity in MongoDB.
+    Uses sentence-transformers for local, free embedding generation.
     """
 
     ADAPTER_API_VERSION = "1.0.0"
@@ -67,6 +68,12 @@ class MongoDBAdapter(RagAdapter):
         if not PYMONGO_AVAILABLE:
             raise ConfigurationError(
                 "pymongo is required for MongoDB adapter. Install with: pip install pymongo"
+            )
+
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            raise ConfigurationError(
+                "sentence-transformers is required for MongoDB adapter. "
+                "Install with: pip install sentence-transformers"
             )
 
         # Get MongoDB connection credentials
@@ -97,38 +104,22 @@ class MongoDBAdapter(RagAdapter):
         self.vector_field = options.get("vector_field", "embedding")
         self.text_field = options.get("text_field", "text")
         self.source_field = options.get("source_field", "source")
-        self.num_candidates = options.get("num_candidates", 150)
         self.metadata_fields = options.get("metadata_fields", [])
 
         # Embedding configuration
-        self.embedding_provider = options.get("embedding_provider", "openai")
-        self.embedding_model = options.get(
-            "embedding_model", "text-embedding-3-small"
-        )
-        self.embedding_api_key_env = options.get(
-            "embedding_api_key_env", "OPENAI_API_KEY"
+        self.embedding_model_name = options.get(
+            "embedding_model", "all-MiniLM-L6-v2"
         )
 
-        # Get embedding API key
-        self.embedding_api_key = self._get_credential(self.embedding_api_key_env)
-        if not self.embedding_api_key:
+        # Initialize sentence-transformers model
+        logger.info(f"Loading embedding model: {self.embedding_model_name}")
+        try:
+            self.embedding_model = SentenceTransformer(self.embedding_model_name)
+            logger.info(f"Embedding model loaded successfully")
+        except Exception as e:
             raise ConfigurationError(
-                f"Missing embedding API key: {self.embedding_api_key_env}"
-            )
-
-        # Initialize embedding client based on provider
-        if self.embedding_provider == "openai":
-            if not OPENAI_AVAILABLE:
-                raise ConfigurationError(
-                    "openai package required for OpenAI embeddings. "
-                    "Install with: pip install openai"
-                )
-            self.embedding_client = openai.OpenAI(api_key=self.embedding_api_key)
-        else:
-            raise ConfigurationError(
-                f"Unsupported embedding provider: {self.embedding_provider}. "
-                f"Supported providers: openai"
-            )
+                f"Failed to load embedding model '{self.embedding_model_name}': {e}"
+            ) from e
 
         # Initialize MongoDB client
         try:
@@ -152,10 +143,10 @@ class MongoDBAdapter(RagAdapter):
         self.name = config.name
         self.timeout = config.timeout or 60
         self.default_top_k = config.default_top_k or 5
-        self.description = "MongoDB Atlas Vector Search"
+        self.description = "MongoDB Vector Search with sentence-transformers"
 
     def search(self, query: str, top_k: int = 5) -> list[RagResult]:
-        """Search MongoDB Atlas using Vector Search.
+        """Search MongoDB using vector similarity.
 
         Args:
             query: Search query
@@ -171,45 +162,46 @@ class MongoDBAdapter(RagAdapter):
             # Generate embedding for query
             query_vector = self._generate_embedding(query)
 
-            # Build vector search aggregation pipeline
-            pipeline = [
-                {
-                    "$vectorSearch": {
-                        "index": self.index_name,
-                        "path": self.vector_field,
-                        "queryVector": query_vector,
-                        "numCandidates": self.num_candidates,
-                        "limit": top_k,
-                    }
-                },
-                {
-                    "$project": {
-                        "_id": 1,
-                        self.text_field: 1,
-                        self.source_field: 1,
-                        "score": {"$meta": "vectorSearchScore"},
-                        **{field: 1 for field in self.metadata_fields},
-                    }
-                },
-            ]
+            # For MongoDB Community Edition, we need to use basic similarity search
+            # since $vectorSearch requires Atlas
+            # We'll use a simple approach: fetch all docs and compute cosine similarity
+            logger.info(f"Performing vector similarity search in MongoDB")
 
-            # Execute aggregation pipeline
-            logger.info(
-                f"Executing MongoDB vector search with index: {self.index_name}"
-            )
-            results = list(self.collection.aggregate(pipeline))
+            # Fetch all documents with embeddings
+            all_docs = list(self.collection.find({self.vector_field: {"$exists": True}}))
+
+            if not all_docs:
+                logger.warning("No documents with embeddings found in collection")
+                return []
+
+            # Compute cosine similarity for each document
+            import numpy as np
+
+            results_with_scores = []
+            for doc in all_docs:
+                doc_vector = np.array(doc.get(self.vector_field, []))
+                if len(doc_vector) == 0:
+                    continue
+
+                # Cosine similarity
+                similarity = np.dot(query_vector, doc_vector) / (
+                    np.linalg.norm(query_vector) * np.linalg.norm(doc_vector)
+                )
+
+                results_with_scores.append((doc, float(similarity)))
+
+            # Sort by similarity (descending) and take top_k
+            results_with_scores.sort(key=lambda x: x[1], reverse=True)
+            top_results = results_with_scores[:top_k]
 
             # Convert to RagResult objects
             rag_results = []
-            for i, doc in enumerate(results):
+            for i, (doc, score) in enumerate(top_results):
                 # Extract text
                 text = doc.get(self.text_field, "")
                 if not text:
                     logger.warning(f"Document missing text field: {doc.get('_id')}")
                     continue
-
-                # Extract score
-                score = doc.get("score", 0.0)
 
                 # Extract source
                 source = doc.get(self.source_field, "MongoDB")
@@ -224,7 +216,7 @@ class MongoDBAdapter(RagAdapter):
                 result = RagResult(
                     id=str(doc.get("_id", f"mongodb_{i}")),
                     text=text,
-                    score=self._normalize_score(score),
+                    score=score,  # Cosine similarity is already 0-1
                     source=source,
                     metadata=metadata,
                 )
@@ -240,52 +232,24 @@ class MongoDBAdapter(RagAdapter):
             logger.error(f"Unexpected error in MongoDB search: {str(e)}")
             raise AdapterError(f"Unexpected error in MongoDB search: {str(e)}") from e
 
-    def _generate_embedding(self, text: str) -> list[float]:
-        """Generate embedding vector for text.
+    def _generate_embedding(self, text: str) -> Any:
+        """Generate embedding vector for text using sentence-transformers.
 
         Args:
             text: Text to embed
 
         Returns:
-            Embedding vector
+            Embedding vector as numpy array
 
         Raises:
             AdapterError: If embedding generation fails
         """
         try:
-            if self.embedding_provider == "openai":
-                response = self.embedding_client.embeddings.create(
-                    model=self.embedding_model, input=text
-                )
-                return response.data[0].embedding
-            else:
-                raise AdapterError(
-                    f"Unsupported embedding provider: {self.embedding_provider}"
-                )
+            embedding = self.embedding_model.encode(text, convert_to_numpy=True)
+            return embedding
         except Exception as e:
             logger.error(f"Failed to generate embedding: {str(e)}")
             raise AdapterError(f"Failed to generate embedding: {str(e)}") from e
-
-    def _normalize_score(self, score: float) -> float:
-        """Normalize score to 0-1 range.
-
-        MongoDB Vector Search returns scores in 0-1 range for dotProduct,
-        but this method handles other possible scales for consistency.
-
-        Args:
-            score: Raw score
-
-        Returns:
-            Normalized score
-        """
-        if 0 <= score <= 1:
-            return score
-        elif score > 100:
-            return min(score / 1000, 1.0)  # Assume out of 1000
-        elif score > 1:
-            return min(score / 100, 1.0)  # Assume percentage
-        else:
-            return max(0, score)  # Clamp negative
 
     def validate_config(self, config: dict[str, Any]) -> None:
         """Validate MongoDB configuration.
@@ -312,17 +276,10 @@ class MongoDBAdapter(RagAdapter):
                     f"MongoDB config missing required option: {opt}"
                 )
 
-        # Validate environment variables exist
+        # Validate environment variable exists
         if not os.getenv(config["api_key_env"]):
             raise ConfigurationError(
                 f"Environment variable {config['api_key_env']} is not set"
-            )
-
-        # Validate embedding API key environment variable
-        embedding_api_key_env = options.get("embedding_api_key_env", "OPENAI_API_KEY")
-        if not os.getenv(embedding_api_key_env):
-            raise ConfigurationError(
-                f"Environment variable {embedding_api_key_env} is not set"
             )
 
     def get_required_env_vars(self) -> list[str]:
@@ -331,7 +288,7 @@ class MongoDBAdapter(RagAdapter):
         Returns:
             List of required environment variable names
         """
-        return [self.config.api_key_env, self.embedding_api_key_env]
+        return [self.config.api_key_env]
 
     def get_options_schema(self) -> dict[str, Any]:
         """Get JSON schema for MongoDB configuration options.
@@ -369,33 +326,16 @@ class MongoDBAdapter(RagAdapter):
                     "description": "Field containing source information",
                     "default": "source",
                 },
-                "num_candidates": {
-                    "type": "integer",
-                    "description": "Number of candidates for vector search",
-                    "minimum": 1,
-                    "default": 150,
-                },
                 "metadata_fields": {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Additional metadata fields to include in results",
                     "default": [],
                 },
-                "embedding_provider": {
-                    "type": "string",
-                    "description": "Embedding service provider",
-                    "enum": ["openai"],
-                    "default": "openai",
-                },
                 "embedding_model": {
                     "type": "string",
-                    "description": "Embedding model name",
-                    "default": "text-embedding-3-small",
-                },
-                "embedding_api_key_env": {
-                    "type": "string",
-                    "description": "Environment variable for embedding API key",
-                    "default": "OPENAI_API_KEY",
+                    "description": "Sentence-transformer model name",
+                    "default": "all-MiniLM-L6-v2",
                 },
             },
             "required": ["database", "collection", "index_name"],
