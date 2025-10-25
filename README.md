@@ -529,17 +529,6 @@ RAGDiff v2.0 follows the SPIDER protocol for systematic development:
 5. **Testability**: Every feature has tests
 6. **Separation of Concerns**: Clean module boundaries
 
-## Migration from v1.x
-
-RAGDiff v2.0 is a complete rewrite with a different architecture. Key changes:
-
-- **Architecture**: Adapter-based → Domain-based
-- **CLI**: `query`/`batch`/`compare` → `run`/`compare`
-- **Organization**: Config files → Domain directories
-- **Reproducibility**: None → Full config snapshots
-
-See `MIGRATION.md` for detailed migration guide.
-
 ## License
 
 MIT License - see LICENSE file for details
