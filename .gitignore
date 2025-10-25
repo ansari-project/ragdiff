@@ -47,6 +47,9 @@ htmlcov/
 
 # Output files
 outputs/
+results/
+evaluation.json
+evaluation.md
 
 # Temporary files
 tmp/
