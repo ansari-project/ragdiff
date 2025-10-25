@@ -1,1019 +1,995 @@
-# RAGDiff Architecture
+# RAGDiff v2.0 Architecture
 
 ## Overview
 
-RAGDiff is a flexible framework for comparing Retrieval-Augmented Generation (RAG) systems side-by-side with subjective quality evaluation using LLMs. The architecture follows a clean adapter pattern that enables extensible comparison of multiple RAG tools (Vectara, Goodmem, Agentset, MongoDB Atlas) through a unified interface.
+RAGDiff v2.0 is a domain-centric experimentation framework for comparing Retrieval-Augmented Generation (RAG) systems. The architecture fundamentally shifts from the v1.x adapter-based approach to a domain-first organizational model that treats experiments as first-class objects with full reproducibility and structured comparison capabilities.
 
-The system emphasizes:
-- **Adapter Pattern**: Clean separation between comparison logic and tool-specific implementations
-- **Subjective Quality Assessment**: LLM-based evaluation (Claude) for qualitative insights
-- **Flexible Configuration**: YAML-based configuration with environment variable support and adapter variants
-- **Multiple Output Formats**: Display, JSON, JSONL, CSV, and Markdown
-- **Batch Processing**: Process multiple queries with comprehensive statistics and holistic summaries
-- **SearchVectara Compatibility**: All adapters implement the SearchVectara interface for Ansari Backend integration
-- **Multi-Tenant Support**: Thread-safe credential management for SaaS and multi-user environments
-- **Thread-Safe Library API**: Production-ready for web services and concurrent usage
+Key architectural principles:
+- **Domain-Driven Design**: Experiments organized by knowledge domains (tafsir, legal, medical)
+- **Systems = Tool + Configuration**: Enable A/B testing of different configurations
+- **Immutable Runs**: Timestamped, versioned, and fully reproducible experimental results
+- **File-System-First**: All configuration in YAML, all results in JSON
+- **LLM-Based Evaluation**: Structured comparison using multiple LLM providers via LiteLLM
+- **Clean Separation**: Core models, systems interface, execution engine, and CLI are clearly separated
 
 ## Technology Stack
 
-### Core Dependencies
-- **Python**: 3.9.2+ (Modern Python features with broad compatibility)
-- **uv**: Fast Python package installer and resolver
-- **Typer**: 0.9.0+ (CLI framework with rich terminal output)
-- **Rich**: 13.0.0+ (Beautiful terminal formatting and progress tracking)
+### Core Framework
+- **Python**: 3.9.2+ (Type hints, modern async support)
+- **Pydantic**: 2.0+ (Data validation and serialization)
+- **Typer**: 0.9.0+ (CLI framework)
+- **Rich**: 13.0.0+ (Beautiful terminal UI with progress bars)
 - **PyYAML**: 6.0+ (Configuration management)
 - **python-dotenv**: 1.0.0+ (Environment variable handling)
 
-### RAG Platform Clients
-- **anthropic**: 0.25.0+ (Claude API for LLM evaluation)
-- **requests**: 2.31.0+ (HTTP client for Vectara API)
-- **goodmem-client**: 1.5.5+ (Goodmem RAG platform)
-- **agentset**: 0.4.0+ (Agentset RAG-as-a-Service)
+### LLM Integration
+- **LiteLLM**: 1.0+ (Multi-provider LLM support)
+  - Supports: OpenAI GPT, Anthropic Claude, Google Gemini, Azure OpenAI
+  - Cost tracking and retry logic built-in
+  - Unified interface across providers
 
-### Optional Dependencies
-- **pymongo**: 4.0.0+ (MongoDB Atlas Vector Search adapter)
-- **openai**: 1.0.0+ (Embeddings for MongoDB vector search)
+### RAG System Clients
+- **requests**: 2.31.0+ (HTTP client for Vectara)
+- **agentset**: 0.4.0+ (Agentset RAG platform)
+- **pymongo**: 4.0.0+ (MongoDB Atlas Vector Search)
+- **openai**: 1.0.0+ (Embeddings for MongoDB)
 
 ### Development Tools
-- **pytest**: 7.4.0+ (Testing framework with 246+ tests)
-- **pytest-cov**: 4.1.0+ (Test coverage reporting)
-- **black**: 23.0.0+ (Code formatting)
-- **ruff**: 0.1.0+ (Fast Python linter)
-- **mypy**: 1.5.0+ (Static type checking)
-
-### Build System
-- **hatchling**: Build backend for packaging
-- **MIT License**: Open source licensing
+- **pytest**: 7.4.0+ (Testing framework with 78+ v2.0 tests)
+- **pytest-cov**: 4.1.0+ (Coverage reporting)
+- **ruff**: 0.1.0+ (Fast Python linter and formatter)
+- **pre-commit**: 3.0.0+ (Git hooks for code quality)
 
 ## Directory Structure
 
 ```
 ragdiff/
-├── .claude/                    # Claude Code configuration
-│   └── agents/                 # Custom agent definitions
-│       └── architecture-documenter.md
-├── codev/                      # Development documentation (SPIDER protocol)
-│   ├── specs/                  # Feature specifications
-│   │   ├── 0001-rag-comparison-harness.md
-│   │   ├── 0002-rag-system-generalization.md
-│   │   ├── 0003-library-refactoring.md
-│   │   └── 0004-multi-tenant-credentials.md
-│   ├── plans/                  # Implementation plans
-│   │   ├── 0001-rag-comparison-harness.md
-│   │   ├── 0003-library-refactoring.md
-│   │   └── 0004-multi-tenant-credentials.md
-│   ├── reviews/                # Code reviews and evaluations
-│   │   ├── 0001-rag-comparison-harness.md
-│   │   ├── 0002-adapter-variants.md
-│   │   ├── 0003-library-refactoring-final-review.md
-│   │   └── 0004-multi-tenant-credentials.md
-│   └── resources/              # Architecture documentation
-│       └── arch.md            # This file - canonical architecture reference
-├── src/                        # Source code (PYTHONPATH=src)
-│   ├── __init__.py
-│   ├── __main__.py            # Entry point for python -m src
-│   └── ragdiff/               # Main package
-│       ├── __init__.py        # Public API exports
-│       ├── api.py             # Library API functions
-│       ├── cli.py             # Typer CLI implementation
-│       ├── version.py         # Version information
-│       ├── core/              # Core models and configuration
-│       │   ├── __init__.py
-│       │   ├── models.py      # Data models (RagResult, ComparisonResult, etc.)
-│       │   ├── config.py      # YAML configuration with credential management
-│       │   └── errors.py      # Custom exception types
-│       ├── adapters/          # RAG tool adapters
-│       │   ├── __init__.py
-│       │   ├── abc.py         # RagAdapter abstract base class
-│       │   ├── base.py        # BaseRagTool (SearchVectara interface)
-│       │   ├── factory.py     # Adapter factory with credential support
-│       │   ├── registry.py    # Adapter registry with auto-discovery
-│       │   ├── vectara.py     # Vectara platform adapter
-│       │   ├── goodmem.py     # Goodmem adapter
-│       │   ├── agentset.py    # Agentset adapter
-│       │   ├── mongodb.py     # MongoDB Atlas Vector Search adapter
-│       │   └── search_vectara_mock.py  # Mock SearchVectara for testing
-│       ├── comparison/        # Comparison engine
-│       │   ├── __init__.py
-│       │   └── engine.py      # Parallel/sequential search execution
-│       ├── evaluation/        # LLM evaluation
-│       │   ├── __init__.py
-│       │   └── evaluator.py   # Claude-based quality evaluation
-│       └── display/           # Output formatters
-│           ├── __init__.py
-│           └── formatter.py   # Multiple format support
-├── tests/                     # Test suite (230+ tests)
-│   ├── test_cli.py
-│   ├── test_adapters.py
-│   ├── test_api.py           # Library API tests
-│   ├── test_multi_tenant.py  # Multi-tenant credential tests
-│   ├── test_api_multi_tenant.py  # API multi-tenant integration tests
-│   ├── test_thread_safety.py # Thread safety tests
-│   ├── test_reentrancy.py    # Reentrancy tests
-│   └── ...
-├── configs/                   # Configuration files
-│   ├── tafsir.yaml           # Tafsir corpus configuration
-│   ├── mawsuah.yaml          # Mawsuah corpus configuration
-│   └── mongodb-example.yaml  # MongoDB Atlas Vector Search example config
-├── inputs/                    # Test queries and batch input files
-│   └── tafsir-test-queries.txt
-├── sampledata/                # Sample data scripts and utilities
-│   ├── README.md              # Documentation for sample data setup
-│   ├── load_squad_to_mongodb.py  # Load SQuAD dataset with embeddings
-│   └── sample_squad_questions.py  # Sample questions for testing
-├── outputs/                   # Generated results and summaries
-│   ├── batch_results_*.jsonl
-│   └── holistic_summary_*.md
-├── pyproject.toml            # Project metadata and dependencies
-├── README.md                 # User documentation
-└── .env.example              # Environment variable template
+├── src/ragdiff/                    # Main package (v2.0 architecture)
+│   ├── __init__.py                 # Package initialization
+│   ├── __main__.py                 # Entry point for python -m ragdiff
+│   ├── cli.py                      # Main CLI entry (38 lines, imports cli_v2)
+│   ├── cli_v2.py                   # v2.0 CLI implementation (run, compare commands)
+│   ├── version.py                  # Version information
+│   │
+│   ├── core/                       # Core data models and utilities
+│   │   ├── models_v2.py            # v2.0 Pydantic models
+│   │   ├── loaders.py              # YAML and text file loading
+│   │   ├── storage.py              # JSON persistence utilities
+│   │   ├── env_vars.py             # Environment variable handling
+│   │   ├── paths.py                # Path utilities
+│   │   └── logging.py              # Logging configuration
+│   │
+│   ├── systems/                    # RAG system implementations (v2.0)
+│   │   ├── __init__.py             # Auto-imports for registration
+│   │   ├── abc.py                  # System abstract base class
+│   │   ├── registry.py             # Singleton tool registry
+│   │   ├── factory.py              # System factory with validation
+│   │   ├── vectara.py              # Vectara system implementation
+│   │   ├── mongodb.py              # MongoDB Atlas system
+│   │   └── agentset.py             # Agentset system
+│   │
+│   ├── execution/                  # Query execution engine
+│   │   ├── __init__.py
+│   │   └── executor.py             # RunExecutor with parallel execution
+│   │
+│   ├── comparison/                 # LLM-based comparison
+│   │   ├── __init__.py
+│   │   └── evaluator.py            # ComparisonEvaluator using LiteLLM
+│   │
+│   ├── display/                    # Output formatting
+│   │   └── formatter.py            # Table, JSON, Markdown formatters
+│   │
+│   ├── adapters/                   # Legacy v1.x adapters (deprecated)
+│   └── api.py                      # Legacy v1.x API (deprecated)
+│
+├── tests/                          # Test suite
+│   ├── test_core_v2.py             # Core models tests (29 tests)
+│   ├── test_systems.py             # System implementations (29 tests)
+│   ├── test_execution.py           # Execution engine tests (12 tests)
+│   ├── test_comparison.py          # Comparison tests (5 tests)
+│   ├── test_cli_v2.py              # CLI tests (8 tests)
+│   └── [legacy v1.x test files]
+│
+├── domains/                        # Domain experiment directories
+│   └── <domain-name>/              # e.g., tafsir, legal, medical
+│       ├── domain.yaml             # Domain configuration
+│       ├── systems/                # System configurations
+│       │   └── <system-name>.yaml  # e.g., vectara-mmr.yaml
+│       ├── query-sets/             # Query collections
+│       │   ├── <name>.txt         # Plain text queries
+│       │   └── <name>.jsonl       # Queries with references
+│       ├── runs/                   # Execution results
+│       │   └── YYYY-MM-DD/        # Date-organized runs
+│       │       └── <run-id>.json  # Run results
+│       └── comparisons/            # Comparison results
+│           └── <comparison-id>.json
+│
+├── configs/                        # Legacy v1.x configs (deprecated)
+├── pyproject.toml                  # Package configuration
+├── README.md                       # User documentation
+└── CLAUDE.md                       # Development instructions
 ```
 
 ## Core Components
 
-### 1. Data Models (`src/ragdiff/core/models.py`)
-- **Location**: `src/ragdiff/core/models.py`
-- **Purpose**: Define core data structures for RAG results and comparisons
-- **Key Classes**:
-  - `RagResult`: Normalized search result from any RAG system
-    - Fields: `id`, `text`, `score` (0-1 normalized), `source`, `metadata`, `latency_ms`
-    - Auto-normalizes scores from different scales (0-1, 0-100, 0-1000)
-  - `ComparisonResult`: Complete comparison across multiple tools
-    - Fields: `query`, `tool_results` (dict), `errors` (dict), `timestamp`, `llm_evaluation`
-    - Methods: `has_errors()`, `get_result_counts()`, `to_dict()`
-  - `LLMEvaluation`: LLM-based quality assessment
-    - Fields: `llm_model`, `winner`, `analysis`, `quality_scores` (0-100), `metadata`
-    - Methods: `to_dict()`
-  - `ToolConfig`: Configuration for a RAG tool
-    - Fields: `name`, `api_key_env`, `adapter`, `options`, `base_url`, `corpus_id`, `namespace_id_env`, `timeout`, `max_retries`, `default_top_k`, `space_ids`
-    - Methods: `validate()`
+### 1. Data Models (`src/ragdiff/core/models_v2.py`)
 
-### 2. Configuration Management (`src/ragdiff/core/config.py`)
-- **Location**: `src/ragdiff/core/config.py`
-- **Purpose**: Load and validate YAML configuration with environment variable substitution and multi-tenant credential support
-- **Key Class**: `Config`
-  - **Constructor Parameters**:
-    - `config_path`: Optional path to YAML file
-    - `config_dict`: Optional configuration dictionary (alternative to file)
-    - `credentials`: Optional credential overrides dictionary (env var name -> value)
-  - **Credential Resolution**: Implements precedence model for multi-tenant support
-  - **Key Methods**:
-    - `_get_env_value(env_var_name)`: Resolve credentials with precedence (credentials dict > environment)
-    - `_process_env_vars()`: Process `${ENV_VAR}` placeholders using credential resolution
-    - `get_tool_config(tool_name)`: Retrieve specific tool configuration
-    - `get_llm_config()`: Get LLM evaluation settings
-    - `validate()`: Ensure all required credentials are available
-  - **Multi-Tenant Features**:
-    - Accepts configuration as dictionary (not just files)
-    - Thread-safe credential isolation per Config instance
-    - No environment variable pollution
-    - Supports dynamic configuration from databases
+**Location**: `src/ragdiff/core/models_v2.py`
+**Purpose**: Define v2.0 data structures using Pydantic for validation and serialization
 
-### 3. Abstract Adapter Base (`src/ragdiff/adapters/abc.py`)
-- **Location**: `src/ragdiff/adapters/abc.py`
-- **Purpose**: Define stable adapter interface with multi-tenant support
-- **Key Class**: `RagAdapter(ABC)`
-  - **Constructor Parameters**:
-    - `config`: ToolConfig object
-    - `credentials`: Optional credential overrides dictionary
-  - **Credential Management**:
-    - `_get_credential(env_var_name)`: Resolve credential with precedence
-    - Credentials dict takes precedence over environment variables
-  - **Abstract Methods**:
-    - `search(query, top_k)`: Execute search and return normalized results
-    - `validate_config(config)`: Validate adapter configuration
-  - **Optional Methods**:
-    - `get_required_env_vars()`: List required environment variables
-    - `get_options_schema()`: JSON schema for adapter options
-  - **Attributes**:
-    - `ADAPTER_API_VERSION`: Version compatibility marker
-    - `ADAPTER_NAME`: Unique adapter identifier
-    - `config`: Tool configuration
-    - `_credentials`: Credential overrides dictionary
+#### Key Classes
 
-### 4. Adapter Factory (`src/ragdiff/adapters/factory.py`)
-- **Location**: `src/ragdiff/adapters/factory.py`
-- **Purpose**: Registry pattern for creating and managing adapters with credential support
-- **Key Function**: `create_adapter(tool_name, config, credentials=None)`
-  - Accepts optional credentials dictionary for multi-tenant support
-  - Passes credentials to adapter constructor
-  - Supports adapter variants via `config.adapter` field
-  - Enables multiple configurations of same adapter
-- **Registry Management**:
-  - Auto-imports adapter modules to trigger registration
-  - `get_available_adapters()`: List registered adapter names
-  - Maintains backward compatibility while adding credential support
+**Domain**:
+- Represents a knowledge area (e.g., tafsir, legal, medical)
+- Fields: `name`, `description`, `variables`, `secrets`, `evaluator`, `metadata`
+- Scopes all experiments within a problem space
+- Loaded from `domains/<domain>/domain.yaml`
 
-### 5. Public API (`src/ragdiff/api.py`)
-- **Location**: `src/ragdiff/api.py`
-- **Purpose**: Provide programmatic interface for library usage
-- **Multi-Tenant Functions**:
-  - `load_config(config, credentials=None)`: Load configuration with credential overrides
-    - Accepts file path, Path object, or dictionary
-    - Returns Config object with encapsulated credentials
-  - `query(config, query_text, tool, top_k=5)`: Single query execution
-    - Accepts Config object (new) or file path (backward compatible)
-    - Uses credentials from Config object
-  - `compare(config, query_text, tools=None, top_k=5, parallel=True, evaluate=False)`: Multi-tool comparison
-    - Accepts Config object or file path
-    - Thread-safe for concurrent requests
-  - `run_batch(config, queries, tools=None, top_k=5, parallel=True, evaluate=False)`: Batch processing
-    - Accepts Config object or file path
-    - Maintains credential isolation across queries
-- **Helper Functions**:
-  - `validate_config(config_path)`: Validate configuration file
-  - `get_available_adapters()`: List available adapter metadata
-  - `evaluate_with_llm(result, model, api_key)`: LLM evaluation
+**SystemConfig**:
+- Configuration for a RAG system (tool + settings)
+- Fields: `name`, `tool`, `config`, `metadata`
+- Enables multiple configurations of same tool
+- Loaded from `domains/<domain>/systems/<name>.yaml`
 
-### 6. Tool Adapters (Multi-Tenant Enhanced)
+**Query**:
+- Individual query with optional reference answer
+- Fields: `text`, `reference`, `metadata`
+- Supports both plain text and JSONL formats
 
-All adapters now support multi-tenant credentials through the base class:
+**QuerySet**:
+- Collection of queries (max 1000)
+- Fields: `name`, `domain`, `queries`
+- Types: `query_only` (.txt) or `query_reference` (.jsonl)
+- Loaded from `domains/<domain>/query-sets/<name>.[txt|jsonl]`
 
-#### Vectara Adapter (`src/ragdiff/adapters/vectara.py`)
-- **Constructor**: `__init__(config, credentials=None)`
-- **Credential Resolution**: Uses `self._get_credential(config.api_key_env)`
-- **Thread Safety**: No shared state, credentials isolated per instance
+**RetrievedChunk**:
+- Single retrieved text chunk from a RAG system
+- Fields: `content`, `score`, `metadata` (source_id, doc_id, chunk_id)
+- Normalized output format across all systems
 
-#### Goodmem Adapter (`src/ragdiff/adapters/goodmem.py`)
-- **Constructor**: `__init__(config, credentials=None)`
-- **Credential Resolution**: Uses base class `_get_credential()` method
-- **Multiple Space Support**: Configurable space_ids per tenant
+**QueryResult**:
+- Result for a single query execution
+- Fields: `query`, `retrieved`, `reference`, `duration_ms`, `error`
+- Captures both successful results and failures
 
-#### Agentset Adapter (`src/ragdiff/adapters/agentset.py`)
-- **Constructor**: `__init__(config, credentials=None)`
-- **Dual Credentials**: Handles both API token and namespace ID
-- **Credential Resolution**: Resolves both credentials independently
+**Run**:
+- Complete execution: QuerySet × System
+- Fields: `id`, `domain`, `system`, `query_set`, `status`, `results`, `system_config`, `query_set_snapshot`, `started_at`, `completed_at`, `metadata`
+- Statuses: `pending`, `running`, `completed`, `failed`, `partial`
+- Stores complete snapshots for reproducibility
+- Saved to `domains/<domain>/runs/YYYY-MM-DD/<run-id>.json`
 
-#### MongoDB Adapter (`src/ragdiff/adapters/mongodb.py`)
-- **Constructor**: `__init__(config, credentials=None)`
-- **Vector Search**: MongoDB Atlas Vector Search with semantic retrieval
-- **Embedding Support**: Automatic query embedding generation via OpenAI
-- **Field Mappings**: Configurable field mappings for text, source, metadata
-- **Dual Credentials**: MongoDB connection URI and embedding API key
-- **Configuration Options**:
-  - Required: `database`, `collection`, `index_name`
-  - Optional: `vector_field`, `text_field`, `source_field`, `metadata_fields`
-  - Embedding: `embedding_provider`, `embedding_model`, `embedding_api_key_env`
-- **Features**:
-  - Supports pre-configured vector search indexes in MongoDB Atlas
-  - Dynamic embedding generation for queries
-  - Configurable metadata extraction
-  - Score normalization for consistent comparison
+**Comparison**:
+- Multi-run comparison with LLM evaluation
+- Fields: `id`, `domain`, `runs`, `evaluations`, `timestamp`, `evaluator_config`, `metadata`
+- Contains per-query evaluations with winner determination
 
-### 7. Comparison Engine (`src/ragdiff/comparison/engine.py`)
-- **Location**: `src/ragdiff/comparison/engine.py`
-- **Purpose**: Orchestrate parallel or sequential RAG tool searches
-- **Key Class**: `ComparisonEngine`
-  - Thread-safe execution with ThreadPoolExecutor
-  - No shared mutable state between searches
-  - Each adapter instance has isolated credentials
-  - Methods remain unchanged but benefit from thread-safe adapters
+**LLMEvaluation**:
+- Individual query evaluation result
+- Fields: `query`, `reference`, `run_results`, `winner`, `analysis`, `scores`, `metadata`
+- Structured output from LLM comparison
 
-### 8. LLM Evaluator (`src/ragdiff/evaluation/evaluator.py`)
-- **Location**: `src/ragdiff/evaluation/evaluator.py`
-- **Purpose**: Use Claude to provide qualitative RAG result evaluation
-- **Multi-Tenant Support**:
-  - API key can be passed per evaluation
-  - Config object provides credential resolution for LLM API key
-  - Thread-safe for concurrent evaluations
+### 2. File Loaders (`src/ragdiff/core/loaders.py`)
 
-### 9. CLI (`src/ragdiff/cli.py`)
-- **Location**: `src/ragdiff/cli.py`
-- **Purpose**: Typer-based command-line interface
-- **Multi-Tenant Compatibility**:
-  - CLI uses library API functions internally
-  - Environment variables used by default (single-tenant mode)
-  - Could be extended to accept credentials file for multi-tenant CLI usage
+**Location**: `src/ragdiff/core/loaders.py`
+**Purpose**: Load configuration and query files from disk
+
+**Key Functions**:
+
+`load_domain(domain_path: Path) -> Domain`:
+- Loads domain.yaml configuration
+- Preserves ${VAR_NAME} placeholders for security
+- Validates domain structure
+
+`load_system_config(config_path: Path) -> SystemConfig`:
+- Loads system YAML configuration
+- Validates tool references
+- Preserves environment variables
+
+`load_query_set(query_set_path: Path, domain_name: str) -> QuerySet`:
+- Auto-detects format (.txt or .jsonl)
+- Parses queries with optional references
+- Enforces 1000 query limit
+
+`load_queries_from_text(file_path: Path) -> list[Query]`:
+- Parses plain text queries (one per line)
+- Creates Query objects with no reference
+
+`load_queries_from_jsonl(file_path: Path) -> list[Query]`:
+- Parses JSONL format with query/reference pairs
+- Validates JSON structure
+
+### 3. Storage Utilities (`src/ragdiff/core/storage.py`)
+
+**Location**: `src/ragdiff/core/storage.py`
+**Purpose**: Persist runs and comparisons to JSON
+
+**Key Functions**:
+
+`save_run(run: Run, output_dir: Path) -> Path`:
+- Saves run to date-organized directory
+- Creates `runs/YYYY-MM-DD/<run-id>.json`
+- Returns saved file path
+
+`load_run(run_path: Path) -> Run`:
+- Loads run from JSON file
+- Validates and reconstructs Run object
+
+`save_comparison(comparison: Comparison, output_dir: Path) -> Path`:
+- Saves comparison results
+- Creates `comparisons/<comparison-id>.json`
+
+`load_comparison(comparison_path: Path) -> Comparison`:
+- Loads comparison from JSON
+- Reconstructs Comparison object
+
+### 4. System Interface (`src/ragdiff/systems/`)
+
+#### Abstract Base Class (`abc.py`)
+
+**Location**: `src/ragdiff/systems/abc.py`
+**Purpose**: Define common interface for all RAG systems
+
+```python
+class System(ABC):
+    """Abstract base class for RAG systems."""
+
+    def __init__(self, config: dict[str, Any]):
+        """Initialize with configuration dictionary."""
+        self.config = config
+        self._resolve_env_vars()
+
+    @abstractmethod
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+        """Execute search and return ranked chunks."""
+        pass
+
+    def _resolve_env_vars(self):
+        """Replace ${VAR_NAME} with environment values."""
+        # Recursive resolution of environment variables
+```
+
+#### Tool Registry (`registry.py`)
+
+**Location**: `src/ragdiff/systems/registry.py`
+**Purpose**: Singleton registry for tool registration
+
+**Key Components**:
+
+`ToolRegistry` (Singleton):
+- `_instance`: Single registry instance
+- `_tools`: Dictionary of registered tools
+- Thread-safe singleton pattern
+
+`register_tool(name: str, tool_class: type[System])`:
+- Registers tool class with name
+- Called at module import time
+- Validates tool implements System interface
+
+`get_tool(name: str) -> type[System]`:
+- Retrieves registered tool class
+- Raises error if not found
+
+`list_tools() -> list[str]`:
+- Returns all registered tool names
+
+#### System Factory (`factory.py`)
+
+**Location**: `src/ragdiff/systems/factory.py`
+**Purpose**: Create system instances from configuration
+
+`create_system(config: SystemConfig) -> System`:
+- Gets tool class from registry
+- Instantiates with configuration
+- Handles environment variable substitution
+- Returns configured System instance
+
+#### System Implementations
+
+**Vectara System** (`vectara.py`):
+- HTTP-based API client
+- Supports MMR and Slingshot reranking
+- Corpus ID configuration
+- Score normalization (0-1 range)
+
+**MongoDB System** (`mongodb.py`):
+- Atlas Vector Search integration
+- Dynamic query embedding via OpenAI
+- Configurable field mappings
+- Metadata extraction
+
+**Agentset System** (`agentset.py`):
+- Namespace-based retrieval
+- Optional reranking
+- Multi-space support
+- Fallback handling
+
+### 5. Execution Engine (`src/ragdiff/execution/executor.py`)
+
+**Location**: `src/ragdiff/execution/executor.py`
+**Purpose**: Execute query sets against systems with parallel processing
+
+**Key Class**: `RunExecutor`
+
+**Constructor Parameters**:
+- `system`: System instance to execute queries against
+- `max_workers`: Number of parallel threads (default: 10)
+- `progress_callback`: Optional callback for progress updates
+
+**Main Method**: `execute(query_set: QuerySet) -> Run`
+- Creates pending Run object
+- Uses ThreadPoolExecutor for parallel queries
+- Captures per-query timing and errors
+- Updates Run status based on results
+- Preserves system config and query set snapshots
+
+**Error Handling**:
+- Per-query error isolation
+- Partial success support (some queries fail)
+- Comprehensive error messages with stack traces
+
+**Progress Tracking**:
+- Callback interface: `callback(current: int, total: int, query: str)`
+- Real-time progress updates for UI
+
+### 6. Comparison Engine (`src/ragdiff/comparison/evaluator.py`)
+
+**Location**: `src/ragdiff/comparison/evaluator.py`
+**Purpose**: Compare runs using LLM evaluation via LiteLLM
+
+**Key Class**: `ComparisonEvaluator`
+
+**Constructor Parameters**:
+- `model`: LLM model identifier (e.g., "claude-3-5-sonnet-20241022")
+- `api_key`: Optional API key override
+- `temperature`: LLM temperature (default: 0.0)
+- `max_retries`: Retry count for failures (default: 3)
+
+**Main Method**: `compare(runs: list[Run], domain: Domain) -> Comparison`
+- Validates all runs are from same domain
+- Aligns queries across runs
+- Evaluates each query using LLM
+- Returns structured Comparison object
+
+**LLM Integration**:
+- Uses LiteLLM for multi-provider support
+- Structured prompts for consistent evaluation
+- Retry logic with exponential backoff
+- Cost tracking via `litellm.completion_cost()`
+
+**Evaluation Process**:
+1. Format retrieved chunks for each system
+2. Build evaluation prompt with query and results
+3. Call LLM for winner determination
+4. Parse structured response
+5. Calculate quality scores
+6. Track costs and metadata
+
+### 7. CLI Interface (`src/ragdiff/cli_v2.py`)
+
+**Location**: `src/ragdiff/cli_v2.py`
+**Purpose**: Command-line interface for v2.0 operations
+
+#### Commands
+
+**`run` Command**:
+```python
+def run(
+    domain: str,
+    system: str,
+    query_set: str,
+    output_dir: Optional[Path] = None,
+    max_workers: int = 10,
+    format: str = "table"
+)
+```
+- Executes query set against system
+- Shows Rich progress bar during execution
+- Saves run to `domains/<domain>/runs/`
+- Displays results in chosen format
+
+**`compare` Command**:
+```python
+def compare(
+    domain: str,
+    runs: list[str],
+    model: Optional[str] = None,
+    output: Optional[Path] = None,
+    format: str = "table"
+)
+```
+- Loads specified runs by ID
+- Performs LLM evaluation
+- Saves comparison results
+- Displays winner analysis
+
+**Output Formats**:
+- `table`: Rich terminal tables with colors
+- `json`: Structured JSON output
+- `markdown`: Markdown tables for documentation
+
+### 8. Display Formatting (`src/ragdiff/display/formatter.py`)
+
+**Location**: `src/ragdiff/display/formatter.py`
+**Purpose**: Format output for different display modes
+
+**Key Functions**:
+
+`format_run_results(run: Run, format: str) -> str`:
+- Formats run results for display
+- Supports table, JSON, markdown formats
+
+`format_comparison_results(comparison: Comparison, format: str) -> str`:
+- Formats comparison for display
+- Shows winner determination and scores
 
 ## Utility Functions & Helpers
 
-### Configuration Utilities (`src/ragdiff/core/config.py`)
+### Environment Variable Resolution (`src/ragdiff/core/env_vars.py`)
 
-- `_get_env_value(env_var_name: str) -> Optional[str]`
-  - Resolves environment variable with credential precedence
-  - Returns value from credentials dict, then environment, then None
-  - Use for multi-tenant credential resolution
+`resolve_env_var(value: str) -> str`:
+- Replaces ${VAR_NAME} with environment value
+- Raises error if variable not found
+- Used throughout for credential management
 
-- `_process_env_vars()` (internal)
-  - Recursively processes ${ENV_VAR} placeholders in configuration
-  - Uses credential resolution for substitution
-  - Supports nested structures (dicts, lists)
+`resolve_env_vars_recursive(obj: Any) -> Any`:
+- Recursively resolves variables in nested structures
+- Handles dicts, lists, and strings
+- Preserves non-string values
 
-### Adapter Registry (`src/ragdiff/adapters/registry.py`)
+### Path Utilities (`src/ragdiff/core/paths.py`)
 
-- `register_adapter(name: str, adapter_class: type[RagAdapter])`
-  - Registers adapter class with given name
-  - Called automatically via decorator
-  - Validates API version compatibility
+`get_domain_path(domain_name: str) -> Path`:
+- Returns path to domain directory
+- Creates directory if needed
 
-- `get_adapter(name: str) -> type[RagAdapter]`
-  - Retrieves registered adapter class
-  - Raises AdapterRegistryError if not found
+`get_runs_dir(domain_name: str) -> Path`:
+- Returns path to runs directory
+- Creates date-organized subdirectories
 
-- `list_adapters() -> list[str]`
-  - Returns list of all registered adapter names
-  - Used for validation and help text
+`get_systems_dir(domain_name: str) -> Path`:
+- Returns path to systems configuration directory
 
-### API Validation Helpers (`src/ragdiff/api.py`)
+`get_query_sets_dir(domain_name: str) -> Path`:
+- Returns path to query sets directory
 
-- `_validate_config_path(config_path: str | Path) -> Path`
-  - Validates configuration file exists and is readable
-  - Returns resolved Path object
-  - Raises ConfigurationError on failure
+### Logging Configuration (`src/ragdiff/core/logging.py`)
 
-- `_validate_query_text(query_text: str)`
-  - Ensures query is non-empty and not just whitespace
-  - Raises ValidationError on invalid input
-
-- `_validate_top_k(top_k: int)`
-  - Ensures top_k is positive integer
-  - Raises ValidationError if invalid
-
-- `_validate_queries_list(queries: list[str])`
-  - Validates batch query list is non-empty
-  - Raises ValidationError if empty
-
-### Result Processing (`src/ragdiff/core/models.py`)
-
-- `RagResult.normalize_score(score: float, scale: str = "0-1") -> float`
-  - Normalizes scores from different scales to 0-1 range
-  - Handles "0-1", "0-100", "0-1000" scales
-  - Class method for consistent normalization
-
-### Sample Data Utilities (`sampledata/`)
-
-#### SQuAD Dataset Loader (`load_squad_to_mongodb.py`)
-- **Purpose**: Load SQuAD v2.0 dataset into MongoDB with embeddings
-- **Key Features**:
-  - Downloads SQuAD dataset automatically
-  - Generates OpenAI embeddings for each context
-  - Batch processing with progress tracking
-  - Configurable database/collection names
-  - Prints vector search index definition
-- **Usage**: `python sampledata/load_squad_to_mongodb.py --limit 100`
-- **Cost Estimate**: ~$0.15-0.20 for full dataset, ~$0.003 for 100 docs
-
-#### Question Sampler (`sample_squad_questions.py`)
-- **Purpose**: Sample random questions from SQuAD for testing
-- **Key Features**:
-  - Random or seeded sampling
-  - Filter answerable vs unanswerable questions
-  - Plain text or JSONL output format
-  - Configurable sample size
-- **Usage**: `python sampledata/sample_squad_questions.py --count 100 --answerable-only`
-- **Output Formats**: Plain text list or JSONL with metadata
-
-## Multi-Tenant Credential Architecture
-
-### Credential Resolution Model
-
-The system implements a clear precedence model for credential resolution:
-
-```
-Priority Order (Highest to Lowest):
-1. Passed credentials dict (via Config constructor)
-2. Process environment variables (os.environ)
-3. .env file (via python-dotenv)
-4. None (causes validation error)
-```
-
-### Thread Safety Guarantees
-
-1. **No Global State**: All credentials stored in instance variables
-2. **Immutable Config**: Config objects are read-only after creation
-3. **Isolated Adapters**: Each adapter instance has its own credentials
-4. **No Environment Pollution**: Passed credentials never modify os.environ
-5. **Concurrent Safety**: Multiple requests can use different credentials simultaneously
-
-### Multi-Tenant Usage Patterns
-
-#### Pattern 1: Web Service (FastAPI)
-```python
-from ragdiff import load_config, query
-
-@app.post("/api/search")
-async def search(request: SearchRequest, tenant_id: str):
-    # Get tenant-specific credentials from database
-    tenant_creds = get_tenant_credentials(tenant_id)
-
-    # Create config with tenant credentials
-    config = load_config("config.yaml", credentials=tenant_creds)
-
-    # Execute query with isolated credentials
-    results = query(config, request.query, tool="vectara")
-    return {"results": [r.to_dict() for r in results]}
-```
-
-#### Pattern 2: Dynamic Configuration
-```python
-# Build config from database
-config_dict = {
-    "tools": {
-        "vectara": {
-            "api_key_env": "VECTARA_API_KEY",
-            "corpus_id": tenant.corpus_id
-        }
-    }
-}
-
-# Load with tenant credentials
-config = load_config(
-    config_dict,  # Dict instead of file
-    credentials={"VECTARA_API_KEY": tenant.api_key}
-)
-
-results = query(config, "query", tool="vectara")
-```
-
-#### Pattern 3: Temporary Credentials
-```python
-# Use short-lived credentials from OAuth/STS
-temp_creds = get_temporary_credentials()
-
-config = load_config(
-    "config.yaml",
-    credentials={
-        "VECTARA_API_KEY": temp_creds.access_token,
-        "ANTHROPIC_API_KEY": temp_creds.llm_token
-    }
-)
-
-# Credentials expire with the Config object
-result = compare(config, "query", evaluate=True)
-```
-
-### Security Considerations
-
-1. **Credential Isolation**: Each Config object has isolated credentials
-2. **No Leakage**: Credentials from one request never affect another
-3. **No Persistence**: Credentials exist only in memory during request
-4. **Validation**: All credentials validated at Config creation time
-5. **Error Messages**: Careful not to expose credential values in errors
-
-### Backward Compatibility
-
-The multi-tenant implementation maintains full backward compatibility:
-
-1. **File Paths Still Work**: `query("config.yaml", "query", tool="vectara")`
-2. **Environment Variables**: Default behavior uses environment variables
-3. **No Breaking Changes**: Existing code continues to work unchanged
-4. **Opt-In Enhancement**: Multi-tenant features only activate when credentials passed
+`setup_logging(level: str = "INFO")`:
+- Configures structured logging
+- Sets up formatters and handlers
+- Used for debugging and monitoring
 
 ## Data Flow
 
-### Single Query Comparison Flow (Multi-Tenant Enhanced)
+### Query Execution Flow (v2.0)
+
 ```
-1. User Input (API/CLI)
-   └─> query/compare with optional credentials
+1. User invokes CLI
+   └─> ragdiff run --domain tafsir --system vectara-mmr --query-set basic
 
-2. Configuration Loading
-   └─> Config created with credentials dict
-   └─> Credentials encapsulated in Config object
-   └─> ${ENV_VAR} resolved using credential precedence
+2. Load Domain Configuration
+   └─> load_domain("domains/tafsir/domain.yaml")
+   └─> Domain object with variables and evaluator config
 
-3. Adapter Creation
-   └─> Factory passes credentials to adapter
-   └─> Each adapter has isolated credentials
-   └─> Validates credentials at creation time
+3. Load System Configuration
+   └─> load_system_config("domains/tafsir/systems/vectara-mmr.yaml")
+   └─> SystemConfig with tool="vectara" and settings
 
-4. Comparison Execution
-   └─> ComparisonEngine.run_comparison()
-   └─> Parallel/Sequential execution (thread-safe)
-   └─> Each adapter uses its own credentials
-   └─> No credential sharing between adapters
+4. Create System Instance
+   └─> factory.create_system(system_config)
+   └─> Registry lookup for "vectara" tool class
+   └─> VectaraSystem instance with resolved env vars
 
-5. Optional LLM Evaluation
-   └─> LLMEvaluator uses Config's credential resolution
-   └─> API key from credentials dict or environment
-   └─> Thread-safe evaluation
+5. Load Query Set
+   └─> load_query_set("domains/tafsir/query-sets/basic.txt")
+   └─> QuerySet with list of Query objects
 
-6. Output Formatting
-   └─> ComparisonFormatter (unchanged)
-   └─> No credential exposure in output
+6. Execute Queries
+   └─> RunExecutor(system).execute(query_set)
+   └─> ThreadPoolExecutor for parallel execution
+   └─> Progress callbacks to CLI for Rich progress bar
+   └─> Capture results and timing per query
 
-7. Response to User
-   └─> Results contain no credential information
-   └─> Credentials garbage collected with Config
+7. Save Run
+   └─> save_run(run, "domains/tafsir/runs/")
+   └─> Creates "runs/2025-10-25/<run-id>.json"
+   └─> Includes config snapshots for reproducibility
+
+8. Display Results
+   └─> format_run_results(run, format="table")
+   └─> Rich terminal table with results
 ```
 
-### Multi-Tenant Request Flow
+### Comparison Flow (v2.0)
+
 ```
-1. Tenant Request Arrives
-   └─> Extract tenant ID from auth/headers
+1. User invokes comparison
+   └─> ragdiff compare --domain tafsir --runs run1 run2 run3
 
-2. Retrieve Tenant Credentials
-   └─> Database lookup for tenant settings
-   └─> Get API keys, corpus IDs, etc.
+2. Load Domain
+   └─> load_domain("domains/tafsir/domain.yaml")
+   └─> Get evaluator configuration
 
-3. Create Tenant Config
-   └─> load_config() with tenant credentials
-   └─> Config object encapsulates all settings
+3. Load Runs
+   └─> Find and load each run by ID
+   └─> Validate all runs are from same domain
+   └─> Check query alignment
 
-4. Execute Operations
-   └─> Pass Config to query/compare/run_batch
-   └─> All operations use tenant's credentials
-   └─> Concurrent requests have isolated configs
+4. Create Evaluator
+   └─> ComparisonEvaluator(model=domain.evaluator.model)
+   └─> Configure LiteLLM with API credentials
 
-5. Cleanup
-   └─> Config garbage collected after request
-   └─> No credential residue in memory
-   └─> No environment variable changes
+5. Evaluate Each Query
+   └─> For each aligned query across runs:
+       └─> Format retrieved chunks from each system
+       └─> Build evaluation prompt
+       └─> Call LLM for analysis
+       └─> Parse winner and scores
+       └─> Handle retries on failure
+
+6. Save Comparison
+   └─> save_comparison(comparison, "domains/tafsir/comparisons/")
+   └─> Creates "comparisons/<comparison-id>.json"
+
+7. Display Results
+   └─> format_comparison_results(comparison, format="table")
+   └─> Show winner statistics and analysis
 ```
 
 ## API Structure
 
-### Library API Endpoints
+### v2.0 CLI Commands
 
-The library provides a clean programmatic interface:
+The v2.0 CLI provides two main commands:
 
-1. **Configuration Loading**
-   - `load_config(config, credentials=None)` - Load with optional credentials
+#### `ragdiff run`
+Execute a query set against a system.
 
-2. **Query Execution**
-   - `query(config, query_text, tool, top_k=5)` - Single tool query
-   - `compare(config, query_text, tools=None, ...)` - Multi-tool comparison
-   - `run_batch(config, queries, tools=None, ...)` - Batch processing
+**Parameters**:
+- `--domain`: Domain name (required)
+- `--system`: System name (required)
+- `--query-set`: Query set name (required)
+- `--output-dir`: Custom output directory (optional)
+- `--max-workers`: Parallel execution threads (default: 10)
+- `--format`: Output format: table, json, markdown (default: table)
 
-3. **Evaluation**
-   - `evaluate_with_llm(result, model, api_key)` - LLM-based evaluation
-
-4. **Discovery**
-   - `get_available_adapters()` - List available adapters
-   - `validate_config(config_path)` - Validate configuration
-
-### CLI Commands
-
-The CLI provides these commands via Typer:
-
-1. **Query Commands**
-   - `query` - Run single query against one tool
-   - `compare` - Compare multiple tools
-   - `batch` - Process multiple queries
-
-2. **Configuration Commands**
-   - `validate` - Validate configuration file
-   - `list-adapters` - Show available adapters
-
-3. **Output Options**
-   - `--format` - Choose output format (display, json, csv, markdown)
-   - `--output` - Save results to file
-   - `--evaluate` - Enable LLM evaluation
-
-## State Management
-
-The system maintains minimal state:
-
-### Config Object State
-- **Immutable after creation**: Thread-safe by design
-- **Contains**: Tools config, credentials dict, LLM settings
-- **Lifetime**: Scoped to request/operation
-
-### Adapter State
-- **Per-instance credentials**: Isolated between adapters
-- **Connection state**: HTTP sessions, client objects
-- **No shared state**: Each adapter independent
-
-### Comparison Engine State
-- **Stateless execution**: New engine per comparison
-- **Thread pool**: Created and destroyed per operation
-- **No persistent state**: Clean slate each time
-
-## Key Design Decisions
-
-### 1. Config Object Pattern for Credentials
-**Decision**: Pass credentials at Config creation, then pass Config to API functions.
-
-**Rationale**:
-- Clear separation between config loading and execution
-- Config validation happens once at creation
-- Credentials encapsulated and protected
-- Easier to test and reason about
-- Natural fit for dependency injection patterns
-
-**Alternative Considered**: Pass credentials to each API function
-- Rejected: Would require credentials in every call
-- Rejected: Harder to validate consistently
-- Rejected: More complex API signatures
-
-### 2. Credential Dictionary Format
-**Decision**: Use environment variable names as keys (e.g., `{"VECTARA_API_KEY": "value"}`).
-
-**Rationale**:
-- Consistent with existing configuration
-- No new mapping layer needed
-- Clear what each credential is for
-- Works with ${ENV_VAR} substitution
-
-**Alternative Considered**: Use adapter field names
-- Rejected: Would require mapping logic
-- Rejected: Less clear connection to environment
-
-### 3. Precedence Model
-**Decision**: Passed credentials override environment variables.
-
-**Rationale**:
-- Explicit values should override implicit ones
-- Enables multi-tenant without environment changes
-- Predictable and easy to understand
-- Standard practice in configuration systems
-
-### 4. Thread Safety via Immutability
-**Decision**: Make Config and credentials immutable after creation.
-
-**Rationale**:
-- Eliminates race conditions
-- No locks needed
-- Safe to share Config between threads (read-only)
-- Simple mental model
-
-### 5. Backward Compatibility First
-**Decision**: Accept both Config objects and file paths in API functions.
-
-**Rationale**:
-- No breaking changes for existing users
-- Gradual migration path
-- Can ship immediately without deprecation period
-- Reduces friction for adoption
-
-### 6. Use hasattr() for Type Checking
-**Decision**: Use `hasattr(config, "tools")` instead of `isinstance(config, Config)`.
-
-**Rationale**:
-- Works with mocked objects in tests
-- Duck typing is more Pythonic
-- Avoids circular import issues
-- More flexible for testing
-
-### 7. MongoDB Adapter with Embedding Integration
-**Decision**: MongoDB adapter generates embeddings on-the-fly for queries rather than requiring pre-computed query embeddings.
-
-**Rationale**:
-- Seamless integration with existing RAG comparison workflow
-- No changes needed to the comparison engine
-- Consistent interface with other adapters
-- Flexibility to use different embedding models
-- Trade-off: Slightly higher latency for embedding generation
-
-**Implementation Details**:
-- Supports OpenAI embeddings (extensible to other providers)
-- Configurable embedding model and API key
-- Automatic vector field mapping
-- Metadata field extraction configuration
-
-## Integration Points
-
-### External Services (Multi-Tenant Ready)
-
-All external service integrations now support per-request credentials:
-
-#### Vectara Platform
-- **Endpoint**: `https://api.vectara.io/v2/query`
-- **Authentication**: API key via `x-api-key` header
-- **Multi-Tenant**: Credentials passed via Config object
-- **Corpus Selection**: Per-tenant corpus_id configuration
-
-#### Goodmem
-- **Client Library**: `goodmem-client`
-- **Authentication**: API key from credentials or environment
-- **Space Support**: Multiple space_ids configurable per tenant
-- **Fallback**: Graceful degradation on errors
-
-#### Agentset
-- **Client Library**: `agentset`
-- **Dual Auth**: API token and namespace ID
-- **Multi-Tenant**: Both credentials support override
-- **Reranking**: Optional rerank configuration
-
-#### MongoDB Atlas
-- **Endpoint**: MongoDB Atlas cluster (M10+ tier required)
-- **Authentication**: Connection URI from credentials or environment
-- **Vector Search**: Pre-configured vector search indexes
-- **Embedding Integration**: OpenAI API for query embeddings
-- **Multi-Tenant**: Per-tenant database/collection configuration
-
-#### OpenAI (for MongoDB embeddings)
-- **API**: Embeddings API for query vectorization
-- **Authentication**: API key from credentials or environment
-- **Models**: text-embedding-3-small, text-embedding-3-large
-- **Usage**: Dynamic embedding generation for MongoDB vector search
-
-#### Anthropic Claude
-- **API**: Claude Sonnet for evaluation
-- **Authentication**: API key from Config resolution
-- **Model Selection**: Configurable per tenant
-- **Context**: Isolated evaluation per request
-
-## Development Patterns
-
-### 1. Installing Optional Dependencies
-
+**Example**:
 ```bash
-# Install MongoDB adapter dependencies
-uv pip install -e ".[mongodb]"
-
-# This installs:
-# - pymongo>=4.0.0 (MongoDB driver)
-# - openai>=1.0.0 (Embedding generation)
+ragdiff run --domain tafsir --system vectara-mmr --query-set basic-test
 ```
 
-### 2. Adding a New Multi-Tenant Ready Adapter
+#### `ragdiff compare`
+Compare multiple runs using LLM evaluation.
 
+**Parameters**:
+- `--domain`: Domain name (required)
+- `--runs`: List of run IDs (required, 2+)
+- `--model`: Override LLM model (optional)
+- `--output`: Save comparison to file (optional)
+- `--format`: Output format: table, json, markdown (default: table)
+
+**Example**:
+```bash
+ragdiff compare --domain tafsir --runs run1 run2 --format markdown
+```
+
+### Internal Python APIs
+
+While v2.0 is primarily CLI-driven, the internal APIs are well-structured:
+
+#### System Interface
 ```python
-from typing import Optional
-from .abc import RagAdapter
-from ..core.models import RagResult, ToolConfig
+from ragdiff.systems.abc import System
+from ragdiff.core.models_v2 import RetrievedChunk
 
-class MyToolAdapter(RagAdapter):
-    ADAPTER_NAME = "mytool"
-    ADAPTER_API_VERSION = "1.0.0"
-
-    def __init__(
-        self,
-        config: ToolConfig,
-        credentials: Optional[dict[str, str]] = None
-    ):
-        super().__init__(config, credentials)
-
-        # Use credential resolution
-        api_key = self._get_credential(config.api_key_env)
-        if not api_key:
-            raise ConfigurationError(
-                f"Missing API key: {config.api_key_env}"
-            )
-
-        self.api_key = api_key
-        # Initialize tool-specific client
-
-    def search(self, query: str, top_k: int = 5) -> list[RagResult]:
-        # Implementation using self.api_key
+class MySystem(System):
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+        # Implementation
         pass
 ```
 
-### 2. Multi-Tenant Web Service Pattern
-
+#### Execution API
 ```python
-from fastapi import FastAPI, Depends
-from ragdiff import load_config, compare
+from ragdiff.execution.executor import RunExecutor
+from ragdiff.core.models_v2 import QuerySet, Run
 
-app = FastAPI()
-
-async def get_tenant_config(tenant_id: str = Depends(get_tenant_id)):
-    """Load tenant-specific configuration."""
-    tenant = await db.get_tenant(tenant_id)
-
-    config = load_config(
-        "base_config.yaml",
-        credentials={
-            "VECTARA_API_KEY": tenant.vectara_key,
-            "GOODMEM_API_KEY": tenant.goodmem_key,
-            "ANTHROPIC_API_KEY": tenant.llm_key
-        }
-    )
-    return config
-
-@app.post("/api/compare")
-async def compare_endpoint(
-    request: CompareRequest,
-    config: Config = Depends(get_tenant_config)
-):
-    """Multi-tenant comparison endpoint."""
-    result = compare(
-        config,
-        request.query,
-        tools=request.tools,
-        evaluate=request.evaluate
-    )
-    return result.to_dict()
+executor = RunExecutor(system, max_workers=10)
+run: Run = executor.execute(query_set)
 ```
 
-### 3. Testing Multi-Tenant Functionality
-
+#### Comparison API
 ```python
-def test_multi_tenant_isolation():
-    """Test credential isolation between tenants."""
-    # Create configs for different tenants
-    config_a = load_config(
-        {"tools": {"vectara": {...}}},
-        credentials={"VECTARA_API_KEY": "tenant_a_key"}
-    )
+from ragdiff.comparison.evaluator import ComparisonEvaluator
+from ragdiff.core.models_v2 import Comparison
 
-    config_b = load_config(
-        {"tools": {"vectara": {...}}},
-        credentials={"VECTARA_API_KEY": "tenant_b_key"}
-    )
+evaluator = ComparisonEvaluator(model="claude-3-5-sonnet-20241022")
+comparison: Comparison = evaluator.compare(runs, domain)
+```
 
-    # Verify isolation
-    assert config_a._credentials != config_b._credentials
+## State Management
 
-    # Run concurrent queries
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_a = executor.submit(query, config_a, "query", "vectara")
-        future_b = executor.submit(query, config_b, "query", "vectara")
+### Immutable Run State
 
-        results_a = future_a.result()
-        results_b = future_b.result()
+Runs are immutable snapshots that capture:
+- Complete system configuration at execution time
+- Full query set used
+- All results with timing information
+- Errors and partial failures
+- Metadata (timestamps, versions, etc.)
 
-    # Verify both completed successfully with own credentials
-    assert results_a and results_b
+This ensures reproducibility even if configurations change later.
+
+### File-System State
+
+All state is persisted to the file system:
+- **Domain Configuration**: `domains/<domain>/domain.yaml`
+- **System Configs**: `domains/<domain>/systems/*.yaml`
+- **Query Sets**: `domains/<domain>/query-sets/*.[txt|jsonl]`
+- **Runs**: `domains/<domain>/runs/YYYY-MM-DD/<run-id>.json`
+- **Comparisons**: `domains/<domain>/comparisons/<comparison-id>.json`
+
+No database required - everything is in YAML/JSON files.
+
+### Registry State
+
+The tool registry maintains singleton state:
+- Single instance across application lifetime
+- Tools register at module import time
+- Thread-safe access to tool classes
+
+## Key Design Decisions
+
+### 1. Domain-Based Organization
+**Decision**: Organize everything by problem domain rather than tool/adapter.
+
+**Rationale**:
+- Natural mental model for experiments
+- Clear separation between different problem spaces
+- Easy to find related experiments
+- Supports different configurations per domain
+
+### 2. Systems = Tool + Configuration
+**Decision**: Treat configured tools as first-class "systems".
+
+**Rationale**:
+- Enables A/B testing of configurations
+- Clear distinction between tool (code) and system (configured instance)
+- Supports multiple configurations of same tool
+- Natural versioning through config snapshots
+
+### 3. Immutable Run Snapshots
+**Decision**: Store complete configuration snapshots in each run.
+
+**Rationale**:
+- Full reproducibility of experiments
+- Can modify configs without breaking old runs
+- Clear audit trail
+- No hidden dependencies
+
+### 4. File-System-First Storage
+**Decision**: Use YAML for config, JSON for results, no database.
+
+**Rationale**:
+- Simple and transparent
+- Version control friendly
+- Easy to backup and share
+- No infrastructure dependencies
+- Human-readable formats
+
+### 5. LiteLLM for Evaluation
+**Decision**: Use LiteLLM library for multi-provider LLM support.
+
+**Rationale**:
+- Single interface for multiple providers
+- Built-in retry logic and error handling
+- Cost tracking included
+- Easy provider switching
+- Active maintenance and updates
+
+### 6. No Backwards Compatibility
+**Decision**: v2.0 breaks compatibility with v1.x completely.
+
+**Rationale**:
+- Small user base allows clean break
+- Fundamental architecture change
+- Simpler codebase without legacy support
+- Clear versioning boundary
+
+### 7. Singleton Tool Registry
+**Decision**: Use singleton pattern for tool registration.
+
+**Rationale**:
+- Tools register once at import
+- No duplicate registrations
+- Global access to available tools
+- Thread-safe by design
+
+### 8. Parallel Query Execution
+**Decision**: Use ThreadPoolExecutor for concurrent queries.
+
+**Rationale**:
+- Significant performance improvement
+- Clean abstraction with futures
+- Per-query error isolation
+- Progress tracking support
+
+## Integration Points
+
+### RAG Systems
+
+#### Vectara
+- **Protocol**: HTTP REST API
+- **Authentication**: API key header
+- **Features**: Corpus search, reranking options
+- **Configuration**: corpus_id, reranking mode
+
+#### MongoDB Atlas
+- **Protocol**: MongoDB wire protocol
+- **Authentication**: Connection URI
+- **Features**: Vector search with embeddings
+- **Dependencies**: OpenAI for embeddings
+
+#### Agentset
+- **Protocol**: Python client library
+- **Authentication**: API token + namespace
+- **Features**: Knowledge graph retrieval
+- **Configuration**: namespace_id, reranking
+
+### LLM Providers (via LiteLLM)
+
+#### Anthropic Claude
+- **Models**: claude-3-5-sonnet-20241022, etc.
+- **Authentication**: ANTHROPIC_API_KEY
+- **Usage**: Primary evaluation model
+
+#### OpenAI GPT
+- **Models**: gpt-4o, gpt-4o-mini, etc.
+- **Authentication**: OPENAI_API_KEY
+- **Usage**: Alternative evaluation
+
+#### Google Gemini
+- **Models**: gemini-pro, gemini-1.5-pro, etc.
+- **Authentication**: GEMINI_API_KEY
+- **Usage**: Cost-effective evaluation
+
+#### Azure OpenAI
+- **Models**: Deployed GPT models
+- **Authentication**: Azure credentials
+- **Usage**: Enterprise deployments
+
+## Development Patterns
+
+### Adding a New System
+
+1. Create system implementation:
+```python
+# src/ragdiff/systems/mysystem.py
+from .abc import System
+from ..core.models_v2 import RetrievedChunk
+
+class MySystem(System):
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+        # Implementation
+        results = self._call_api(query, top_k)
+        return [
+            RetrievedChunk(
+                content=r["text"],
+                score=r["score"],
+                metadata={"source": r["source"]}
+            )
+            for r in results
+        ]
+
+# Register at module level
+from .registry import register_tool
+register_tool("mysystem", MySystem)
+```
+
+2. Import in `systems/__init__.py`:
+```python
+from . import mysystem  # Triggers registration
+```
+
+3. Create system configuration:
+```yaml
+# domains/tafsir/systems/mysystem-default.yaml
+name: mysystem-default
+tool: mysystem
+config:
+  api_key: ${MYSYSTEM_API_KEY}
+  endpoint: https://api.mysystem.com
+  timeout: 30
+```
+
+### Creating a New Domain
+
+1. Create domain directory structure:
+```bash
+mkdir -p domains/mydomain/{systems,query-sets,runs,comparisons}
+```
+
+2. Create domain configuration:
+```yaml
+# domains/mydomain/domain.yaml
+name: mydomain
+description: My domain description
+variables:
+  default_timeout: 30
+secrets:
+  anthropic_key: ${ANTHROPIC_API_KEY}
+evaluator:
+  model: claude-3-5-sonnet-20241022
+  temperature: 0.0
+```
+
+3. Add systems and query sets:
+```bash
+# Add system configs
+vim domains/mydomain/systems/vectara.yaml
+
+# Add queries
+vim domains/mydomain/query-sets/test.txt
+```
+
+### Running Experiments
+
+1. Execute query set:
+```bash
+ragdiff run --domain mydomain --system vectara --query-set test
+```
+
+2. Run multiple systems:
+```bash
+ragdiff run --domain mydomain --system vectara --query-set test
+ragdiff run --domain mydomain --system mongodb --query-set test
+```
+
+3. Compare results:
+```bash
+ragdiff compare --domain mydomain --runs run1 run2
 ```
 
 ## File Naming Conventions
 
-### Python Files
-- **Snake_case**: All Python files use snake_case (e.g., `config.py`, `vectara_adapter.py`)
-- **Test prefix**: Test files start with `test_` (e.g., `test_multi_tenant.py`)
-- **No underscores in package names**: Package directories avoid underscores
-
 ### Configuration Files
-- **Lowercase with hyphens**: YAML configs use lowercase with hyphens (e.g., `tafsir-config.yaml`)
-- **Environment files**: Use `.env` prefix (e.g., `.env`, `.env.example`)
+- **Domain config**: `domain.yaml` (always this name)
+- **System configs**: `<descriptive-name>.yaml` (e.g., `vectara-mmr.yaml`)
+- **Query sets**: `<name>.txt` or `<name>.jsonl`
 
-### Documentation
-- **Uppercase README**: Main documentation as `README.md`
-- **Lowercase with hyphens**: Other docs use lowercase (e.g., `architecture-guide.md`)
-- **Numbered specs**: Specifications use number prefix (e.g., `0004-multi-tenant.md`)
+### Result Files
+- **Runs**: `YYYY-MM-DD/<uuid>.json` (date-organized)
+- **Comparisons**: `<uuid>.json` (flat structure)
 
-### Output Files
-- **Timestamp suffix**: Generated files include timestamp (e.g., `results_20241021_143022.json`)
-- **Descriptive prefixes**: Clear indication of content (e.g., `batch_results_`, `comparison_`)
+### Python Modules
+- **Snake_case**: All Python files (e.g., `models_v2.py`)
+- **No underscores in packages**: Directory names avoid underscores
+- **Test prefix**: Test files start with `test_`
 
-## Performance Considerations
+## Performance Characteristics
 
-### Multi-Tenant Performance
+### Query Execution
+- **Parallelism**: Default 10 concurrent queries
+- **Timeout**: Configurable per system (default 30s)
+- **Memory**: ~1KB per query result
+- **Scaling**: Tested with 1000 queries per run
 
-- **Credential Resolution**: O(1) dictionary lookup, negligible overhead
-- **Config Creation**: One-time cost per request, not per query
-- **Memory**: Each Config holds only credential references, minimal overhead
-- **Thread Safety**: No locks needed due to immutability
-- **Garbage Collection**: Configs cleaned up automatically after request
+### Storage
+- **Run size**: ~5-50KB per run (depending on results)
+- **Comparison size**: ~10-100KB (depending on runs)
+- **File I/O**: JSON parsing optimized with Pydantic
 
-### Optimization Strategies
-
-- **Config Reuse**: Same tenant can reuse Config across multiple queries
-- **Connection Pooling**: Adapters can implement per-tenant connection pools
-- **Credential Caching**: Application layer can cache validated credentials
-- **Batch Operations**: Multi-tenant batch processing works efficiently
-
-### Benchmarks
-
-- **Config Creation**: ~1ms including validation
-- **Credential Lookup**: ~100ns per resolution
-- **Memory per Config**: ~1KB base + credentials
-- **Concurrent Requests**: Tested with 100+ simultaneous tenants
+### LLM Evaluation
+- **Latency**: 1-3 seconds per query evaluation
+- **Retries**: Exponential backoff (3 attempts)
+- **Cost**: ~$0.01-0.05 per comparison (varies by model)
+- **Rate limits**: Handled by LiteLLM
 
 ## Testing Strategy
 
-### Test Categories
+### Test Coverage (v2.0)
 
-1. **Unit Tests** (160+ tests)
-   - Model validation
-   - Configuration parsing
-   - Adapter functionality
-   - Score normalization
-   - MongoDB configuration validation
+**Unit Tests** (78 total):
+- `test_core_v2.py`: 29 tests for data models
+- `test_systems.py`: 29 tests for system implementations
+- `test_execution.py`: 12 tests for execution engine
+- `test_comparison.py`: 5 tests for LLM evaluation
+- `test_cli_v2.py`: 8 tests for CLI commands
 
-2. **Integration Tests** (56+ tests)
-   - API functions
-   - Multi-tool comparison
-   - Batch processing
-   - Error handling
-   - MongoDB adapter factory integration
+### Test Patterns
 
-3. **Multi-Tenant Tests** (30+ tests)
-   - Credential isolation
-   - Concurrent requests
-   - Thread safety
-   - Reentrancy
+**Mock Systems**: Test implementations that return predefined results
+**Fixture Data**: Sample domains, configs, and query sets
+**Environment Isolation**: Tests use temporary directories
+**LLM Mocking**: Mock LiteLLM responses for deterministic tests
 
-4. **Performance Tests**
-   - Load testing
-   - Memory profiling
-   - Concurrent execution
+### Running Tests
 
-### Test Files Organization
+```bash
+# Run all v2.0 tests
+pytest tests/test_*_v2.py tests/test_systems.py tests/test_execution.py
 
-- **`tests/test_multi_tenant.py`**: Core multi-tenant functionality
-- **`tests/test_api_multi_tenant.py`**: API integration with credentials
-- **`tests/test_thread_safety.py`**: Concurrent execution tests
-- **`tests/test_reentrancy.py`**: Recursive call safety
-- **`tests/test_phase*.py`**: Phased implementation validation
+# Run with coverage
+pytest tests/ --cov=src/ragdiff --cov-report=html
 
-## Security Architecture
+# Run specific test file
+pytest tests/test_core_v2.py -v
+```
 
-### Credential Security
+## Security Considerations
 
-1. **No Logging**: Credentials never logged, even at debug level
-2. **No Serialization**: Credentials excluded from to_dict() methods
-3. **Memory Only**: Credentials never written to disk
-4. **Scoped Lifetime**: Credentials garbage collected with Config
-5. **Error Sanitization**: Error messages don't expose credential values
+### Credential Management
+- **Environment variables**: Never stored in configs
+- **Placeholder preservation**: ${VAR_NAME} kept in snapshots
+- **Runtime resolution**: Credentials resolved only at execution
+- **No logging**: Credentials never logged
 
-### Multi-Tenant Security
+### File System Security
+- **Permissions**: Standard Unix file permissions apply
+- **Sensitive data**: Keep domains/ directory secure
+- **Git ignore**: Add domains/*/runs/ to .gitignore
 
-1. **Tenant Isolation**: Complete credential isolation between tenants
-2. **No Cross-Contamination**: One tenant cannot access another's credentials
-3. **Audit Trail**: Application layer can log credential usage per tenant
-4. **Rate Limiting**: Can be implemented per tenant at application layer
-5. **Credential Rotation**: Supports dynamic credential updates without restart
-
-### Best Practices
-
-- Never log Config._credentials dictionary
-- Use secure transport (HTTPS) for credential transmission
-- Implement credential rotation policies
-- Monitor for credential leaks in error logs
-- Use least-privilege principle for API keys
+### LLM API Security
+- **API keys**: Stored in environment only
+- **Rate limiting**: Handled by providers
+- **Cost tracking**: Monitor via LiteLLM
 
 ## Version History
 
-### v1.2.1 (2025-10-25) - MongoDB Atlas Vector Search Support
-**Major Feature**: MongoDB Atlas Vector Search adapter with embedding integration
+### v2.0.0 (2025-10-25) - Domain-Based Architecture
+**Breaking Change**: Complete architectural rewrite
 
-**Key Changes**:
-- New MongoDB adapter with vector search capabilities
-- Automatic query embedding generation via OpenAI
-- Configurable field mappings and metadata extraction
-- Sample data scripts for SQuAD dataset loading and testing
-- Optional dependency group for MongoDB (pymongo, openai)
-- 16 new tests for MongoDB functionality
+**Major Changes**:
+- Domain-first organization model
+- Systems = Tool + Configuration concept
+- Immutable run snapshots for reproducibility
+- LiteLLM integration for multi-provider support
+- File-system-first storage (YAML/JSON)
+- New CLI with only run/compare commands
+- No backwards compatibility with v1.x
 
-**Files Added**:
-- `src/ragdiff/adapters/mongodb.py` - MongoDB adapter implementation
-- `configs/mongodb-example.yaml` - Example configuration
-- `sampledata/` - Scripts for loading SQuAD dataset with embeddings
-- Test coverage in `tests/test_adapters.py`
+**Components**:
+- 5 core models in models_v2.py
+- 3 system implementations
+- Parallel execution engine
+- LLM comparison evaluator
+- 78 comprehensive tests
 
-**Total Tests**: 246 passing
-
-### v1.1.0 (2025-10-22) - Multi-Tenant Support
-**Major Feature**: Complete multi-tenant credential support
-
-**Key Changes**:
-- Config class accepts credentials dictionary and config_dict
-- New `load_config()` API function for credential management
-- All API functions accept Config objects (backward compatible)
-- All adapters support credential overrides
-- Thread-safe credential isolation
-- 100% backward compatibility maintained
-
-**Files Modified**: 8 core files, 4 test files
-**New Tests**: 22 multi-tenant specific tests
-**Total Tests**: 230 passing
-
-### v1.0.0 (2025-10-21) - Production Release
-**Status**: Stable library API with CLI
-
-**Features**:
-- Complete library API (query, compare, run_batch)
-- Thread-safe execution
-- Comprehensive error handling
-- Multiple output formats
-- LLM evaluation integration
-
-### v0.2.0 - Library Refactoring
-**Major Change**: Transition from CLI-only to library-first design
-
-### v0.1.0 - Initial Release
-**Features**: Basic CLI with adapter pattern
+### v1.2.1 (Previous) - Adapter-Based Architecture
+**Status**: Deprecated, replaced by v2.0
 
 ## Future Enhancements
 
 ### Planned Features
 
-1. **MongoDB Enhancements**
-   - Support for additional embedding providers (Cohere, HuggingFace)
-   - Metadata filtering in vector search queries
-   - Hybrid search combining vector and text search
-   - Support for multiple embedding models in same collection
+1. **Additional Systems**
+   - Pinecone vector database
+   - Weaviate integration
+   - Custom REST API adapter
 
-2. **Credential Providers**
-   - AWS Secrets Manager integration
-   - HashiCorp Vault support
-   - Azure Key Vault connector
+2. **Query Set Management**
+   - Query set validation and linting
+   - Automatic query generation
+   - Query difficulty scoring
 
-2. **Advanced Multi-Tenancy**
-   - Per-tenant rate limiting
-   - Tenant-specific caching
-   - Usage metrics per tenant
+3. **Advanced Evaluation**
+   - Multi-criteria evaluation
+   - Custom evaluation prompts
+   - Human-in-the-loop evaluation
 
-3. **Security Enhancements**
-   - Credential encryption at rest
-   - Audit logging framework
-   - Automatic credential rotation
+4. **Visualization**
+   - Web UI for results browsing
+   - Comparison charts and graphs
+   - Performance trending
 
-4. **Performance Optimizations**
-   - Config object caching
-   - Connection pool per tenant
-   - Lazy credential loading
-
-5. **Developer Experience**
-   - Config builder API
-   - Credential validation hooks
-   - Multi-tenant debugging tools
+5. **Experiment Tracking**
+   - MLflow integration
+   - Weights & Biases support
+   - Custom metrics tracking
 
 ---
 
-**Document Status**: Complete with MongoDB Atlas Support v1.2.1
+**Document Status**: Complete for v2.0.0
 **Last Updated**: 2025-10-25
-**Next Review**: After next major feature implementation
+**Architecture Version**: 2.0.0 (Domain-Based)
 **Maintained By**: Architecture Documenter Agent
