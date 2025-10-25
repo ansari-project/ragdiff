@@ -4,7 +4,7 @@ Importing this package automatically registers all built-in adapters.
 """
 
 # Import adapters to trigger auto-registration
-from . import agentset, goodmem, vectara  # noqa: F401
+from . import agentset, faiss, goodmem, vectara  # noqa: F401
 
 # Export registry functions for convenience
 from .registry import (

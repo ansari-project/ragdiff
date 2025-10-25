@@ -4,7 +4,8 @@ Tests the migration of adapters to the new RagAdapter ABC and registry system.
 """
 
 import os
-from unittest.mock import patch
+import sys
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -420,3 +421,289 @@ class TestBackwardCompatibility:
             sig = inspect.signature(adapter.search)
             assert "query" in sig.parameters
             assert "top_k" in sig.parameters
+
+
+class TestFaissAdapter:
+    """Test FaissAdapter implementation."""
+
+    @pytest.fixture(autouse=True)
+    def mock_faiss_deps(self):
+        """Mock FAISS and embedding dependencies for all tests."""
+        # Mock faiss
+        mock_faiss = MagicMock()
+        mock_index = MagicMock()
+        mock_index.ntotal = 10
+        mock_index.d = 384
+        mock_faiss.read_index.return_value = mock_index
+        sys.modules['faiss'] = mock_faiss
+
+        # Mock sentence_transformers
+        mock_st = MagicMock()
+        sys.modules['sentence_transformers'] = mock_st
+
+        # Mock openai
+        mock_openai = MagicMock()
+        sys.modules['openai'] = mock_openai
+
+        # Mock numpy
+        mock_numpy = MagicMock()
+        mock_numpy.zeros.return_value = MagicMock()
+        mock_numpy.array.side_effect = lambda x, **kwargs: x
+        sys.modules['numpy'] = mock_numpy
+
+        yield
+
+        # Cleanup
+        for module in ['faiss', 'sentence_transformers', 'openai', 'numpy']:
+            if module in sys.modules:
+                del sys.modules[module]
+
+    def test_faiss_registered(self):
+        """Verify FAISS adapter is registered."""
+        available = list_available_adapters()
+        assert "faiss" in available
+
+    def test_faiss_inherits_from_rag_adapter(self):
+        """Verify FaissAdapter inherits from RagAdapter."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        assert issubclass(FaissAdapter, RagAdapter)
+
+    def test_faiss_metadata(self):
+        """Verify FAISS adapter has correct metadata."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        assert FaissAdapter.ADAPTER_API_VERSION == "1.0.0"
+        assert FaissAdapter.ADAPTER_NAME == "faiss"
+
+    def test_validate_config_missing_api_key_env(self):
+        """Test validation fails when api_key_env is missing."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        config = {"options": {"index_path": "/tmp/test.faiss"}}
+        with pytest.raises(
+            ConfigurationError, match="missing required field: api_key_env"
+        ):
+            FaissAdapter.validate_config(FaissAdapter, config)
+
+    def test_validate_config_missing_options(self):
+        """Test validation fails when options is missing."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        config = {"api_key_env": "FAISS_API_KEY"}
+        with pytest.raises(ConfigurationError, match="missing 'options' field"):
+            FaissAdapter.validate_config(FaissAdapter, config)
+
+    def test_validate_config_missing_index_path(self):
+        """Test validation fails when index_path is missing."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        config = {
+            "api_key_env": "FAISS_API_KEY",
+            "options": {"documents_path": "/tmp/docs.jsonl"},
+        }
+        with pytest.raises(
+            ConfigurationError, match="missing required option: index_path"
+        ):
+            FaissAdapter.validate_config(FaissAdapter, config)
+
+    def test_validate_config_missing_documents_path(self):
+        """Test validation fails when documents_path is missing."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        config = {
+            "api_key_env": "FAISS_API_KEY",
+            "options": {"index_path": "/tmp/test.faiss"},
+        }
+        with pytest.raises(
+            ConfigurationError, match="missing required option: documents_path"
+        ):
+            FaissAdapter.validate_config(FaissAdapter, config)
+
+    def test_validate_config_invalid_embedding_service(self):
+        """Test validation fails with invalid embedding service."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        config = {
+            "api_key_env": "FAISS_API_KEY",
+            "options": {
+                "index_path": "/tmp/test.faiss",
+                "documents_path": "/tmp/docs.jsonl",
+                "embedding_service": "invalid-service",
+            },
+        }
+        with pytest.raises(ConfigurationError, match="Invalid embedding service"):
+            FaissAdapter.validate_config(FaissAdapter, config)
+
+    def test_get_options_schema(self):
+        """Test get_options_schema returns valid JSON schema."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        schema = FaissAdapter.get_options_schema(FaissAdapter)
+        assert schema["type"] == "object"
+        assert "index_path" in schema["properties"]
+        assert "documents_path" in schema["properties"]
+        assert "embedding_service" in schema["properties"]
+        assert "embedding_model" in schema["properties"]
+        assert "dimensions" in schema["properties"]
+        assert "index_path" in schema["required"]
+        assert "documents_path" in schema["required"]
+
+    def test_init_with_sentence_transformers(self):
+        """Test initialization with sentence-transformers."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        with patch("ragdiff.adapters.faiss.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+
+            mock_docs = ['{"id": "1", "text": "Test doc", "source": "Test"}\n']
+            with patch("builtins.open", mock_open(read_data="".join(mock_docs))):
+                config = ToolConfig(
+                    name="faiss-test",
+                    api_key_env="FAISS_DUMMY_KEY",
+                    options={
+                        "index_path": "/tmp/test.faiss",
+                        "documents_path": "/tmp/docs.jsonl",
+                        "embedding_service": "sentence-transformers",
+                        "embedding_model": "all-MiniLM-L6-v2",
+                    },
+                )
+
+                adapter = FaissAdapter(config)
+                assert adapter.embedding_service == "sentence-transformers"
+                assert adapter.embedding_model == "all-MiniLM-L6-v2"
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
+    def test_init_with_openai(self):
+        """Test initialization with OpenAI embeddings."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        with patch("ragdiff.adapters.faiss.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+
+            mock_docs = ['{"id": "1", "text": "Test doc", "source": "Test"}\n']
+            with patch("builtins.open", mock_open(read_data="".join(mock_docs))):
+                config = ToolConfig(
+                    name="faiss-test",
+                    api_key_env="OPENAI_API_KEY",
+                    options={
+                        "index_path": "/tmp/test.faiss",
+                        "documents_path": "/tmp/docs.jsonl",
+                        "embedding_service": "openai",
+                        "embedding_model": "text-embedding-3-small",
+                    },
+                )
+
+                adapter = FaissAdapter(config)
+                assert adapter.embedding_service == "openai"
+                assert adapter.embedding_model == "text-embedding-3-small"
+
+    def test_load_index_not_found(self):
+        """Test error when index file not found."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        with patch("ragdiff.adapters.faiss.Path") as mock_path:
+            mock_index_path = MagicMock()
+            mock_index_path.exists.return_value = False
+            mock_path.return_value = mock_index_path
+
+            config = ToolConfig(
+                name="faiss-test",
+                api_key_env="FAISS_DUMMY_KEY",
+                options={
+                    "index_path": "/tmp/nonexistent.faiss",
+                    "documents_path": "/tmp/docs.jsonl",
+                },
+            )
+
+            with pytest.raises(ConfigurationError, match="FAISS index not found"):
+                FaissAdapter(config)
+
+    def test_search_success(self):
+        """Test successful search operation."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        with patch("ragdiff.adapters.faiss.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+
+            # Configure mock index search
+            mock_faiss = sys.modules['faiss']
+            mock_faiss.read_index.return_value.search.return_value = (
+                [[0.5]],  # distances
+                [[0]],  # indices
+            )
+            mock_faiss.read_index.return_value.ntotal = 1
+
+            # Mock encoder
+            import numpy as np
+            mock_st = sys.modules['sentence_transformers']
+            mock_st.SentenceTransformer.return_value.encode.return_value = [np.zeros(384)]
+
+            mock_docs = ['{"id": "doc1", "text": "Test document", "source": "Test"}\n']
+            with patch("builtins.open", mock_open(read_data="".join(mock_docs))):
+                config = ToolConfig(
+                    name="faiss-test",
+                    api_key_env="FAISS_DUMMY_KEY",
+                    options={
+                        "index_path": "/tmp/test.faiss",
+                        "documents_path": "/tmp/docs.jsonl",
+                    },
+                )
+
+                adapter = FaissAdapter(config)
+                results = adapter.search("test query", top_k=5)
+
+                assert len(results) == 1
+                assert results[0].id == "doc1"
+                assert results[0].text == "Test document"
+                assert results[0].source == "Test"
+                assert 0 <= results[0].score <= 1
+                assert "faiss_distance" in results[0].metadata
+                assert "faiss_index" in results[0].metadata
+
+    def test_get_required_env_vars_sentence_transformers(self):
+        """Test get_required_env_vars for sentence-transformers (none required)."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        with patch("ragdiff.adapters.faiss.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+
+            mock_docs = ['{"id": "1", "text": "Test"}\n']
+            with patch("builtins.open", mock_open(read_data="".join(mock_docs))):
+                config = ToolConfig(
+                    name="faiss-test",
+                    api_key_env="FAISS_DUMMY_KEY",
+                    options={
+                        "index_path": "/tmp/test.faiss",
+                        "documents_path": "/tmp/docs.jsonl",
+                        "embedding_service": "sentence-transformers",
+                    },
+                )
+
+                adapter = FaissAdapter(config)
+                env_vars = adapter.get_required_env_vars()
+                assert env_vars == []
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
+    def test_get_required_env_vars_openai(self):
+        """Test get_required_env_vars for OpenAI (API key required)."""
+        from ragdiff.adapters.faiss import FaissAdapter
+
+        with patch("ragdiff.adapters.faiss.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+
+            mock_docs = ['{"id": "1", "text": "Test"}\n']
+            with patch("builtins.open", mock_open(read_data="".join(mock_docs))):
+                config = ToolConfig(
+                    name="faiss-test",
+                    api_key_env="OPENAI_API_KEY",
+                    options={
+                        "index_path": "/tmp/test.faiss",
+                        "documents_path": "/tmp/docs.jsonl",
+                        "embedding_service": "openai",
+                    },
+                )
+
+                adapter = FaissAdapter(config)
+                env_vars = adapter.get_required_env_vars()
+                assert env_vars == ["OPENAI_API_KEY"]
