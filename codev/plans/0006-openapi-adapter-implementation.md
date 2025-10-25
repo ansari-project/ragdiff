@@ -409,18 +409,18 @@ example-api:
 
 ### Tasks
 
-#### 3.1 Add Anthropic Dependency
+#### 3.1 Add LiteLLM Dependency
 
 **File**: `pyproject.toml`
 
 **Subtasks**:
-- [ ] Add `anthropic` to dependencies
-- [ ] Run `uv pip install anthropic`
-- [ ] Add `ANTHROPIC_API_KEY` to environment setup
+- [ ] Add `litellm` to dependencies
+- [ ] Run `uv pip install litellm`
+- [ ] LiteLLM uses existing API key environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
 
 **Acceptance Criteria**:
-- [ ] Can import `anthropic` library
-- [ ] API key available in environment
+- [ ] Can import `litellm` library
+- [ ] LiteLLM can access API keys from environment
 
 #### 3.2 Create AI Analysis Module
 
@@ -429,9 +429,11 @@ example-api:
 **Subtasks**:
 - [ ] Create `AIAnalyzer` class
   ```python
+  from litellm import acompletion
+
   class AIAnalyzer:
-      def __init__(self, api_key: str):
-          self.client = anthropic.Anthropic(api_key=api_key)
+      def __init__(self, model: str = "claude-3-5-sonnet-20241022"):
+          self.model = model  # LiteLLM will use API keys from environment
 
       async def identify_search_endpoint(
           self, endpoints: list[EndpointInfo]
@@ -447,12 +449,12 @@ example-api:
   ```
 - [ ] Implement `identify_search_endpoint()`
   - [ ] Build prompt with endpoint list
-  - [ ] Call Claude API
+  - [ ] Call LLM via LiteLLM: `acompletion(model=self.model, messages=...)`
   - [ ] Parse response (expect JSON with {path, method, reasoning})
   - [ ] Validate response
 - [ ] Implement `generate_response_mapping()`
   - [ ] Build prompt with response JSON and required fields
-  - [ ] Call Claude API
+  - [ ] Call LLM via LiteLLM: `acompletion(model=self.model, messages=...)`
   - [ ] Parse mapping configuration
   - [ ] Validate JMESPath expressions
 - [ ] Add error handling
@@ -531,8 +533,8 @@ Note: For metadata, construct a JMESPath object expression using {{key: path}} s
 - [ ] Create `ConfigGenerator` class
   ```python
   class ConfigGenerator:
-      def __init__(self, anthropic_api_key: str):
-          self.ai_analyzer = AIAnalyzer(anthropic_api_key)
+      def __init__(self, model: str = "claude-3-5-sonnet-20241022"):
+          self.ai_analyzer = AIAnalyzer(model=model)
 
       async def generate(
           self,
@@ -588,7 +590,7 @@ Note: For metadata, construct a JMESPath object expression using {{key: path}} s
       pass
   ```
 - [ ] Implement command logic:
-  1. Get Anthropic API key from environment
+  1. LiteLLM will automatically use API keys from environment (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
   2. Call ConfigGenerator.generate()
   3. If interactive, show generated config and ask for confirmation
   4. Convert config dict to YAML
@@ -932,7 +934,7 @@ kalimat:
 ```toml
 [project.dependencies]
 jmespath = "^1.0.1"  # JMESPath for response mapping
-anthropic = "^0.40.0"  # Claude API for generation
+litellm = "^1.0.0"   # Unified LLM API (supports Claude, GPT, etc.)
 ```
 
 ### Existing Dependencies to Leverage

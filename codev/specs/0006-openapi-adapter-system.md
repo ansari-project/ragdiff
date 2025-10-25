@@ -753,19 +753,21 @@ request_params:
 **AI Interaction Pattern**:
 ```python
 async def analyze_response_with_ai(response: dict) -> dict:
-    """Use Claude to generate JMESPath mappings."""
+    """Use LLM (via LiteLLM) to generate JMESPath mappings."""
+    from litellm import acompletion
+
     prompt = f"""
     Analyze this API response and generate JMESPath expressions...
     Response: {json.dumps(response, indent=2)}
     """
 
-    result = await anthropic.messages.create(
-        model="claude-3-5-sonnet-20241022",
+    result = await acompletion(
+        model="claude-3-5-sonnet-20241022",  # Can use any LiteLLM-supported model
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2000
     )
 
-    return json.loads(result.content[0].text)
+    return json.loads(result.choices[0].message.content)
 ```
 
 ### 3.6 Config Validation Strategy
@@ -1008,7 +1010,7 @@ def mock_claude_response():
 
 **Required**:
 - `jmespath` (^1.0.1): JMESPath implementation for Python
-- `anthropic` (^0.40.0): Claude API client for AI generation
+- `litellm` (^1.0.0): Unified LLM API client for AI generation (supports Anthropic, OpenAI, Azure, etc.)
 
 **Optional**:
 - `openapi-core` (future): If we want full OpenAPI validation
