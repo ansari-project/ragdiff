@@ -5,7 +5,6 @@ corpora (e.g., Tafsir, Mawsuah) by configuring the corpus_id.
 """
 
 import logging
-import os
 from typing import Any
 
 import requests
@@ -156,11 +155,9 @@ class VectaraAdapter(RagAdapter):
         if not config.get("corpus_id"):
             raise ConfigurationError("Vectara config missing required field: corpus_id")
 
-        # Validate environment variable exists
-        if not os.getenv(config["api_key_env"]):
-            raise ConfigurationError(
-                f"Environment variable {config['api_key_env']} is not set"
-            )
+        # NOTE: Don't validate environment variable here - it will be checked
+        # via self._get_credential() which supports both credentials dict
+        # and environment variables for multi-tenant usage
 
     def get_required_env_vars(self) -> list[str]:
         """Get list of required environment variables.
