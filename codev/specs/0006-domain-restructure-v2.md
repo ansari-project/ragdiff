@@ -641,10 +641,85 @@ This would:
 4. **Visualization**: Should we add visualization of comparison results?
 5. **Batch execution**: Should we support batch execution of multiple systems × query sets?
 
-## Next Steps (SPIDER)
+## Self-Review Notes
 
-1. **Specification** ✓ (this document)
-2. **Planning**: Create implementation plan
+### Critical Gaps Identified
+
+**1. Tool/Adapter Layer (CRITICAL)**
+- Systems reference "tools" but no definition of what tools are
+- **Missing**: Tool interface/ABC, tool registry, configuration schemas
+- **Impact**: This is the bridge between v1.x adapters and v2.0 systems
+- **Resolution**: Must define Tool interface that wraps existing adapters
+
+**2. Run Lifecycle & State Management**
+- No run states (pending → running → completed/failed)
+- **Missing**: Cancellation, retry logic, progress reporting
+- **Missing**: Partial failure handling (some queries fail, some succeed)
+- **Resolution**: Add `status` field to Run model with enum
+
+**3. Storage Backend Interface (CRITICAL)**
+- Mentions pluggable backends but no interface definition
+- **Missing**: How to migrate between backends, transactions, concurrency
+- **Resolution**: Define StorageBackend ABC with CRUD operations
+
+**4. Pagination & Filtering**
+- `list_*` operations have no pagination
+- **Problem**: Breaks with 1000+ runs/systems
+- **Resolution**: Add pagination params (limit, offset) and filters
+
+**5. Error Handling Strategy**
+- No exception hierarchy defined
+- **Missing**: What errors each API method can raise
+- **Resolution**: Define custom exceptions in planning phase
+
+**6. Data Model Issues**
+- `datetime.now()` should be `default_factory=lambda: datetime.utcnow()`
+- **Missing**: Timezone specification (use UTC everywhere)
+- **Missing**: Immutability guarantees on Runs
+- **Resolution**: Fix in planning phase
+
+**7. Validation & Constraints**
+- No field validators (e.g., domain name format)
+- No relationship integrity (e.g., system.domain must exist)
+- **Resolution**: Add Pydantic validators in planning
+
+**8. Secrets Management**
+- Secrets referenced but implementation not defined
+- **Missing**: How secrets are stored, retrieved, secured
+- **Resolution**: Define in planning phase (env vars? vault? encrypted?)
+
+**9. Concurrency Model**
+- No discussion of concurrent run execution
+- **Missing**: Thread safety, parallel queries, race conditions
+- **Resolution**: Define concurrency guarantees in planning
+
+**10. Comparison Scope**
+- How to compare >2 runs?
+- **Missing**: Pairwise vs all-at-once strategies
+- **Resolution**: Start with 2 runs, extend in future
+
+### Strengths
+- Clear problem statement and motivation
+- Well-defined core concepts with examples
+- Clean, intuitive API design
+- Comprehensive Pydantic models
+- API-first with optional file config
+
+### Updated Open Questions
+
+1. **Tool Interface**: How do we define the tool layer? Reuse v1.x adapters?
+2. **Run Immutability**: Should runs be immutable once created?
+3. **Versioning**: How do we version systems/query sets? Just rely on timestamps?
+4. **Large Query Sets**: How to handle 10k+ queries efficiently?
+5. **Storage Migration**: How to migrate between storage backends?
+6. **Multi-tenancy**: Single user or multi-tenant with isolation?
+7. **Comparison N-way**: Support comparing >2 runs?
+8. **Query Metadata**: Should individual queries have metadata (difficulty, category)?
+
+## Next Steps (SPIDER-SOLO)
+
+1. **Specification** ✓ (this document - after self-review)
+2. **Planning**: Create implementation plan (address critical gaps)
 3. **Implementation**: Execute in phases
 4. **Defense**: Write comprehensive tests
 5. **Evaluation**: Code review
