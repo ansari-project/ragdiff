@@ -72,6 +72,17 @@ tools:
     namespace_id_env: AGENTSET_NAMESPACE_ID
     timeout: 60
 
+  # FAISS local vector search (supports sentence-transformers, OpenAI, etc.)
+  faiss:
+    adapter: faiss
+    api_key_env: FAISS_DUMMY_KEY  # Not needed for sentence-transformers
+    timeout: 30
+    options:
+      index_path: /path/to/your/index.faiss
+      documents_path: /path/to/your/documents.jsonl
+      embedding_service: sentence-transformers  # or "openai"
+      embedding_model: all-MiniLM-L6-v2  # or "text-embedding-3-small" for OpenAI
+
 llm:
   model: claude-opus-4-1-20250805
   api_key_env: ANTHROPIC_API_KEY

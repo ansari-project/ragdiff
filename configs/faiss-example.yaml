@@ -1,0 +1,35 @@
+# Example FAISS configuration
+
+tools:
+  # FAISS with sentence-transformers (local, no API key needed)
+  faiss-local:
+    adapter: faiss
+    api_key_env: FAISS_DUMMY_KEY  # Not used for sentence-transformers, but required by schema
+    timeout: 30
+    default_top_k: 10
+    options:
+      index_path: /path/to/your/index.faiss
+      documents_path: /path/to/your/documents.jsonl
+      embedding_service: sentence-transformers
+      embedding_model: all-MiniLM-L6-v2
+      dimensions: 384  # Optional: validate vector dimensions
+
+  # FAISS with OpenAI embeddings
+  faiss-openai:
+    adapter: faiss
+    api_key_env: OPENAI_API_KEY
+    timeout: 30
+    default_top_k: 10
+    options:
+      index_path: /path/to/your/openai-index.faiss
+      documents_path: /path/to/your/documents.jsonl
+      embedding_service: openai
+      embedding_model: text-embedding-3-small
+      dimensions: 1536  # OpenAI text-embedding-3-small dimensions
+
+# LLM evaluation configuration (optional)
+llm:
+   model: claude-sonnet-4-5
+   api_key_env: ANTHROPIC_API_KEY
+   max_tokens: 16384
+   temperature: 0.1

@@ -167,7 +167,7 @@ uv run pytest tests/ --cov=src
 uv run pytest tests/ -v
 ```
 
-All tests must pass before committing. Current test count: 236 tests.
+All tests must pass before committing. Current test count: 245 tests.
 
 ## Code Quality
 
@@ -268,6 +268,9 @@ GOODMEM_API_KEY=your_key
 # Agentset
 AGENTSET_API_TOKEN=your_token
 AGENTSET_NAMESPACE_ID=your_namespace_id
+
+# FAISS (optional - only for OpenAI embeddings)
+OPENAI_API_KEY=your_key  # Only needed if using embedding_service: openai
 
 # Anthropic (for LLM evaluation)
 ANTHROPIC_API_KEY=your_key
