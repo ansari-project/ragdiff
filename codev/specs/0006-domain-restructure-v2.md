@@ -37,7 +37,45 @@ Top-level organizational unit representing a knowledge area.
 - `description`: Human-readable description
 - `variables`: Dict of configuration variables
 - `secrets`: Dict of secret references (API keys, etc.)
+- `evaluator`: Evaluator configuration for comparisons
 - `metadata`: Optional metadata (tags, owner, created_at, etc.)
+
+**Domain Configuration** (YAML file):
+```yaml
+# domains/tafsir/domain.yaml
+name: tafsir
+description: Islamic Tafsir comparison
+
+variables:
+  timeout: 30
+  max_retries: 3
+
+secrets:
+  anthropic_key: ${ANTHROPIC_API_KEY}
+  # Secrets are loaded from environment variables
+  # Uses ${VAR_NAME} syntax for environment variable substitution
+  # Supports .env file in project root or domain directory
+
+evaluator:
+  model: claude-3-5-sonnet-20241022
+  temperature: 0.0
+  prompt_template: |
+    You are evaluating RAG system outputs for the query: "{query}"
+
+    Reference answer: {reference}
+
+    System A output:
+    {system_a_output}
+
+    System B output:
+    {system_b_output}
+
+    Which system provided better results? Rate each on a scale of 0-100 and explain your reasoning.
+
+metadata:
+  owner: ansari-project
+  created_at: 2025-10-25
+```
 
 **Examples**:
 - "Islamic Tafsir" domain
@@ -54,22 +92,47 @@ A RAG implementation = Tool + Configuration. Systems are defined in YAML files w
 
 **System Interface** (Code):
 ```python
+from pydantic import BaseModel, Field
+from typing import Any
+
+class RetrievedChunk(BaseModel):
+    """A single retrieved text chunk with metadata."""
+    content: str  # The actual text content
+    score: float | None = None  # Relevance score (if available)
+    metadata: dict[str, Any] = Field(default_factory=dict)  # source_id, doc_id, chunk_id, etc.
+
 class System(ABC):
-    """A system accepts a query and returns a list of retrieved text chunks."""
+    """A system accepts a query and returns retrieved chunks with metadata."""
 
     @abstractmethod
-    def search(self, query: str, top_k: int = 5) -> list[str]:
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         """
-        Execute search and return list of text chunks.
+        Execute search and return ranked chunks with metadata.
 
         Args:
             query: The search query
             top_k: Number of results to return
 
         Returns:
-            List of text chunks (strings), ordered by relevance
+            List of RetrievedChunk objects, ordered by relevance
         """
         pass
+```
+
+**Tool Registry**:
+```python
+# Tools are registered at module initialization
+TOOL_REGISTRY: dict[str, type[System]] = {
+    "vectara": VectaraSystem,
+    "mongodb": MongoDBSystem,
+    "agentset": AgentsetSystem,
+}
+
+def get_tool(tool_name: str) -> type[System]:
+    """Get tool class by name."""
+    if tool_name not in TOOL_REGISTRY:
+        raise ValueError(f"Unknown tool: {tool_name}. Available: {list(TOOL_REGISTRY.keys())}")
+    return TOOL_REGISTRY[tool_name]
 ```
 
 **System Configuration** (YAML file):
@@ -78,13 +141,23 @@ class System(ABC):
 name: vectara-mmr
 tool: vectara  # Which tool class to instantiate
 config:
-  api_key_env: VECTARA_API_KEY
-  corpus_id_env: VECTARA_CORPUS_ID
+  # API credentials
+  api_key: ${VECTARA_API_KEY}
+  corpus_id: ${VECTARA_CORPUS_ID}
+
+  # Search settings
+  top_k: 5              # Number of results to return
+  timeout: 30           # Timeout in seconds per query
+
+  # Tool-specific config
   reranking: mmr
   diversity_bias: 0.3
+
 metadata:
   description: Vectara with MMR reranking
 ```
+
+**Note**: `top_k` and `timeout` are part of the system configuration. Different systems can have different settings configured in their YAML files.
 
 **Examples in "tafsir" domain**:
 - `vectara-mmr`: Vectara with MMR reranking
@@ -99,16 +172,25 @@ metadata:
 - Defined in `domains/<domain>/systems/<system-name>.yaml`
 
 ### 3. Query Set
-Collection of queries, with two types. **Maximum 1000 queries per query set.**
+Collection of queries. **Maximum 1000 queries per query set.**
 
-**Type 1: Query Only** (plain text file)
+**Internal Representation**:
+All queries are loaded into a unified `Query` model with optional reference:
+```python
+class Query(BaseModel):
+    text: str  # The query text
+    reference: str | None = None  # Optional reference answer
+    metadata: dict[str, Any] = Field(default_factory=dict)  # Future: difficulty, category, etc.
+```
+
+**File Format 1: Query Only** (plain text file)
 ```
 What is Islamic inheritance law?
 How do we calculate zakat?
 What are the pillars of Islam?
 ```
 
-**Type 2: Query + Reference** (JSONL file)
+**File Format 2: Query + Reference** (JSONL file)
 ```jsonl
 {"query": "What is Islamic inheritance law?", "reference": "Inheritance is distributed according to fixed shares..."}
 {"query": "How do we calculate zakat?", "reference": "Zakat is 2.5% of wealth held for one lunar year..."}
@@ -118,10 +200,13 @@ What are the pillars of Islam?
 - Query-only: `domains/<domain>/query-sets/<name>.txt`
 - Query+reference: `domains/<domain>/query-sets/<name>.jsonl`
 
+**Loading**:
+Both file formats are parsed into the same internal `Query` model. Text files create `Query(text=line, reference=None)`, while JSONL files create `Query(text=entry["query"], reference=entry.get("reference"))`.
+
 **Constraints**:
 - Maximum 1000 queries per query set
 - Query set type auto-detected from file extension (.txt vs .jsonl)
-- Each query must be non-empty after stripping whitespace
+- Each query text must be non-empty after stripping whitespace
 
 **Relationships**:
 - Belongs to exactly one Domain (by directory location)
@@ -145,16 +230,19 @@ Execution result: Query Set × System = Run. Stored as JSON file in `domains/<do
 - `query_set`: Query Set name
 - `status`: Run state (see above)
 - `results`: List of results (one per query)
-- `config`: Execution config (top_k, timeout, etc.)
+- `system_config`: Snapshot of SystemConfig used (for reproducibility)
+- `query_set_snapshot`: Snapshot of QuerySet used (for reproducibility)
 - `started_at`: When execution started (ISO 8601 UTC)
 - `completed_at`: When execution finished (ISO 8601 UTC)
 - `metadata`: Duration, success rate, error count, version info
+
+**Reproducibility**: The Run stores complete snapshots of the system configuration and query set used. This means even if you later modify `vectara-mmr.yaml` or `basic-test.txt`, the historical run remains fully reproducible with the exact config that produced those results.
 
 **Result Structure** (per query):
 ```python
 {
     "query": str,
-    "retrieved": list[str],  # List of text chunks (simplified!)
+    "retrieved": list[RetrievedChunk],  # Chunks with metadata (content, score, source_id, etc.)
     "reference": str | None,  # If query_reference type
     "duration_ms": float,
     "error": str | None  # Error message if this query failed
@@ -163,8 +251,12 @@ Execution result: Query Set × System = Run. Stored as JSON file in `domains/<do
 
 **File Storage**:
 ```
-domains/<domain>/runs/<run-id>.json
+domains/<domain>/runs/YYYY-MM-DD/<run-id>.json
 ```
+
+Runs are organized by date for easier navigation and management. For example:
+- `domains/tafsir/runs/2025-10-25/550e8400-e29b-41d4-a716-446655440000.json`
+- `domains/tafsir/runs/2025-10-26/660f9511-e29b-41d4-a716-446655440001.json`
 
 **Example**:
 ```json
@@ -174,13 +266,44 @@ domains/<domain>/runs/<run-id>.json
   "system": "vectara-mmr",
   "query_set": "basic-test",
   "status": "completed",
-  "config": {"top_k": 5, "timeout": 30},
+  "system_config": {
+    "name": "vectara-mmr",
+    "tool": "vectara",
+    "config": {
+      "api_key": "${VECTARA_API_KEY}",
+      "corpus_id": "${VECTARA_CORPUS_ID}",
+      "top_k": 5,
+      "timeout": 30,
+      "reranking": "mmr",
+      "diversity_bias": 0.3
+    }
+  },
+  "query_set_snapshot": {
+    "name": "basic-test",
+    "domain": "tafsir",
+    "type": "query_only",
+    "queries": [
+      {"text": "What is Islamic inheritance law?", "reference": null},
+      {"text": "How do we calculate zakat?", "reference": null}
+    ]
+  },
   "started_at": "2025-10-25T10:30:00Z",
   "completed_at": "2025-10-25T10:32:15Z",
   "results": [
     {
       "query": "What is Islamic inheritance law?",
-      "retrieved": ["Chunk 1 text...", "Chunk 2 text..."],
+      "retrieved": [
+        {
+          "content": "Inheritance in Islam is governed by fixed shares...",
+          "score": 0.95,
+          "metadata": {"source_id": "ibn-katheer-v4", "doc_id": "123", "chunk_id": "45"}
+        },
+        {
+          "content": "The Quran establishes clear rules for inheritance distribution...",
+          "score": 0.89,
+          "metadata": {"source_id": "qurtubi-v2", "doc_id": "456", "chunk_id": "78"}
+        }
+      ],
       "reference": null,
       "duration_ms": 1250.5,
       "error": null
@@ -246,14 +369,19 @@ Analysis comparing multiple Runs within a Domain.
 
 ### Python API Models (Pydantic)
 
-**Note**: These models are primarily for internal use and JSON serialization. Configuration is file-based (YAML), and runs are stored as JSON files.
+**Note**: These models are used for type safety, validation, and JSON serialization. Configuration is file-based (YAML), and runs are stored as JSON files.
 
 ```python
 from pydantic import BaseModel, Field, field_validator
-from typing import Literal, Any
+from typing import Any
 from datetime import datetime
 from uuid import UUID, uuid4
 from enum import Enum
+from abc import ABC, abstractmethod
+
+# ============================================================================
+# Core Models
+# ============================================================================
 
 class RunStatus(str, Enum):
     """Run execution states."""
@@ -263,54 +391,107 @@ class RunStatus(str, Enum):
     FAILED = "failed"
     PARTIAL = "partial"  # Some queries succeeded, some failed
 
+class RetrievedChunk(BaseModel):
+    """A single retrieved text chunk with metadata."""
+    content: str
+    score: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)  # source_id, doc_id, chunk_id, etc.
+
+class Query(BaseModel):
+    """A single query with optional reference answer."""
+    text: str
+    reference: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator('text')
+    @classmethod
+    def validate_text_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Query text cannot be empty")
+        return v.strip()
+
+# ============================================================================
+# Configuration Models
+# ============================================================================
+
+class EvaluatorConfig(BaseModel):
+    """LLM evaluator configuration for comparisons."""
+    model: str = "claude-3-5-sonnet-20241022"
+    temperature: float = 0.0
+    prompt_template: str
+
 class Domain(BaseModel):
     """Domain configuration (loaded from domains/<domain>/domain.yaml)."""
     name: str
     description: str = ""
     variables: dict[str, Any] = Field(default_factory=dict)
     secrets: dict[str, str] = Field(default_factory=dict)  # env var names
+    evaluator: EvaluatorConfig
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 class SystemConfig(BaseModel):
     """System configuration (loaded from domains/<domain>/systems/<name>.yaml)."""
     name: str
     tool: str  # "vectara", "mongodb", "agentset", etc.
-    config: dict[str, Any]
+    config: dict[str, Any]  # includes top_k, timeout, and tool-specific config
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 class QuerySet(BaseModel):
     """Query set (loaded from domains/<domain>/query-sets/<name>.{txt,jsonl})."""
     name: str
     domain: str
-    type: Literal["query_only", "query_reference"]
-    queries: list[str] | list[dict[str, str]]  # depends on type
+    queries: list[Query]
 
     @field_validator('queries')
     @classmethod
     def validate_max_queries(cls, v):
         if len(v) > 1000:
             raise ValueError("Query set cannot exceed 1000 queries")
+        if not v:
+            raise ValueError("Query set cannot be empty")
         return v
+
+# ============================================================================
+# System Interface
+# ============================================================================
+
+class System(ABC):
+    """Abstract base class for all RAG systems."""
+
+    @abstractmethod
+    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+        """Execute search and return ranked chunks with metadata."""
+        pass
+
+# ============================================================================
+# Run and Result Models
+# ============================================================================
 
 class QueryResult(BaseModel):
     """Result for a single query within a run."""
     query: str
-    retrieved: list[str]  # Simplified: just text chunks
+    retrieved: list[RetrievedChunk]
     reference: str | None = None
     duration_ms: float
     error: str | None = None
 
 class Run(BaseModel):
-    """Run execution result (stored as domains/<domain>/runs/<id>.json)."""
+    """Run execution result (stored as domains/<domain>/runs/YYYY-MM-DD/<id>.json)."""
     id: UUID = Field(default_factory=uuid4)
     domain: str
     system: str  # system name
     query_set: str  # query set name
     status: RunStatus
     results: list[QueryResult]
-    config: dict[str, Any]  # top_k, timeout, etc.
+
+    # Snapshots for reproducibility
+    system_config: SystemConfig
+    query_set_snapshot: QuerySet
+
+    # Timing
     started_at: datetime
     completed_at: datetime | None = None
+
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator('started_at', 'completed_at')
@@ -321,21 +502,25 @@ class Run(BaseModel):
             raise ValueError("Timestamp must be timezone-aware (UTC)")
         return v
 
+# ============================================================================
+# Comparison Models
+# ============================================================================
+
 class EvaluationResult(BaseModel):
     """Evaluation result for comparing multiple runs on a single query."""
     query: str
     reference: str | None
-    run_results: dict[str, list[str]]  # system name -> retrieved chunks
+    run_results: dict[str, list[RetrievedChunk]]  # system name -> retrieved chunks
     evaluation: dict[str, Any]  # winner, reasoning, scores
 
 class Comparison(BaseModel):
-    """Comparison of multiple runs (stored as domains/<domain>/comparisons/<id>.json)."""
+    """Comparison of multiple runs (stored as domains/<domain>/comparisons/YYYY-MM-DD/<id>.json)."""
     id: UUID = Field(default_factory=uuid4)
     domain: str
     runs: list[UUID]  # run IDs being compared
     evaluations: list[EvaluationResult]
+    evaluator_config: EvaluatorConfig  # Snapshot of evaluator used
     created_at: datetime
-    evaluator_config: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 ```
 
@@ -346,22 +531,40 @@ All configuration and data is stored in the file system under a `domains/` direc
 ```
 domains/
   <domain-name>/
-    domain.yaml              # Domain configuration
+    domain.yaml                    # Domain configuration (with evaluator config)
+    .env                           # Optional: domain-specific environment variables
+
     systems/
-      <system-name>.yaml     # System configurations (one per system)
+      <system-name>.yaml           # System configurations (one per system)
+
     query-sets/
-      <query-set-name>.txt   # Query-only sets
-      <query-set-name>.jsonl # Query+reference sets
+      <query-set-name>.txt         # Query-only sets
+      <query-set-name>.jsonl       # Query+reference sets
+
     runs/
-      <run-id>.json          # Run results (auto-generated)
+      YYYY-MM-DD/                  # Date-organized subdirectories
+        <run-id>.json              # Run results (auto-generated)
+
     comparisons/
-      <comparison-id>.json   # Comparison results (auto-generated)
+      YYYY-MM-DD/                  # Date-organized subdirectories
+        <comparison-id>.json       # Comparison results (auto-generated)
 ```
 
 **Configuration Management**:
 - Domains, systems, and query sets are managed by editing YAML/text files
 - No CLI commands for CRUD operations on these entities
 - CLI only supports executing runs and comparisons
+
+**Secrets Management**:
+- Environment variables loaded from `.env` file in project root or domain directory
+- Uses `python-dotenv` for automatic loading
+- Required secrets validated before run execution (fail-fast if missing)
+- Example `.env` file:
+  ```bash
+  VECTARA_API_KEY=your_key_here
+  VECTARA_CORPUS_ID=your_corpus_id
+  ANTHROPIC_API_KEY=your_key_here
+  ```
 
 **Example Setup**:
 ```bash
@@ -375,7 +578,7 @@ description: Islamic Tafsir comparison
 variables:
   timeout: 30
 secrets:
-  anthropic_key: ANTHROPIC_API_KEY
+  anthropic_key: \${ANTHROPIC_API_KEY}
 EOF
 
 # Create system config
@@ -383,8 +586,8 @@ cat > domains/tafsir/systems/vectara-mmr.yaml <<EOF
 name: vectara-mmr
 tool: vectara
 config:
-  api_key_env: VECTARA_API_KEY
-  corpus_id_env: VECTARA_CORPUS_ID
+  api_key: \${VECTARA_API_KEY}
+  corpus_id: \${VECTARA_CORPUS_ID}
   reranking: mmr
   diversity_bias: 0.3
 EOF
@@ -396,12 +599,20 @@ How do we calculate zakat?
 EOF
 
 # Now use CLI to run and compare
-ragdiff run tafsir vectara-mmr basic-test --top-k 5
+ragdiff run tafsir vectara-mmr basic-test
 ```
 
-## Library API (Internal)
+## Library API
 
-The Python library provides internal functions for loading configuration and executing runs. These are primarily for CLI use, not end-user API.
+The Python library provides functions for loading configuration and executing runs. These functions can be used both:
+1. **Internally**: By the CLI commands
+2. **Externally**: By users who want to integrate RAGDiff into their own Python code (e.g., Jupyter notebooks, custom scripts, automation)
+
+**Use Cases**:
+- Programmatic access to run experiments from Python
+- Integration with existing workflows
+- Custom analysis and visualization
+- Automation and batch processing
 
 ### Configuration Loading
 
@@ -428,11 +639,10 @@ from ragdiff.runner import execute_run
 run = execute_run(
     domain="tafsir",
     system="vectara-mmr",
-    query_set="basic-test",
-    top_k=5,
-    timeout=30
+    query_set="basic-test"
 )
 # Returns Run object and saves to domains/tafsir/runs/<run-id>.json
+# Uses top_k and timeout from system config
 ```
 
 ### Comparison
@@ -443,10 +653,10 @@ from ragdiff.comparator import compare_runs
 
 comparison = compare_runs(
     domain="tafsir",
-    run_ids=["550e8400-...", "660f9511-..."],
-    evaluator_model="claude-3-5-sonnet-20241022"
+    run_ids=["550e8400-...", "660f9511-..."]
 )
 # Returns Comparison object and saves to domains/tafsir/comparisons/<comparison-id>.json
+# Uses evaluator config from domain.yaml
 ```
 
 ## CLI Design
@@ -461,20 +671,16 @@ Execute a query set against a system and save the results.
 # Basic usage
 ragdiff run <domain> <system> <query-set> [OPTIONS]
 
-# Execute query set
-ragdiff run tafsir vectara-mmr basic-test --top-k 5
-
-# With timeout
-ragdiff run tafsir vectara-mmr basic-test --top-k 5 --timeout 60
+# Execute query set (uses system's configured top_k and timeout)
+ragdiff run tafsir vectara-mmr basic-test
 
 # Show progress
 ragdiff run tafsir vectara-mmr basic-test --verbose
 
 # Options:
-#   --top-k INT         Number of results per query (default: 5)
-#   --timeout INT       Timeout in seconds per query (default: 30)
 #   --verbose          Show progress during execution
-#   --output PATH      Custom output path (default: auto-generated in domains/<domain>/runs/)
+#   --dry-run          Validate config without executing
+#   --output PATH      Custom output path (default: auto-generated in domains/<domain>/runs/YYYY-MM-DD/)
 ```
 
 **Output**:
@@ -484,7 +690,7 @@ ragdiff run tafsir vectara-mmr basic-test --verbose
 
 **Example**:
 ```bash
-$ ragdiff run tafsir vectara-mmr basic-test --top-k 5
+$ ragdiff run tafsir vectara-mmr basic-test
 Executing run...
 ├─ Loading domain: tafsir
 ├─ Loading system: vectara-mmr
@@ -504,30 +710,35 @@ Summary:
 
 ### Compare Command
 
-Compare two or more runs using LLM evaluation.
+Compare two or more runs using LLM evaluation. Domain is required to ensure runs are from the same context.
 
 ```bash
-# Basic usage
-ragdiff compare <run-id-1> <run-id-2> [OPTIONS]
+# Basic usage (requires domain for context)
+ragdiff compare --domain <domain> <run-id-1> <run-id-2> [OPTIONS]
 
-# Compare two runs
-ragdiff compare 550e8400-... 660f9511-...
+# Compare two runs (uses domain's evaluator config)
+ragdiff compare --domain tafsir 550e8400 660f9511
 
-# With custom evaluator
-ragdiff compare 550e8400-... 660f9511-... \
-  --model claude-3-5-sonnet-20241022 \
-  --temperature 0.0
+# Short UUID prefixes work (as long as they're unique within the domain)
+ragdiff compare --domain tafsir 550e 660f
 
-# With output format
-ragdiff compare 550e8400-... 660f9511-... --format markdown
+# Use aliases for recent runs
+ragdiff compare --domain tafsir @latest @2  # compare latest run with 2nd most recent
+
+# Different output format
+ragdiff compare --domain tafsir 550e 660f --format markdown
 
 # Options:
-#   --model TEXT        LLM model for evaluation (default: claude-3-5-sonnet-20241022)
-#   --temperature FLOAT Temperature for LLM (default: 0.0)
+#   --domain TEXT       Required: domain name for context
 #   --format TEXT       Output format: json, markdown, table (default: json)
 #   --output PATH       Custom output path (default: auto-generated)
 #   --verbose          Show progress during evaluation
 ```
+
+**UUID Handling**:
+- Full UUIDs: `550e8400-e29b-41d4-a716-446655440000`
+- Short prefixes: `550e8400` or even `550e` (as long as unique within domain)
+- Aliases: `@latest`, `@2`, `@3` (reference recent runs by recency)
 
 **Output**:
 - Creates comparison JSON file in `domains/<domain>/comparisons/<comparison-id>.json`
@@ -649,37 +860,89 @@ This would:
 
 ## Self-Review Notes
 
-### Resolved Based on User Feedback
+### Resolved Issues (Agent Reviews + User Feedback)
 
-**✅ 1. Tool/Adapter Layer** (RESOLVED)
-- **Solution**: Systems ARE tools. Simple interface: `search(query: str, top_k: int) -> list[str]`
-- **Decision**: Tools/adapters from v1.x become systems in v2.0
-- **Impact**: Dramatically simplifies architecture
+**✅ 1. System.search API Too Simple** (CRITICAL - Codex/Pro Reviews)
+- **Problem**: Returning `list[str]` discarded scores, source IDs, and other metadata needed for evaluation
+- **Solution**: Created `RetrievedChunk` model with content, score, and metadata fields
+- **Impact**: Enables proper evaluation with provenance tracking
 
-**✅ 2. Run Lifecycle & State Management** (RESOLVED)
-- **Solution**: Added RunStatus enum (pending, running, completed, failed, partial)
-- **Decision**: Includes partial state for when some queries fail
-- **Impact**: Clear state tracking, progress reporting possible
+**✅ 2. Missing Configuration Snapshotting** (CRITICAL - Codex/Pro Reviews)
+- **Problem**: Runs referenced systems by name only, losing reproducibility if configs changed
+- **Solution**: Added `system_config` and `query_set_snapshot` fields to Run model
+- **Impact**: Full reproducibility - can see exact config that produced results
 
-**✅ 3. Storage Backend** (RESOLVED)
-- **Solution**: No abstraction needed - file system only
-- **Decision**: All config in YAML, all results in JSON files
-- **Impact**: Simplified implementation, no database needed
+**✅ 3. No Tool Registry Pattern** (CRITICAL - Codex/Pro Reviews)
+- **Problem**: No defined mechanism for mapping tool names to System classes
+- **Solution**: Added `TOOL_REGISTRY` dictionary and `get_tool()` function
+- **Impact**: Clear tool discovery and registration pattern
 
-**✅ 4. CLI Scope** (RESOLVED)
-- **Solution**: CLI only supports `run` and `compare` commands
-- **Decision**: No CRUD for domains/systems/query-sets (edit files directly)
-- **Impact**: Simpler CLI, file-first approach
+**✅ 4. QuerySet Union Type** (Codex/Pro Reviews)
+- **Problem**: Using `list[str] | list[dict[str, str]]` was awkward and unclear
+- **Solution**: Created unified `Query` model with text and optional reference
+- **Impact**: Type-safe, clean internal representation
 
-**✅ 5. Query Set Size Limit** (RESOLVED)
-- **Solution**: Max 1000 queries per query set
-- **Decision**: Enforced in Pydantic validator
-- **Impact**: Prevents performance issues, sets clear expectations
+**✅ 5. Missing Evaluator Config** (User Comment Line 538)
+- **Problem**: No way to configure LLM evaluator per domain
+- **Solution**: Added `evaluator` section to domain.yaml with structured `EvaluatorConfig`
+- **Impact**: Domain-specific evaluation prompts and model settings
 
-**✅ 6. Result Structure** (RESOLVED)
-- **Solution**: Simplified to `list[str]` (just text chunks)
-- **Decision**: No complex metadata per chunk (scores, source, etc.)
-- **Impact**: Cleaner, simpler comparison logic
+**✅ 6. top_k/timeout in Wrong Place** (User Comments 480-482)
+- **Problem**: These were CLI flags instead of system config
+- **Solution**: Moved to system config YAML files
+- **Impact**: Different systems can have different settings, cleaner CLI
+
+**✅ 7. Run Config Field** (User Comment Line 150)
+- **Problem**: Run had redundant config field alongside snapshots
+- **Solution**: Removed config field, kept only system_config and query_set_snapshot
+- **Impact**: Cleaner model, single source of truth for reproducibility
+
+**✅ 8. Library API Scope Unclear** (User Comment Line 409)
+- **Problem**: Spec said "internal only" but should be public
+- **Solution**: Clarified API serves both internal (CLI) and external (user code) use cases
+- **Impact**: Clear that users can import and use library functions directly
+
+**✅ 9. Environment Variable Syntax** (User Feedback)
+- **Problem**: Used `VECTARA_API_KEY` instead of `${VECTARA_API_KEY}`
+- **Solution**: Updated all env var references to use `${VAR_NAME}` syntax throughout
+- **Impact**: Consistent with standard env var substitution patterns
+
+**✅ 10. Override Patterns** (User Feedback)
+- **Problem**: CLI had --top-k, --timeout, --model, --temperature override flags
+- **Solution**: Removed all override options - config is immutable per run
+- **Impact**: Simpler CLI, clearer mental model, true config snapshots
+
+**✅ 11. CLI Missing Domain Context** (Codex/Pro Reviews)
+- **Problem**: Compare command didn't require domain, could compare cross-domain
+- **Solution**: Made --domain required for compare command
+- **Impact**: Ensures runs are from same context
+
+**✅ 12. UUID Usability** (Codex/Pro Reviews)
+- **Problem**: Full UUIDs are cumbersome to type
+- **Solution**: Added support for short prefixes and aliases (@latest, @2)
+- **Impact**: Much better CLI ergonomics
+
+**✅ 13. File Organization** (Codex/Pro Reviews)
+- **Problem**: Flat runs/ directory would become cluttered over time
+- **Solution**: Organized runs and comparisons by date (YYYY-MM-DD subdirectories)
+- **Impact**: Easier navigation and management
+
+**✅ 14. Secrets Management** (Codex/Pro Reviews)
+- **Problem**: Unclear how environment variables are loaded
+- **Solution**: Documented python-dotenv support, .env file locations, validation
+- **Impact**: Clear secrets handling pattern
+
+### Resolved Open Questions
+
+1. **Tool Interface**: ✅ `search(query, top_k) -> list[RetrievedChunk]` with metadata
+2. **Storage Backend**: ✅ File system only, no abstraction
+3. **Large Query Sets**: ✅ 1000 query limit enforced
+4. **CLI Scope**: ✅ Only run and compare commands, no overrides
+5. **Storage Migration**: ✅ Not needed (file-based only)
+6. **Multi-tenancy**: ✅ Single user (file-based)
+7. **Pagination**: ✅ Not needed (1000 query limit)
+8. **Run Immutability**: ✅ Runs are immutable (config snapshots prove this)
+9. **Override Pattern**: ✅ No overrides - config is immutable per run
 
 ### Remaining Open Issues (Address in Planning)
 
@@ -688,43 +951,30 @@ This would:
 - What errors can each operation raise?
 - How to handle partial failures gracefully?
 
-**2. Secrets Management**
-- How are secrets loaded from env vars?
-- Support for .env files?
-- Validation that required secrets exist before running?
-
-**3. Concurrency Model**
+**2. Concurrency Model**
 - Parallel query execution within a run?
 - Thread safety for file I/O?
 - Progress reporting mechanism?
 
-**4. Validation & Constraints**
+**3. Validation & Constraints**
 - Domain name format validation
 - System config validation (tool-specific schemas?)
 - Relationship integrity checks (domain/system/query-set must exist)
 
-**5. Tool Registry**
-- How to register new tools/systems?
-- Tool discovery mechanism?
-- Plugin system for custom tools?
+**4. Secrets Validation**
+- When to validate required secrets (startup vs run-time)?
+- Clear error messages for missing secrets
 
-### Resolved Open Questions
+**5. Tool Registry Implementation**
+- How tools register themselves (decorator? module import?)
+- Handling tool initialization with config
 
-1. **Tool Interface**: ✅ `search(query, top_k) -> list[str]`
-2. **Storage Backend**: ✅ File system only, no abstraction
-3. **Large Query Sets**: ✅ 1000 query limit enforced
-4. **CLI Scope**: ✅ Only run and compare commands
-5. **Storage Migration**: ✅ Not needed (file-based only)
-6. **Multi-tenancy**: ✅ Single user (file-based)
-7. **Pagination**: ✅ Not needed (1000 query limit)
+### Future Enhancements (Not for v2.0.0)
 
-### Remaining Open Questions
-
-1. **Run Immutability**: Should runs be immutable once created? (Probably yes)
-2. **Versioning**: How to version systems/query sets? (Git?)
-3. **Comparison N-way**: Support comparing >2 runs? (Start with 2, extend later)
-4. **Query Metadata**: Individual query metadata (difficulty, category)? (Future)
-5. **Progress Reporting**: How to show progress during long runs? (Callbacks? Events?)
+1. **Versioning**: How to version systems/query sets? (Git-based approach?)
+2. **Comparison N-way**: Support comparing >2 runs? (Start with 2, extend later)
+3. **Query Metadata**: Individual query metadata (difficulty, category)? (Future)
+4. **Progress Reporting**: How to show progress during long runs? (Callbacks? Events?)
 
 ## Next Steps (SPIDER-SOLO)
 
