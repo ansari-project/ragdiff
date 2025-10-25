@@ -221,10 +221,11 @@ Single commit after user approval:
    - Create System instance
    - Initialize Run with `pending` status
    - Update to `running` status
-   - **Execute queries sequentially** (start simple, safe)
-     - Design allows future parallelization
-     - Document thread-safety requirements for Systems
-     - Parallel execution deferred to future version
+   - **Execute queries in parallel** (using asyncio or ThreadPoolExecutor)
+     - Systems must be thread-safe (document requirements)
+     - Configurable concurrency limit (e.g., max 10 concurrent queries)
+     - Progress reporting works with parallel execution
+     - Handle per-query timeouts properly in parallel context
    - Handle per-query errors (mark query as failed, continue)
    - Update to `completed`, `failed`, or `partial` status
    - Calculate metadata (duration, success count, etc.)
@@ -232,6 +233,11 @@ Single commit after user approval:
 2. **Config Snapshotting**
    - Store full SystemConfig in Run.system_config
    - Store full QuerySet in Run.query_set_snapshot
+   - **CRITICAL**: Keep `${VAR_NAME}` placeholders for secrets (do NOT resolve)
+     - Snapshots should contain `${VECTARA_API_KEY}`, not the actual key
+     - Ensures runs can be shared without leaking credentials
+     - Maintains reproducibility (others can use their own secrets)
+   - Only resolve secrets at runtime when creating System instance
    - Ensure immutability of snapshots
 
 3. **Progress Reporting**
@@ -323,11 +329,16 @@ Single commit after user approval:
    - Snapshot evaluator config in comparison
 
 2. **LLM Evaluation**
+   - Use **LiteLLM** for multi-provider support:
+     - Supports 100+ providers (OpenAI, Anthropic, Google, AWS, Azure, etc.)
+     - Unified interface for all providers
+     - Built-in cost tracking
+     - Self-hosted (no third-party data exposure)
    - For each query in runs:
      - Load reference answer (if exists)
      - Load retrieved chunks from each run
      - Format prompt using evaluator.prompt_template
-     - Call LLM (using Anthropic API) with error handling:
+     - Call LLM via litellm.completion() with error handling:
        - **Retry logic**: Max 3 retries with exponential backoff (2s, 4s, 8s)
        - **Rate limits**: Catch and retry with backoff
        - **Parse errors**: Mark evaluation as error, log details, continue
@@ -335,8 +346,14 @@ Single commit after user approval:
        - **"I don't know" responses**: Mark as tie
        - **Timeouts**: Fail after max retries
      - Parse response for winner, scores, reasoning
+     - **Track cost**: Use litellm.completion_cost() to get cost per call
    - Raise ComparisonError only for fatal errors (auth failure, etc.)
    - Log non-fatal errors, continue with remaining queries
+   - **Cost Tracking**:
+     - Sum costs for all LLM calls in comparison
+     - Store in Comparison.metadata['total_cost']
+     - Store per-query costs in evaluation metadata
+     - Log costs at INFO level
 
 3. **Result Aggregation**
    - Count wins/ties/losses per system
@@ -507,23 +524,15 @@ Single commit after user approval:
 
 ---
 
-## Phase 6: Migration & Documentation
+## Phase 6: Documentation & CI/CD
 
-**Objective**: Help users migrate from v1.x and document the new system.
+**Objective**: Document the new system and ensure CI/CD compatibility.
 
 **Dependencies**: Phase 5 (complete working system)
 
 ### Tasks
 
-1. **Migration Helper** (optional)
-   - `ragdiff migrate from-v1 <config-file> --domain <domain>` command
-   - Parse v1.x config
-   - Create domain.yaml
-   - Create system YAML files
-   - Suggest query set creation
-   - Print instructions for next steps
-
-2. **Update Documentation**
+1. **Update Documentation**
    - Update README.md:
      - Installation instructions
      - Quick start guide
@@ -542,7 +551,7 @@ Single commit after user approval:
      - Data flow diagrams
      - Design decisions
 
-3. **Example Domains**
+2. **Example Domains**
    - Create `examples/tafsir/` domain:
      - domain.yaml
      - Sample systems (vectara-mmr, mongodb-v1)
@@ -550,10 +559,16 @@ Single commit after user approval:
      - .env.example file
    - Create `examples/legal/` domain (optional)
 
+3. **CI/CD Updates**
+   - Update pre-commit hooks if needed
+   - Update GitHub Actions workflows
+   - Test full CI pipeline before merge
+   - Ensure all tests pass in CI
+
 4. **Version Update**
    - Update version in `src/ragdiff/version.py` to `2.0.0`
    - Update CHANGELOG.md with breaking changes
-   - Add migration notes
+   - Add manual migration guide to README
 
 5. **Clean Up**
    - Remove deprecated v1.x code (if any)
@@ -562,11 +577,12 @@ Single commit after user approval:
 
 ### Success Criteria
 
-- [ ] Migration helper works (if implemented)
-- [ ] README is comprehensive and up-to-date
+- [ ] README is comprehensive and up-to-date with manual migration guide
 - [ ] CLAUDE.md reflects new structure
 - [ ] Architecture documentation updated
 - [ ] Example domains work end-to-end
+- [ ] CI/CD pipelines updated and passing
+- [ ] Pre-commit hooks compatible with v2.0
 - [ ] Version bumped to 2.0.0
 - [ ] CHANGELOG documents breaking changes
 - [ ] No references to deprecated code
@@ -587,12 +603,12 @@ Single commit after user approval:
 ### Phase Commit
 
 ```
-[Spec 0006][Phase 6] docs: Migration guide and v2.0.0 documentation
+[Spec 0006][Phase 6] docs: v2.0.0 documentation and CI/CD updates
 
-- Migration helper from v1.x
-- Updated README with v2.0.0 guide
+- Updated README with v2.0.0 guide and manual migration
 - Updated CLAUDE.md with new structure
 - Example domains (tafsir, legal)
+- CI/CD pipelines updated (pre-commit, GitHub Actions)
 - Version bumped to 2.0.0
 - CHANGELOG with breaking changes
 ```
@@ -695,7 +711,7 @@ tests/
 - pydantic 2.x (for models)
 - typer (for CLI)
 - python-dotenv (for .env support)
-- anthropic (for LLM evaluation)
+- **litellm** (for multi-provider LLM support with cost tracking)
 - rich or tqdm (for progress bars)
 - pyyaml (for YAML parsing)
 
@@ -839,12 +855,12 @@ In addition to existing criteria:
 - [ ] Validation happens at appropriate times
 - [ ] CI/CD pipelines updated and passing
 
-### Remaining Questions
+### Resolved Questions (User Feedback)
 
-1. **Parallel execution**: Implement in v2.0.0 or defer to v2.1.0?
-2. **Migration helper**: Required or optional?
-3. **LLM provider**: Support only Claude or allow OpenAI/others?
-4. **Cost tracking**: Log LLM costs or ignore for v2.0.0?
+1. **Parallel execution**: ✅ **REQUIRED for v2.0.0** - Using asyncio or ThreadPoolExecutor
+2. **Migration helper**: ✅ **NOT NEEDED** - Manual migration guide in README only
+3. **LLM provider**: ✅ **Use LiteLLM** for multi-provider support (100+ providers)
+4. **Cost tracking**: ✅ **YES** - Log costs using litellm.completion_cost()
 
 ## Notes
 
