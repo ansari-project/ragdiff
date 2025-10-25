@@ -2,10 +2,10 @@
 """Sample questions from SQuAD dataset for RAG testing.
 
 This script extracts a random sample of questions from the SQuAD dataset
-and saves them to a text file for use with RAGDiff batch processing.
+and saves them in query set format for use with RAGDiff batch processing.
 
 Usage:
-    python sample_squad_questions.py --output squad-100-questions.txt --count 100
+    python sample_squad_questions.py --output squad-100-queries.json --count 100
 """
 
 import argparse
@@ -87,6 +87,34 @@ def sample_questions(
     return sampled
 
 
+def save_queryset_format(questions: list[dict[str, Any]], output_path: str) -> None:
+    """Save questions in RAGDiff query set format.
+
+    Args:
+        questions: Questions to save
+        output_path: Output file path
+    """
+    queryset = {
+        "queries": [
+            {
+                "id": q["id"],
+                "query": q["question"],
+                "metadata": {
+                    "article_title": q["article_title"],
+                    "is_impossible": q["is_impossible"],
+                    "answers": q["answers"],
+                }
+            }
+            for q in questions
+        ]
+    }
+
+    with open(output_path, "w") as f:
+        json.dump(queryset, f, indent=2)
+
+    print(f"Saved {len(questions)} questions in query set format to {output_path}")
+
+
 def save_questions_txt(questions: list[dict[str, Any]], output_path: str) -> None:
     """Save questions to a text file (one per line).
 
@@ -156,8 +184,8 @@ def main():
     )
     parser.add_argument(
         "--output",
-        default="squad-100-questions.txt",
-        help="Output file for questions (default: squad-100-questions.txt)",
+        default="squad-100-queries.json",
+        help="Output file for questions (default: squad-100-queries.json)",
     )
     parser.add_argument(
         "--count", type=int, default=100, help="Number of questions to sample (default: 100)"
@@ -173,9 +201,10 @@ def main():
         help="Random seed for reproducibility",
     )
     parser.add_argument(
-        "--jsonl",
-        action="store_true",
-        help="Save as JSONL with metadata instead of plain text",
+        "--format",
+        choices=["queryset", "txt", "jsonl"],
+        default="queryset",
+        help="Output format (default: queryset)",
     )
 
     args = parser.parse_args()
@@ -196,11 +225,12 @@ def main():
         questions, args.count, answerable_only=args.answerable_only, seed=args.seed
     )
 
-    # Save to file
-    if args.jsonl:
-        jsonl_path = args.output.replace(".txt", ".jsonl")
-        save_questions_jsonl(sampled, jsonl_path)
-    else:
+    # Save to file in the specified format
+    if args.format == "queryset":
+        save_queryset_format(sampled, args.output)
+    elif args.format == "jsonl":
+        save_questions_jsonl(sampled, args.output)
+    else:  # txt
         save_questions_txt(sampled, args.output)
 
     # Print statistics
@@ -208,7 +238,7 @@ def main():
 
     print(f"\nDone! Use the questions with RAGDiff:")
     print(f"  uv run ragdiff batch {args.output} \\")
-    print(f"    --config configs/mongodb-example.yaml \\")
+    print(f"    --config configs/squad-mongodb.yaml \\")
     print(f"    --output-dir results/ \\")
     print(f"    --top-k 5")
 

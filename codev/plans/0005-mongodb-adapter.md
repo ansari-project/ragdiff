@@ -2,7 +2,7 @@
 
 **Status:** Completed
 **Date:** 2025-10-25
-**Related Spec:** [mongodb-adapter-spec.md](../specs/mongodb-adapter-spec.md)
+**Related Spec:** [0005-mongodb-adapter.md](../specs/0005-mongodb-adapter.md)
 
 ## Overview
 

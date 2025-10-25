@@ -1,51 +1,64 @@
 # Sample Data Scripts for MongoDB RAG Testing
 
-This directory contains scripts for setting up MongoDB Atlas with the SQuAD dataset for RAG testing with RAGDiff.
+This directory contains scripts for setting up local MongoDB with the SQuAD dataset for RAG testing with RAGDiff.
 
 ## Overview
 
 These scripts help you:
-1. **Load SQuAD dataset** into MongoDB Atlas with vector embeddings
-2. **Sample test queries** for batch RAG evaluation
+1. **Load SQuAD dataset** into local MongoDB with vector embeddings
+2. **Sample test queries** in query set format for batch RAG evaluation
 
 ## Prerequisites
 
-### 1. MongoDB Atlas Setup
+### 1. Local MongoDB Setup
 
-- Create a MongoDB Atlas account at https://www.mongodb.com/cloud/atlas
-- Create a cluster (M10+ tier required for vector search)
-- Get your connection string from the Atlas UI
-- Whitelist your IP address
+#### Install MongoDB Community Edition
 
-### 2. OpenAI API Key
+**macOS (Homebrew):**
+```bash
+brew tap mongodb/brew
+brew install mongodb-community
+brew services start mongodb-community
+```
 
-- Sign up at https://platform.openai.com/
-- Create an API key
-- Set billing limits to avoid unexpected charges
+**Ubuntu/Debian:**
+```bash
+wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | sudo apt-key add -
+echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+sudo apt-get update
+sudo apt-get install -y mongodb-org
+sudo systemctl start mongod
+```
 
-### 3. Install Dependencies
+**Verify Installation:**
+```bash
+mongosh --eval "db.version()"
+```
+
+Your local MongoDB will be available at: `mongodb://localhost:27017/`
+
+### 2. Install Dependencies
 
 ```bash
-# Install MongoDB adapter dependencies
+# Install MongoDB adapter dependencies with sentence-transformers
 uv pip install -e ".[mongodb]"
 
 # Or manually install
-pip install pymongo openai tqdm
+pip install pymongo sentence-transformers tqdm
 ```
 
-### 4. Set Environment Variables
+### 3. Set Environment Variables
 
 ```bash
-# MongoDB Atlas connection string
-export MONGODB_URI='mongodb+srv://username:password@cluster.mongodb.net/'
+# Local MongoDB connection string
+export MONGODB_URI='mongodb://localhost:27017/'
 
-# OpenAI API key for embeddings
-export OPENAI_API_KEY='sk-...'
+# No API keys needed - sentence-transformers runs locally!
 ```
 
 ## Script 1: Load SQuAD Dataset into MongoDB
 
-The `load_squad_to_mongodb.py` script downloads the SQuAD v2.0 dataset, generates embeddings for each context passage, and loads them into MongoDB.
+The `load_squad_to_mongodb.py` script downloads the SQuAD v2.0 dataset, generates embeddings using local sentence-transformers, and loads them into MongoDB.
 
 ### Basic Usage
 
@@ -58,16 +71,20 @@ python sampledata/load_squad_to_mongodb.py \
   --database my_squad_db \
   --collection my_contexts
 
-# Test with limited documents (faster, cheaper)
+# Test with limited documents (faster)
 python sampledata/load_squad_to_mongodb.py --limit 100
+
+# Use a different embedding model
+python sampledata/load_squad_to_mongodb.py \
+  --model all-mpnet-base-v2
 ```
 
 ### Command-Line Options
 
 - `--database NAME` - MongoDB database name (default: squad_db)
 - `--collection NAME` - MongoDB collection name (default: contexts)
-- `--model MODEL` - OpenAI embedding model (default: text-embedding-3-small)
-  - Options: text-embedding-3-small (1536 dims), text-embedding-3-large (3072 dims)
+- `--model MODEL` - Sentence-transformer model (default: all-MiniLM-L6-v2)
+  - Options: all-MiniLM-L6-v2 (384 dims, fast), all-mpnet-base-v2 (768 dims, better quality)
 - `--squad-file PATH` - Path to SQuAD JSON file (downloads if not exists)
 - `--skip-download` - Skip downloading dataset (use existing file)
 - `--limit N` - Limit number of documents to process (for testing)
@@ -75,15 +92,15 @@ python sampledata/load_squad_to_mongodb.py --limit 100
 ### What It Does
 
 1. **Downloads SQuAD v2.0** development set (~6,000 context passages)
-2. **Generates embeddings** using OpenAI API (takes ~10-15 minutes for full dataset)
+2. **Generates embeddings** using sentence-transformers locally (takes ~5-10 minutes for full dataset)
 3. **Inserts documents** into MongoDB with structure:
    ```json
    {
      "text": "The context passage...",
      "source": "Article_Title",
      "article_title": "Article_Title",
-     "embedding": [0.123, -0.456, ...],  // 1536 or 3072 dimensions
-     "questions": [
+     "embedding": [0.123, -0.456, ...],  // 384 or 768 dimensions
+     "questions": [              // Questions are METADATA, not being embedded
        {
          "id": "5a123...",
          "question": "What is...",
@@ -94,49 +111,34 @@ python sampledata/load_squad_to_mongodb.py --limit 100
      "num_questions": 3
    }
    ```
+
+   **Note:** The `questions` field stores metadata about which questions map to this context passage. The questions themselves are NOT being embedded here - only the context passages are embedded for retrieval.
+
 4. **Prints instructions** for creating the vector search index
 
 ### Cost Estimates
 
-Using `text-embedding-3-small` model:
-- Full SQuAD dev set (~6,000 contexts): ~$0.15-0.20
-- Limited test (100 contexts): ~$0.003
+Using sentence-transformers:
+- **Completely free!** No API costs
+- Runs entirely on your local machine
+- One-time download of model (~100MB)
+- CPU/GPU usage during embedding generation
 
 ### Creating the Vector Search Index
 
-After loading data, create a vector search index in MongoDB Atlas:
+After loading data, you can create a vector search index using `mongosh` or MongoDB Compass.
 
-**Method 1: Atlas UI**
-1. Go to your cluster in Atlas
-2. Navigate to: Database > [your_database] > [your_collection]
-3. Click "Create Index" > "Atlas Vector Search"
-4. Use the index definition printed by the script
-5. Name it `vector_index`
+**Using mongosh:**
+```javascript
+use squad_db
 
-**Method 2: Atlas CLI or API**
-Use the JSON definition printed by the script.
-
-**Index Definition Example:**
-```json
-{
-  "fields": [
-    {
-      "type": "vector",
-      "path": "embedding",
-      "numDimensions": 1536,
-      "similarity": "dotProduct"
-    },
-    {
-      "type": "filter",
-      "path": "article_title"
-    },
-    {
-      "type": "filter",
-      "path": "num_questions"
-    }
-  ]
-}
+db.contexts.createIndex(
+  { "embedding": "2dsphere" },
+  { name: "vector_index" }
+)
 ```
+
+**Note:** MongoDB Community Edition has basic vector support. For production vector search with $vectorSearch, you would need MongoDB Atlas. However, for local development and testing, you can use basic similarity search.
 
 ## Script 2: Sample Test Questions
 
@@ -145,7 +147,7 @@ The `sample_squad_questions.py` script extracts random questions from the SQuAD 
 ### Basic Usage
 
 ```bash
-# Sample 100 questions (default)
+# Sample 100 questions (default) in query set format
 python sampledata/sample_squad_questions.py
 
 # Sample 50 answerable questions only
@@ -153,7 +155,7 @@ python sampledata/sample_squad_questions.py \
   --count 50 \
   --answerable-only
 
-# Save with metadata as JSONL
+# Save with full metadata as JSONL
 python sampledata/sample_squad_questions.py \
   --count 100 \
   --jsonl \
@@ -173,10 +175,37 @@ python sampledata/sample_squad_questions.py \
 - `--answerable-only` - Only sample answerable questions
 - `--seed N` - Random seed for reproducibility
 - `--jsonl` - Save as JSONL with metadata instead of plain text
+- `--queryset` - Output in RAGDiff query set format (default: True)
 
 ### Output Formats
 
-**Plain text (default):**
+**Query Set Format (default):**
+```json
+{
+  "queries": [
+    {
+      "id": "5a123...",
+      "query": "What is the capital of France?",
+      "metadata": {
+        "article_title": "France",
+        "is_impossible": false,
+        "answers": ["Paris"]
+      }
+    },
+    {
+      "id": "5a124...",
+      "query": "How many people live in Tokyo?",
+      "metadata": {
+        "article_title": "Tokyo",
+        "is_impossible": false,
+        "answers": ["13.96 million"]
+      }
+    }
+  ]
+}
+```
+
+**Plain text (with --no-queryset):**
 ```
 What is the capital of France?
 How many people live in Tokyo?
@@ -191,29 +220,53 @@ When was the first computer built?
 
 ## Complete Workflow Example
 
-### 1. Load SQuAD Dataset
+### 1. Start Local MongoDB
 
 ```bash
-# Set environment variables
-export MONGODB_URI='mongodb+srv://user:pass@cluster.mongodb.net/'
-export OPENAI_API_KEY='sk-...'
+# macOS
+brew services start mongodb-community
+
+# Ubuntu
+sudo systemctl start mongod
+
+# Verify it's running
+mongosh --eval "db.version()"
+```
+
+### 2. Load SQuAD Dataset
+
+```bash
+# Set environment variable
+export MONGODB_URI='mongodb://localhost:27017/'
 
 # Load dataset (test with 100 documents first)
 python sampledata/load_squad_to_mongodb.py --limit 100
 
-# Create vector search index in Atlas UI (follow printed instructions)
+# Model will download on first run (~100MB)
+# Embedding generation will take a few minutes
 ```
 
-### 2. Sample Test Questions
+### 3. Create Vector Index
 
 ```bash
-# Sample 100 questions for testing
-python sampledata/sample_squad_questions.py \
-  --count 100 \
-  --output inputs/squad-100-questions.txt
+mongosh
+```
+```javascript
+use squad_db
+db.contexts.createIndex({ "embedding": "2dsphere" }, { name: "vector_index" })
 ```
 
-### 3. Configure RAGDiff
+### 4. Sample Test Questions
+
+```bash
+# Sample 100 questions in query set format
+python sampledata/sample_squad_questions.py \
+  --count 100 \
+  --output inputs/squad-100-queries.json \
+  --queryset
+```
+
+### 5. Configure RAGDiff
 
 Create `configs/squad-mongodb.yaml`:
 
@@ -225,9 +278,8 @@ tools:
       database: squad_db
       collection: contexts
       index_name: vector_index
-      embedding_provider: openai
-      embedding_model: text-embedding-3-small
-      embedding_api_key_env: OPENAI_API_KEY
+      embedding_service: sentence-transformers
+      embedding_model: all-MiniLM-L6-v2
     timeout: 60
     default_top_k: 5
 
@@ -236,11 +288,11 @@ llm:
   api_key_env: ANTHROPIC_API_KEY
 ```
 
-### 4. Run RAGDiff Batch Evaluation
+### 6. Run RAGDiff Batch Evaluation
 
 ```bash
 # Batch process all questions
-uv run ragdiff batch inputs/squad-100-questions.txt \
+uv run ragdiff batch inputs/squad-100-queries.json \
   --config configs/squad-mongodb.yaml \
   --output-dir results/ \
   --top-k 5
@@ -252,7 +304,7 @@ uv run ragdiff compare results/ --output evaluation.jsonl
 uv run ragdiff compare results/ --format markdown --output report.md
 ```
 
-### 5. Test Single Query
+### 7. Test Single Query
 
 ```bash
 # Test a single question
@@ -264,30 +316,34 @@ uv run ragdiff query "What is the capital of France?" \
 
 ## Troubleshooting
 
-### "No module named 'pymongo'"
+### "No module named 'sentence_transformers'"
 ```bash
-uv pip install -e ".[mongodb]"
+pip install sentence-transformers
+```
+
+### "Connection refused to localhost:27017"
+MongoDB isn't running. Start it:
+```bash
+# macOS
+brew services start mongodb-community
+
+# Ubuntu
+sudo systemctl start mongod
 ```
 
 ### "Environment variable MONGODB_URI is not set"
 ```bash
-export MONGODB_URI='mongodb+srv://user:pass@cluster.mongodb.net/'
+export MONGODB_URI='mongodb://localhost:27017/'
 ```
 
-### "OpenAI API key error"
-```bash
-export OPENAI_API_KEY='sk-...'
-```
+### Model download is slow
+First-time download of the embedding model (~100MB) might be slow depending on your internet connection. The model is cached locally after the first download.
 
-### "Vector search index not found"
-- Make sure you created the vector search index in Atlas
-- Index name must be `vector_index` (or update config)
-- Wait a few minutes after creating index for it to build
-
-### Slow embedding generation
-- Use `--limit` to test with fewer documents first
-- The full dataset takes ~10-15 minutes
-- OpenAI has rate limits - the script includes delays
+### Out of memory during embedding
+If you run out of RAM:
+- Use `--limit` to process fewer documents
+- Use a smaller model like `all-MiniLM-L6-v2` (default)
+- Process in smaller batches
 
 ## Dataset Information
 
@@ -298,40 +354,45 @@ export OPENAI_API_KEY='sk-...'
 - **License**: CC BY-SA 4.0
 - **Source**: https://rajpurkar.github.io/SQuAD-explorer/
 
-## Cost Estimates
+## Cost & Performance
 
-### OpenAI Embeddings
-- Model: text-embedding-3-small
-- Cost: $0.00002 per 1K tokens
-- Full SQuAD dev set: ~$0.15-0.20
-- 100 documents: ~$0.003
+### Sentence-Transformers Models
 
-### MongoDB Atlas
-- Vector search requires M10+ cluster
-- M10 tier: ~$57/month (or ~$0.08/hour)
-- Free tier (M0) does not support vector search
+| Model | Dimensions | Speed | Quality | Size |
+|-------|-----------|-------|---------|------|
+| all-MiniLM-L6-v2 | 384 | Fast | Good | ~80MB |
+| all-mpnet-base-v2 | 768 | Medium | Better | ~420MB |
+| all-MiniLM-L12-v2 | 384 | Medium | Good | ~120MB |
 
-### Total for Testing
-- Initial setup: <$1
-- Monthly if keeping cluster running: ~$60
-- Recommendation: Use Atlas free trial or delete cluster when done
+### Processing Time (Full Dataset ~6,000 docs)
+
+- **all-MiniLM-L6-v2**: ~5-10 minutes (CPU), ~2-3 minutes (GPU)
+- **all-mpnet-base-v2**: ~10-15 minutes (CPU), ~3-5 minutes (GPU)
+
+### Total Cost for Testing
+
+- **MongoDB**: Free (local installation)
+- **Embeddings**: Free (sentence-transformers, local)
+- **Storage**: Minimal (~100MB for model + dataset)
+
+**Recommendation**: Use local MongoDB for development, testing is completely free!
 
 ## Next Steps
 
 After setting up:
 
 1. **Experiment with different embedding models**
-   - Compare text-embedding-3-small vs text-embedding-3-large
-   - Test different similarity metrics (dotProduct, cosine, euclidean)
+   - Compare all-MiniLM-L6-v2 vs all-mpnet-base-v2
+   - Test different similarity calculations
 
 2. **Compare with other RAG systems**
-   - Add Vectara, Agentset, or other tools to your config
+   - Add Vectara, Agentset, FAISS, or other tools to your config
    - Run side-by-side comparisons
 
 3. **Optimize retrieval**
-   - Tune `num_candidates` parameter
-   - Try metadata filtering
+   - Try different similarity search approaches
    - Experiment with different `top_k` values
+   - Test metadata filtering
 
 4. **Evaluate quality**
    - Use LLM evaluation to assess result quality
@@ -340,7 +401,7 @@ After setting up:
 
 ## References
 
-- [MongoDB Atlas Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/)
-- [OpenAI Embeddings API](https://platform.openai.com/docs/guides/embeddings)
+- [MongoDB Community Edition](https://www.mongodb.com/try/download/community)
+- [Sentence-Transformers Documentation](https://www.sbert.net/)
 - [SQuAD Dataset](https://rajpurkar.github.io/SQuAD-explorer/)
 - [RAGDiff Documentation](../README.md)

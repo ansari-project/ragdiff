@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Load SQuAD dataset into MongoDB Atlas with vector embeddings.
+"""Load SQuAD dataset into local MongoDB with vector embeddings.
 
 This script downloads the SQuAD v2.0 dataset, generates embeddings for each
-context passage using OpenAI's embedding API, and stores them in MongoDB Atlas
-with a vector search index.
+context passage using sentence-transformers (local), and stores them in
+local MongoDB.
 
 Prerequisites:
-- MongoDB Atlas cluster (M10+ for vector search)
-- OpenAI API key
-- Environment variables: MONGODB_URI, OPENAI_API_KEY
+- Local MongoDB installation
+- sentence-transformers library
+- Environment variable: MONGODB_URI (default: mongodb://localhost:27017/)
 
 Usage:
     python load_squad_to_mongodb.py --database squad_db --collection contexts
@@ -18,7 +18,6 @@ import argparse
 import json
 import os
 import sys
-import time
 import urllib.request
 from typing import Any
 
@@ -31,9 +30,9 @@ except ImportError:
     sys.exit(1)
 
 try:
-    import openai
+    from sentence_transformers import SentenceTransformer
 except ImportError:
-    print("Error: openai is required. Install with: pip install openai")
+    print("Error: sentence-transformers is required. Install with: pip install sentence-transformers")
     sys.exit(1)
 
 try:
@@ -115,46 +114,50 @@ def load_squad_data(file_path: str) -> list[dict[str, Any]]:
 
 
 def generate_embeddings(
-    documents: list[dict[str, Any]], api_key: str, model: str = "text-embedding-3-small", batch_size: int = 100
+    documents: list[dict[str, Any]], model_name: str = "all-MiniLM-L6-v2", batch_size: int = 32
 ) -> list[dict[str, Any]]:
-    """Generate embeddings for documents using OpenAI API.
+    """Generate embeddings for documents using sentence-transformers.
 
     Args:
         documents: List of documents to embed
-        api_key: OpenAI API key
-        model: Embedding model to use
+        model_name: Sentence-transformer model to use
         batch_size: Number of documents to process at once
 
     Returns:
         Documents with embeddings added
     """
-    print(f"Generating embeddings using {model}...")
-    client = openai.OpenAI(api_key=api_key)
+    print(f"Loading embedding model: {model_name}...")
+    print("(First run will download the model, subsequent runs use cached version)")
 
-    iterator = tqdm(range(0, len(documents), batch_size), desc="Embedding batches") if tqdm else range(
-        0, len(documents), batch_size
-    )
+    model = SentenceTransformer(model_name)
 
-    for i in iterator:
-        batch = documents[i : i + batch_size]
-        texts = [doc["text"] for doc in batch]
+    print(f"Generating embeddings for {len(documents)} documents...")
+    texts = [doc["text"] for doc in documents]
 
-        try:
-            response = client.embeddings.create(model=model, input=texts)
+    # Generate embeddings in batches with progress bar
+    if tqdm:
+        embeddings = model.encode(
+            texts,
+            batch_size=batch_size,
+            show_progress_bar=True,
+            convert_to_numpy=True
+        )
+    else:
+        embeddings = model.encode(
+            texts,
+            batch_size=batch_size,
+            show_progress_bar=False,
+            convert_to_numpy=True
+        )
 
-            for j, embedding_data in enumerate(response.data):
-                documents[i + j]["embedding"] = embedding_data.embedding
-
-            # Rate limiting
-            time.sleep(0.1)
-
-        except Exception as e:
-            print(f"\nError generating embeddings for batch {i}: {e}")
-            # Continue with next batch
-            continue
+    # Add embeddings to documents
+    for i, embedding in enumerate(embeddings):
+        documents[i]["embedding"] = embedding.tolist()
 
     embedded_count = sum(1 for doc in documents if "embedding" in doc)
     print(f"Generated embeddings for {embedded_count}/{len(documents)} documents")
+    print(f"Embedding dimensions: {len(embeddings[0])}")
+
     return documents
 
 
@@ -169,7 +172,7 @@ def insert_into_mongodb(
         database: Database name
         collection: Collection name
     """
-    print(f"Connecting to MongoDB...")
+    print(f"Connecting to MongoDB at {connection_uri}...")
     client = MongoClient(connection_uri)
 
     try:
@@ -213,57 +216,33 @@ def insert_into_mongodb(
         client.close()
 
 
-def create_vector_index_instructions(database: str, collection: str, model: str) -> None:
+def create_vector_index_instructions(database: str, collection: str, dimensions: int) -> None:
     """Print instructions for creating a vector search index.
 
     Args:
         database: Database name
         collection: Collection name
-        model: Embedding model used (determines dimensions)
+        dimensions: Embedding dimensions
     """
-    # Determine embedding dimensions based on model
-    dimensions = {
-        "text-embedding-3-small": 1536,
-        "text-embedding-3-large": 3072,
-        "text-embedding-ada-002": 1536,
-    }.get(model, 1536)
-
-    index_definition = {
-        "fields": [
-            {
-                "type": "vector",
-                "path": "embedding",
-                "numDimensions": dimensions,
-                "similarity": "dotProduct",
-            },
-            {"type": "filter", "path": "article_title"},
-            {"type": "filter", "path": "num_questions"},
-        ]
-    }
-
     print("\n" + "=" * 80)
-    print("NEXT STEP: Create Vector Search Index")
+    print("NEXT STEP: Create Vector Index")
     print("=" * 80)
-    print("\nTo enable vector search, create an Atlas Search index with this definition:")
-    print("\n1. Go to your MongoDB Atlas cluster")
-    print(f"2. Navigate to: Database > {database} > {collection}")
-    print("3. Click 'Create Index' > 'Atlas Vector Search'")
-    print("4. Use this index definition:\n")
-    print("Index Name: vector_index")
-    print("\nIndex Definition (JSON):")
-    print(json.dumps(index_definition, indent=2))
-    print("\n5. Click 'Create Search Index'")
-    print("\nAlternatively, use the Atlas CLI or API to create the index programmatically.")
-    print(
-        f"\nNote: The embedding dimensions ({dimensions}) match the model '{model}'."
-    )
+    print("\nFor local MongoDB (Community Edition), use a basic 2dsphere index:")
+    print("\n1. Open mongosh:")
+    print("   mongosh")
+    print(f"\n2. Switch to database and create index:")
+    print(f"   use {database}")
+    print(f"   db.{collection}.createIndex({{ \"embedding\": \"2dsphere\" }}, {{ name: \"vector_index\" }})")
+    print("\nNote: MongoDB Community Edition has basic vector support.")
+    print("For advanced vector search ($vectorSearch), consider MongoDB Atlas.")
+    print(f"\nEmbedding dimensions: {dimensions}")
     print("=" * 80 + "\n")
 
 
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(
-        description="Load SQuAD dataset into MongoDB with embeddings"
+        description="Load SQuAD dataset into MongoDB with sentence-transformer embeddings"
     )
     parser.add_argument(
         "--database", default="squad_db", help="MongoDB database name (default: squad_db)"
@@ -275,8 +254,8 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="text-embedding-3-small",
-        help="OpenAI embedding model (default: text-embedding-3-small)",
+        default="all-MiniLM-L6-v2",
+        help="Sentence-transformer model (default: all-MiniLM-L6-v2)",
     )
     parser.add_argument(
         "--squad-file",
@@ -291,23 +270,18 @@ def main():
     parser.add_argument(
         "--limit", type=int, help="Limit number of documents to process (for testing)"
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Batch size for embedding generation (default: 32)"
+    )
 
     args = parser.parse_args()
 
-    # Check environment variables
-    mongodb_uri = os.getenv("MONGODB_URI")
-    if not mongodb_uri:
-        print("Error: MONGODB_URI environment variable is not set")
-        print("Set it to your MongoDB Atlas connection string:")
-        print("  export MONGODB_URI='mongodb+srv://user:pass@cluster.mongodb.net/'")
-        sys.exit(1)
-
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        print("Error: OPENAI_API_KEY environment variable is not set")
-        print("Set it to your OpenAI API key:")
-        print("  export OPENAI_API_KEY='sk-...'")
-        sys.exit(1)
+    # Check environment variable (with default for local MongoDB)
+    mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+    print(f"Using MongoDB URI: {mongodb_uri}")
 
     # Download SQuAD dataset
     if not args.skip_download or not os.path.exists(args.squad_file):
@@ -321,8 +295,8 @@ def main():
         print(f"Limiting to {args.limit} documents (testing mode)")
         documents = documents[: args.limit]
 
-    # Generate embeddings
-    documents = generate_embeddings(documents, openai_api_key, model=args.model)
+    # Generate embeddings using sentence-transformers
+    documents = generate_embeddings(documents, model_name=args.model, batch_size=args.batch_size)
 
     # Filter out documents that failed to get embeddings
     documents = [doc for doc in documents if "embedding" in doc]
@@ -331,16 +305,20 @@ def main():
         print("Error: No documents with embeddings to insert")
         sys.exit(1)
 
+    # Get embedding dimensions from first document
+    dimensions = len(documents[0]["embedding"])
+
     # Insert into MongoDB
     insert_into_mongodb(documents, mongodb_uri, args.database, args.collection)
 
     # Print instructions for creating vector index
-    create_vector_index_instructions(args.database, args.collection, args.model)
+    create_vector_index_instructions(args.database, args.collection, dimensions)
 
     print("\nDone! Your SQuAD dataset is now in MongoDB.")
     print(
         f"Use the MongoDB adapter in RAGDiff with database='{args.database}', collection='{args.collection}'"
     )
+    print(f"\nCosts: FREE! Everything runs locally with sentence-transformers.")
 
 
 if __name__ == "__main__":
