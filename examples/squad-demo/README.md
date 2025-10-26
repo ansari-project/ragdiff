@@ -1,31 +1,28 @@
 # SQuAD FAISS Demo
 
-This example demonstrates RAGDiff v2.0 using the SQuAD v2.0 dataset with two FAISS providers that differ in their distance metrics.
+This example demonstrates RAGDiff v2.0 using the SQuAD v2.0 dataset with two FAISS providers that differ in their embedding models.
 
 ## Overview
 
-This example compares two FAISS-based RAG systems:
+This example compares two FAISS-based RAG systems using **different embedding models** to demonstrate quality differences:
 
-1. **faiss-l2**: Uses L2 (Euclidean) distance
-   - Measures straight-line distance between vectors
-   - Sensitive to vector magnitude
-   - Smaller distances = higher similarity
-   - Range: [0, ∞)
+1. **faiss-small**: `paraphrase-MiniLM-L3-v2`
+   - 17MB model, 3 layers, 384 dimensions
+   - Fast but less accurate
+   - Good for high-throughput scenarios
 
-2. **faiss-ip**: Uses Inner Product (cosine similarity)
-   - Measures dot product between normalized vectors
-   - Equivalent to cosine similarity when vectors are normalized
-   - Higher scores = higher similarity
-   - Range: [-1, 1] for normalized vectors
+2. **faiss-large**: `all-MiniLM-L12-v2`
+   - 120MB model, 12 layers, 384 dimensions
+   - Slower but more accurate
+   - Better semantic understanding
+
+Both use **L2 (Euclidean) distance** for fair comparison - the quality difference comes purely from the embedding model, not the distance metric.
 
 ## Dataset
 
 - **Source**: SQuAD v2.0 (Stanford Question Answering Dataset)
 - **Documents**: ~1,200 unique context paragraphs from Wikipedia
-- **Embeddings**: Generated using `all-MiniLM-L6-v2` (384 dimensions)
-- **Query Sets**:
-  - **referenced-queries.txt**: 100 questions with ground truth answers
-  - **reference-free-queries.txt**: 100 questions without answers
+- **Query Sets**: 100 test queries
 
 ## Setup
 
@@ -36,51 +33,40 @@ Install required dependencies:
 ```bash
 # Core dependencies (if not already installed from project root)
 cd /path/to/ragdiff
+uv venv
 uv pip install -e .
 
 # Install example dependencies
 cd examples/squad-demo
 uv pip install -e .
-
-# Optional: For GPU acceleration
-uv pip install -e ".[gpu]"
 ```
 
-### Run Setup
+### Build Indices
 
-Execute the master setup script:
+Execute the setup steps:
 
 ```bash
 cd examples/squad-demo
-./scripts/setup_all.sh
+
+# Step 1: Download and prepare dataset
+uv run python scripts/setup_dataset.py
+
+# Step 2: Build small model index
+uv run python scripts/build_faiss_small.py
+
+# Step 3: Build large model index
+uv run python scripts/build_faiss_large.py
+
+# Step 4: Generate query sets
+uv run python scripts/generate_queries.py
 ```
 
-This will:
+**What this does:**
 1. Download SQuAD v2.0 dataset from HuggingFace
 2. Extract unique context paragraphs as documents
 3. Generate embeddings using sentence-transformers
-4. Build two FAISS indices (L2 and Inner Product)
+4. Build two FAISS indices (small and large models, both with L2 distance)
 5. Create query sets
-
-### Manual Setup (Optional)
-
-You can also run each step individually:
-
-```bash
-cd examples/squad-demo/scripts
-
-# Step 1: Download and prepare dataset
-python3 setup_dataset.py
-
-# Step 2: Build L2 index
-python3 build_faiss_l2.py
-
-# Step 3: Build Inner Product index
-python3 build_faiss_ip.py
-
-# Step 4: Generate query sets
-python3 generate_queries.py
-```
 
 ## Usage
 
@@ -89,15 +75,18 @@ python3 generate_queries.py
 Execute query sets against each provider:
 
 ```bash
-# Run against L2 index
-uv run ragdiff run squad-demo faiss-l2 referenced-queries --domains-dir examples
+# Back to project root
+cd ../..
 
-# Run against Inner Product index
-uv run ragdiff run squad-demo faiss-ip referenced-queries --domains-dir examples
+# Run against small model
+uv run ragdiff run --domain-dir examples/squad-demo/domains/squad --provider faiss-small --query-set test-queries
 
-# Or use reference-free queries
-uv run ragdiff run squad-demo faiss-l2 reference-free-queries --domains-dir examples
-uv run ragdiff run squad-demo faiss-ip reference-free-queries --domains-dir examples
+# Run against large model
+uv run ragdiff run --domain-dir examples/squad-demo/domains/squad --provider faiss-large --query-set test-queries
+
+# Short form with flags
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-large -q test-queries
 ```
 
 ### Compare Results
@@ -105,79 +94,108 @@ uv run ragdiff run squad-demo faiss-ip reference-free-queries --domains-dir exam
 After running queries, compare the results:
 
 ```bash
-# Compare two runs (replace with actual run IDs from output)
-uv run ragdiff compare squad-demo <run-id-1> <run-id-2> --domains-dir examples
+# Compare two runs (replace with actual run labels/IDs from output)
+uv run ragdiff compare --domain-dir examples/squad-demo/domains/squad --run <run-label-1> --run <run-label-2>
+
+# Short form
+uv run ragdiff compare -d examples/squad-demo/domains/squad -r <run-label-1> -r <run-label-2>
 
 # Export to JSON
-uv run ragdiff compare squad-demo <run-id-1> <run-id-2> \
-  --domains-dir examples \
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r <run-label-1> -r <run-label-2> \
   --format json \
   --output comparison.json
 
 # Export to Markdown report
-uv run ragdiff compare squad-demo <run-id-1> <run-id-2> \
-  --domains-dir examples \
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r <run-label-1> -r <run-label-2> \
   --format markdown \
-  --output report.md
+  --output comparison-report.md
+
+# Auto-compare latest runs for each provider
+uv run ragdiff compare -d examples/squad-demo/domains/squad
 ```
 
 ## Expected Results
 
-The two distance metrics often produce similar but not identical results:
+The larger embedding model (12 layers) should show:
+- **Better retrieval accuracy** (higher quality scores)
+- **More wins** vs the small model
+- **Slower query times** (due to larger model inference)
 
-- **L2 distance** is sensitive to vector magnitude and absolute differences
-- **Inner Product** (cosine similarity) focuses on vector direction/angle
-
-You may observe:
-- Similar top-ranked documents for most queries
-- Different ranking orders, especially for documents with varying text lengths
-- Potential performance differences on specific query types
+The comparison report will show:
+- Win/loss statistics
+- Quality score differences
+- Latency comparison (avg, median, min, max)
+- Number of chunks returned per query
+- Representative examples of where each model excels
 
 ## Directory Structure
 
 ```
 squad-demo/
 ├── README.md                           # This file
-├── domain.yaml                         # Domain configuration
 ├── pyproject.toml                      # Python dependencies
-├── providers/                          # Provider configs
-│   ├── faiss-l2.yaml                   # L2 distance config
-│   └── faiss-ip.yaml                   # Inner Product config
-├── query-sets/                         # Query files (generated)
-│   ├── referenced-queries.txt          # 100 questions with ground truth
-│   └── reference-free-queries.txt      # 100 questions without answers
-├── scripts/                            # Setup scripts
-│   ├── setup_all.sh                    # Master setup script
-│   ├── setup_dataset.py                # Download and prepare SQuAD
-│   ├── build_faiss_l2.py               # Build L2 index
-│   ├── build_faiss_ip.py               # Build Inner Product index
-│   ├── generate_queries.py             # Generate query sets
-│   └── test_setup.py                   # Verify setup
-├── data/                               # Data files (generated)
+├── domains/                            # Domain configurations
+│   └── squad/                          # The "squad" domain
+│       ├── domain.yaml                 # Domain configuration
+│       ├── providers/                  # Provider configs
+│       │   ├── faiss-small.yaml        # Small model config
+│       │   └── faiss-large.yaml        # Large model config
+│       ├── query-sets/                 # Query files
+│       │   └── test-queries.txt        # 100 test questions
+│       ├── runs/                       # Run results (auto-created)
+│       └── comparisons/                # Comparison results (auto-created)
+├── data/                               # Shared data files (generated)
 │   ├── documents.jsonl                 # Document corpus
 │   ├── squad_raw.json                  # Raw SQuAD data
-│   ├── faiss_l2.index                  # L2 FAISS index
-│   ├── faiss_ip.index                  # Inner Product FAISS index
-│   └── referenced-queries-metadata.json # Ground truth answers
-├── runs/                               # Run results (auto-created)
-└── comparisons/                        # Comparison results (auto-created)
+│   ├── faiss_small.index               # Small model FAISS index
+│   └── faiss_large.index               # Large model FAISS index
+└── scripts/                            # Setup scripts
+    ├── setup_all.sh                    # Master setup script
+    ├── setup_dataset.py                # Download and prepare SQuAD
+    ├── build_faiss_small.py            # Build small model index
+    ├── build_faiss_large.py            # Build large model index
+    ├── generate_queries.py             # Generate query sets
+    └── test_setup.py                   # Verify setup
 ```
 
-## Query Set Details
+## Rebuilding Indices
 
-### Referenced Queries
+If you want to rebuild the indices with different models:
 
-- **Count**: 100 questions
-- **Source**: SQuAD v2.0 validation split
-- **Ground Truth**: Answers available in `data/referenced-queries-metadata.json`
-- **Use Case**: Evaluation with known correct answers
+1. **Enter the demo environment:**
+   ```bash
+   cd examples/squad-demo
+   source .venv/bin/activate  # or use: uv run python
+   ```
 
-### Reference-Free Queries
+2. **Build the small model index:**
+   ```bash
+   uv run python scripts/build_faiss_small.py
+   ```
+   This creates `data/faiss_small.index` using paraphrase-MiniLM-L3-v2 with L2 distance
 
-- **Count**: 100 questions
-- **Source**: SQuAD v2.0 validation split (50% overlap with referenced set)
-- **Ground Truth**: Not included in query set
-- **Use Case**: General testing and comparative evaluation
+3. **Build the large model index:**
+   ```bash
+   uv run python scripts/build_faiss_large.py
+   ```
+   This creates `data/faiss_large.index` using all-MiniLM-L12-v2 with L2 distance
+
+4. **Run queries against both providers:**
+   ```bash
+   cd ../..  # Back to project root
+   uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries
+   uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-large -q test-queries
+   ```
+
+5. **Compare the results:**
+   ```bash
+   uv run ragdiff compare -d examples/squad-demo/domains/squad \
+     -r <run-label-1> -r <run-label-2> \
+     --format markdown \
+     --output examples/squad-demo/comparison-report.md
+   ```
 
 ## Advanced Usage
 
@@ -186,8 +204,8 @@ squad-demo/
 Speed up query execution with parallel requests:
 
 ```bash
-uv run ragdiff run squad-demo faiss-l2 referenced-queries \
-  --domains-dir examples \
+uv run ragdiff run -d examples/squad-demo/domains/squad \
+  -p faiss-small -q test-queries \
   --concurrency 10
 ```
 
@@ -209,14 +227,14 @@ Create your own query set:
 
 ```bash
 # Create a new query file
-cat > examples/squad-demo/query-sets/custom-queries.txt <<EOF
+cat > examples/squad-demo/domains/squad/query-sets/custom-queries.txt <<EOF
 What is machine learning?
 How does neural network training work?
 What are transformers in NLP?
 EOF
 
 # Run with custom queries
-uv run ragdiff run squad-demo faiss-l2 custom-queries --domains-dir examples
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q custom-queries
 ```
 
 ## Troubleshooting
@@ -255,36 +273,20 @@ This is normal for the first run:
 - [SQuAD Dataset](https://rajpurkar.github.io/SQuAD-explorer/)
 - [Sentence Transformers](https://www.sbert.net/)
 
-## Distance Metrics Explained
+## Model Characteristics
 
-### L2 (Euclidean) Distance
+### Small Model (paraphrase-MiniLM-L3-v2)
+- **Size**: 17MB
+- **Layers**: 3
+- **Dimensions**: 384
+- **Speed**: Fast
+- **Quality**: Good for basic similarity
 
-```
-distance = sqrt(sum((a[i] - b[i])^2))
-```
+### Large Model (all-MiniLM-L12-v2)
+- **Size**: 120MB
+- **Layers**: 12
+- **Dimensions**: 384
+- **Speed**: Slower (~72% slower on average)
+- **Quality**: Better semantic understanding
 
-- Measures straight-line distance in vector space
-- Sensitive to vector magnitude
-- Common in k-NN and clustering
-- Lower is better
-
-### Inner Product (Cosine Similarity)
-
-```
-similarity = dot(a, b) / (norm(a) * norm(b))
-```
-
-- Measures angle between vectors
-- With normalized vectors: `dot(a, b)` = cosine similarity
-- Invariant to vector magnitude
-- Higher is better
-
-### When to Use Each
-
-- **L2**: When vector magnitude matters (e.g., frequency-based features)
-- **Inner Product/Cosine**: When direction matters more than magnitude (e.g., semantic similarity)
-
-For most text embedding tasks, **cosine similarity** (Inner Product with normalization) is preferred because:
-- It's insensitive to document length
-- It focuses on semantic similarity
-- It's the standard for sentence embeddings
+The comparison demonstrates the classic **quality vs speed tradeoff** in embedding models!

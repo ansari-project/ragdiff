@@ -1,0 +1,9 @@
+name: faiss-small
+description: FAISS with small/fast embedding model (paraphrase-MiniLM-L3-v2, 384 dims)
+tool: faiss
+config:
+  index_path: examples/squad-demo/data/faiss_small.index
+  documents_path: examples/squad-demo/data/documents.jsonl
+  embedding_service: sentence-transformers
+  embedding_model: paraphrase-MiniLM-L3-v2
+  dimensions: 384

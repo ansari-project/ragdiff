@@ -94,5 +94,15 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
+def setup_logging(verbose: bool = False) -> None:
+    """Setup logging configuration (CLI wrapper).
+
+    Args:
+        verbose: If True, use DEBUG level. Otherwise use INFO level.
+    """
+    level = logging.DEBUG if verbose else logging.INFO
+    configure_logging(level=level)
+
+
 # Configure default logging on module import
 configure_logging()

@@ -51,16 +51,27 @@ console = Console()
 
 @app.command()
 def run(
-    domain: str = typer.Argument(..., help="Domain name (e.g., 'tafsir')"),
-    provider: str = typer.Argument(..., help="Provider name (e.g., 'vectara-default')"),
-    query_set: str = typer.Argument(..., help="Query set name (e.g., 'test-queries')"),
-    label: Optional[str] = typer.Option(None, "--label", "-l", help="Label for this run (auto-generated if not provided)"),
+    domain_dir: Path = typer.Option(
+        ...,
+        "--domain-dir",
+        "-d",
+        help="Path to domain directory (e.g., 'examples/squad-demo/domains/squad')",
+    ),
+    provider: str = typer.Option(
+        ..., "--provider", "-p", help="Provider name (e.g., 'vectara-default')"
+    ),
+    query_set: str = typer.Option(
+        ..., "--query-set", "-q", help="Query set name (e.g., 'test-queries')"
+    ),
+    label: Optional[str] = typer.Option(
+        None,
+        "--label",
+        "-l",
+        help="Label for this run (auto-generated if not provided)",
+    ),
     concurrency: int = typer.Option(10, help="Maximum concurrent queries"),
     timeout: float = typer.Option(30.0, help="Timeout per query in seconds"),
-    domains_dir: Optional[Path] = typer.Option(
-        None, help="Domains directory (default: ./domains)"
-    ),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output"),
+    quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
 ):
     """Execute a query set against a provider.
 
@@ -71,10 +82,13 @@ def run(
     4. Saves the run to disk
 
     Example:
-        $ ragdiff run tafsir vectara-default test-queries
-        $ ragdiff run tafsir vectara-default test-queries --concurrency 20
+        $ ragdiff run --domain-dir domains/tafsir --provider vectara-default --query-set test-queries
+        $ ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries --concurrency 20
     """
-    domains_path = Path(domains_dir) if domains_dir else Path("domains")
+    # Extract domain name from domain_dir path
+    domain_dir = Path(domain_dir).resolve()
+    domain = domain_dir.name
+    domains_path = domain_dir.parent
 
     try:
         # Show progress bar unless quiet mode
@@ -180,11 +194,24 @@ def run(
 
 @app.command()
 def compare(
-    domain: str = typer.Argument(..., help="Domain name (e.g., 'tafsir')"),
-    run: list[str] = typer.Option(
-        None, "--run", "-r", help="Run label or ID to compare (can be specified multiple times)"
+    domain_dir: Path = typer.Option(
+        ...,
+        "--domain-dir",
+        "-d",
+        help="Path to domain directory (e.g., 'examples/squad-demo/domains/squad')",
     ),
-    label: Optional[str] = typer.Option(None, "--label", "-l", help="Label for this comparison (auto-generated if not provided)"),
+    run: list[str] = typer.Option(
+        None,
+        "--run",
+        "-r",
+        help="Run label or ID to compare (can be specified multiple times)",
+    ),
+    label: Optional[str] = typer.Option(
+        None,
+        "--label",
+        "-l",
+        help="Label for this comparison (auto-generated if not provided)",
+    ),
     model: Optional[str] = typer.Option(
         None, help="LLM model override (default: use domain config)"
     ),
@@ -200,10 +227,7 @@ def compare(
     format: str = typer.Option(
         "table", "--format", "-f", help="Output format: table, json, markdown"
     ),
-    domains_dir: Optional[Path] = typer.Option(
-        None, help="Domains directory (default: ./domains)"
-    ),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output"),
+    quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
 ):
     """Compare multiple runs using LLM evaluation.
 
@@ -215,13 +239,16 @@ def compare(
     5. Displays or exports results
 
     Example:
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --model claude-3-5-sonnet-20241022
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --concurrency 10
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --format json --output comparison.json
-        $ ragdiff compare tafsir  # Uses latest run for each provider
+        $ ragdiff compare --domain-dir domains/tafsir --run vectara-001 --run mongodb-002
+        $ ragdiff compare -d examples/squad-demo/domains/squad -r faiss-small-001 -r faiss-large-001
+        $ ragdiff compare -d domains/tafsir --run vectara-001 --run mongodb-002 --model claude-3-5-sonnet-20241022
+        $ ragdiff compare -d domains/tafsir --run vectara-001 --run mongodb-002 --format json --output comparison.json
+        $ ragdiff compare -d domains/tafsir  # Uses latest run for each provider
     """
-    domains_path = Path(domains_dir) if domains_dir else Path("domains")
+    # Extract domain name from domain_dir path
+    domain_dir = Path(domain_dir).resolve()
+    domain = domain_dir.name
+    domains_path = domain_dir.parent
 
     # If no --run flags provided, find latest runs for each provider
     if not run or len(run) == 0:
@@ -230,24 +257,31 @@ def compare(
         all_runs = list_runs(domain, domains_dir=domains_path)
 
         if len(all_runs) == 0:
-            console.print(f"[bold red]Error:[/bold red] No runs found for domain '{domain}'")
+            console.print(
+                f"[bold red]Error:[/bold red] No runs found for domain '{domain}'"
+            )
             raise typer.Exit(code=1)
 
         # Group runs by provider and get the latest for each
         provider_runs = {}
         for r in all_runs:
-            if r.provider not in provider_runs or r.started_at > provider_runs[r.provider].started_at:
+            if (
+                r.provider not in provider_runs
+                or r.started_at > provider_runs[r.provider].started_at
+            ):
                 provider_runs[r.provider] = r
 
         run = [r.label for r in provider_runs.values()]
-        console.print(f"[dim]No --run flags provided. Using latest runs:[/dim]")
+        console.print("[dim]No --run flags provided. Using latest runs:[/dim]")
         for r_label in run:
             console.print(f"[dim]  - {r_label}[/dim]")
         console.print()
 
     # Ensure at least 2 runs to compare
     if len(run) < 2:
-        console.print(f"[bold red]Error:[/bold red] Need at least 2 runs to compare (got {len(run)})")
+        console.print(
+            f"[bold red]Error:[/bold red] Need at least 2 runs to compare (got {len(run)})"
+        )
         raise typer.Exit(code=1)
 
     try:
@@ -262,9 +296,7 @@ def compare(
                 console=console,
             ) as progress:
                 # Track progress
-                task = progress.add_task(
-                    f"Comparing {len(run)} runs", total=100
-                )
+                task = progress.add_task(f"Comparing {len(run)} runs", total=100)
 
                 completed_evals = 0
                 total_evals = 0

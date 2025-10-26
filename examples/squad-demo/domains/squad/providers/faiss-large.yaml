@@ -1,0 +1,9 @@
+name: faiss-large
+description: FAISS with larger/quality embedding model (all-MiniLM-L12-v2, 384 dims, 12 layers)
+tool: faiss
+config:
+  index_path: examples/squad-demo/data/faiss_large.index
+  documents_path: examples/squad-demo/data/documents.jsonl
+  embedding_service: sentence-transformers
+  embedding_model: all-MiniLM-L12-v2
+  dimensions: 384

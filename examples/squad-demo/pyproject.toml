@@ -14,10 +14,11 @@ dependencies = [
     "numpy>=1.24.0",
 ]
 
-[project.optional-dependencies]
-gpu = [
-    "faiss-gpu>=1.7.4",  # For GPU acceleration
-]
+# GPU support removed - use CPU version for compatibility
+# [project.optional-dependencies]
+# gpu = [
+#     "faiss-gpu>=1.7.4",  # For GPU acceleration
+# ]
 
 [tool.setuptools]
 py-modules = []  # No Python modules to install, just dependencies
