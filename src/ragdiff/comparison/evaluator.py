@@ -20,9 +20,10 @@ Example:
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID, uuid4
 
 from ..core.errors import ComparisonError
@@ -52,6 +53,8 @@ def compare_runs(
     model: str | None = None,
     temperature: float | None = None,
     max_retries: int = 3,
+    concurrency: int = 1,
+    progress_callback: Callable[[int, int, int, int], None] | None = None,
     domains_dir: Path = Path("domains"),
 ) -> Comparison:
     """Compare multiple runs using LLM evaluation.
@@ -70,6 +73,8 @@ def compare_runs(
         model: Optional LLM model override (default: use domain evaluator config)
         temperature: Optional temperature override (default: use domain evaluator config)
         max_retries: Maximum retries for LLM calls (default: 3)
+        concurrency: Maximum number of concurrent evaluations (default: 1 for sequential)
+        progress_callback: Optional callback for progress updates (current, total, successes, failures)
         domains_dir: Root directory containing all domains
 
     Returns:
@@ -158,6 +163,8 @@ def compare_runs(
         runs=runs,
         evaluator_config=evaluator_config,
         max_retries=max_retries,
+        concurrency=concurrency,
+        progress_callback=progress_callback,
     )
 
     # Create comparison object
@@ -194,26 +201,76 @@ def _evaluate_all_queries(
     runs,
     evaluator_config: EvaluatorConfig,
     max_retries: int,
+    concurrency: int,
+    progress_callback: Callable[[int, int, int, int], None] | None,
 ) -> list[EvaluationResult]:
-    """Evaluate all queries across runs.
+    """Evaluate all queries across runs (parallel or sequential).
 
     Args:
         runs: List of Run objects
         evaluator_config: Evaluator configuration
         max_retries: Maximum retries for LLM calls
+        concurrency: Maximum concurrent evaluations (1 = sequential)
+        progress_callback: Optional progress callback
 
     Returns:
         List of EvaluationResult objects
     """
     # Get query set from first run (all runs have same query set)
     query_set = runs[0].query_set_snapshot
-
-    evaluations = []
     total_queries = len(query_set.queries)
 
-    logger.info(f"Evaluating {total_queries} queries across {len(runs)} runs")
+    logger.info(
+        f"Evaluating {total_queries} queries across {len(runs)} runs "
+        f"(concurrency={concurrency})"
+    )
 
-    for i, query in enumerate(query_set.queries):
+    if concurrency == 1:
+        # Sequential execution
+        return _evaluate_queries_sequential(
+            runs=runs,
+            queries=query_set.queries,
+            evaluator_config=evaluator_config,
+            max_retries=max_retries,
+            progress_callback=progress_callback,
+        )
+    else:
+        # Parallel execution
+        return _evaluate_queries_parallel(
+            runs=runs,
+            queries=query_set.queries,
+            evaluator_config=evaluator_config,
+            max_retries=max_retries,
+            concurrency=concurrency,
+            progress_callback=progress_callback,
+        )
+
+
+def _evaluate_queries_sequential(
+    runs,
+    queries,
+    evaluator_config: EvaluatorConfig,
+    max_retries: int,
+    progress_callback: Callable[[int, int, int, int], None] | None,
+) -> list[EvaluationResult]:
+    """Execute evaluations sequentially (original behavior).
+
+    Args:
+        runs: List of Run objects
+        queries: List of Query objects
+        evaluator_config: Evaluator configuration
+        max_retries: Maximum retries for LLM calls
+        progress_callback: Optional progress callback
+
+    Returns:
+        List of EvaluationResult objects
+    """
+    evaluations = []
+    total_queries = len(queries)
+    successes = 0
+    failures = 0
+
+    for i, query in enumerate(queries):
         logger.debug(f"Evaluating query {i+1}/{total_queries}: {query.text[:50]}...")
 
         # Gather results from all runs for this query
@@ -222,7 +279,7 @@ def _evaluate_all_queries(
             # Find matching result for this query
             matching_results = [r for r in run.results if r.query == query.text]
             if matching_results:
-                run_results[run.system] = matching_results[0].retrieved
+                run_results[run.provider] = matching_results[0].retrieved
 
         # Evaluate this query
         evaluation_result = _evaluate_single_query(
@@ -235,8 +292,91 @@ def _evaluate_all_queries(
 
         evaluations.append(evaluation_result)
 
+        # Update progress
+        if "error" not in evaluation_result.evaluation:
+            successes += 1
+        else:
+            failures += 1
+
+        # Call progress callback
+        if progress_callback:
+            progress_callback(i + 1, total_queries, successes, failures)
+
     logger.info(f"Completed {len(evaluations)} evaluations")
     return evaluations
+
+
+def _evaluate_queries_parallel(
+    runs,
+    queries,
+    evaluator_config: EvaluatorConfig,
+    max_retries: int,
+    concurrency: int,
+    progress_callback: Callable[[int, int, int, int], None] | None,
+) -> list[EvaluationResult]:
+    """Execute evaluations in parallel using ThreadPoolExecutor.
+
+    Args:
+        runs: List of Run objects
+        queries: List of Query objects
+        evaluator_config: Evaluator configuration
+        max_retries: Maximum retries for LLM calls
+        concurrency: Maximum number of concurrent evaluations
+        progress_callback: Optional progress callback
+
+    Returns:
+        List of EvaluationResult objects (in same order as queries)
+    """
+    total = len(queries)
+    results = [None] * total  # Pre-allocate results list
+    successes = 0
+    failures = 0
+
+    logger.info(f"Executing {total} evaluations with concurrency={concurrency}")
+
+    # Create thread pool
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        # Submit all evaluations
+        future_to_index = {}
+        for i, query in enumerate(queries):
+            # Gather results from all runs for this query
+            run_results = {}
+            for run in runs:
+                # Find matching result for this query
+                matching_results = [r for r in run.results if r.query == query.text]
+                if matching_results:
+                    run_results[run.provider] = matching_results[0].retrieved
+
+            future = executor.submit(
+                _evaluate_single_query,
+                query.text,
+                query.reference,
+                run_results,
+                evaluator_config,
+                max_retries,
+            )
+            future_to_index[future] = i
+
+        # Process completed evaluations
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            evaluation_result = future.result()
+
+            # Store result
+            results[index] = evaluation_result
+
+            # Update progress
+            if "error" not in evaluation_result.evaluation:
+                successes += 1
+            else:
+                failures += 1
+
+            # Call progress callback
+            if progress_callback:
+                progress_callback(index + 1, total, successes, failures)
+
+    logger.info(f"Evaluation complete: {successes} successes, {failures} failures")
+    return results
 
 
 def _evaluate_single_query(

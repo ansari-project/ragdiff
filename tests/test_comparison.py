@@ -22,13 +22,13 @@ import yaml
 from ragdiff.comparison import compare_runs
 from ragdiff.core.errors import ComparisonError
 from ragdiff.core.models_v2 import (
+    ProviderConfig,
     Query,
     QueryResult,
     QuerySet,
     RetrievedChunk,
     Run,
     RunStatus,
-    SystemConfig,
 )
 from ragdiff.core.storage import save_run
 
@@ -79,11 +79,11 @@ def test_domain_with_runs(tmp_path):
         ],
     )
 
-    # Run 1: System A
+    # Run 1: Provider A
     run1 = Run(
         id=uuid4(),
         domain=domain_name,
-        system="system-a",
+        provider="system-a",
         query_set="test-queries",
         status=RunStatus.COMPLETED,
         results=[
@@ -107,17 +107,17 @@ def test_domain_with_runs(tmp_path):
                 error=None,
             ),
         ],
-        system_config=SystemConfig(name="system-a", tool="mock", config={}),
+        provider_config=ProviderConfig(name="system-a", tool="mock", config={}),
         query_set_snapshot=query_set,
         started_at=datetime.now(timezone.utc),
         completed_at=datetime.now(timezone.utc),
     )
 
-    # Run 2: System B
+    # Run 2: Provider B
     run2 = Run(
         id=uuid4(),
         domain=domain_name,
-        system="system-b",
+        provider="system-b",
         query_set="test-queries",
         status=RunStatus.COMPLETED,
         results=[
@@ -141,7 +141,7 @@ def test_domain_with_runs(tmp_path):
                 error=None,
             ),
         ],
-        system_config=SystemConfig(name="system-b", tool="mock", config={}),
+        provider_config=ProviderConfig(name="system-b", tool="mock", config={}),
         query_set_snapshot=query_set,
         started_at=datetime.now(timezone.utc),
         completed_at=datetime.now(timezone.utc),
@@ -260,7 +260,7 @@ class TestCompareRuns:
         run3 = Run(
             id=uuid4(),
             domain=domain_name,
-            system="system-c",
+            provider="system-c",
             query_set="different-queries",  # Different query set
             status=RunStatus.COMPLETED,
             results=[
@@ -272,7 +272,7 @@ class TestCompareRuns:
                     error=None,
                 )
             ],
-            system_config=SystemConfig(name="system-c", tool="mock", config={}),
+            provider_config=ProviderConfig(name="system-c", tool="mock", config={}),
             query_set_snapshot=different_query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
@@ -374,3 +374,137 @@ class TestMockLLM:
         assert len(eval_result.run_results) == 2
         assert eval_result.evaluation["winner"] == "system-a"
         assert eval_result.evaluation["_metadata"]["cost"] == 0.001
+
+
+# ============================================================================
+# Parallel Evaluation Tests
+# ============================================================================
+
+
+class TestParallelEvaluation:
+    """Tests for parallel evaluation functionality."""
+
+    def test_parallel_evaluation_concurrency_default(self, test_domain_with_runs):
+        """Test that default concurrency is 1 (sequential)."""
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            pytest.skip("LiteLLM not installed")
+
+        if "OPENAI_API_KEY" not in os.environ:
+            pytest.skip("OPENAI_API_KEY not set")
+
+        domains_dir, domain_name, run1_id, run2_id = test_domain_with_runs
+
+        # Call without concurrency parameter (should default to 1)
+        comparison = compare_runs(
+            domain=domain_name,
+            run_ids=[str(run1_id), str(run2_id)],
+            model="gpt-3.5-turbo",
+            domains_dir=domains_dir,
+        )
+
+        # Should complete successfully
+        assert comparison.domain == domain_name
+        assert len(comparison.evaluations) == 2
+
+    def test_parallel_evaluation_with_concurrency(self, test_domain_with_runs):
+        """Test parallel evaluation with concurrency > 1."""
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            pytest.skip("LiteLLM not installed")
+
+        if "OPENAI_API_KEY" not in os.environ:
+            pytest.skip("OPENAI_API_KEY not set")
+
+        domains_dir, domain_name, run1_id, run2_id = test_domain_with_runs
+
+        # Call with concurrency=5
+        comparison = compare_runs(
+            domain=domain_name,
+            run_ids=[str(run1_id), str(run2_id)],
+            model="gpt-3.5-turbo",
+            concurrency=5,
+            domains_dir=domains_dir,
+        )
+
+        # Should complete successfully
+        assert comparison.domain == domain_name
+        assert len(comparison.evaluations) == 2
+
+        # Verify all evaluations completed
+        for eval in comparison.evaluations:
+            assert eval.query in ["Query 1", "Query 2"]
+            assert isinstance(eval.evaluation, dict)
+
+    def test_progress_callback_invoked(self, test_domain_with_runs):
+        """Test that progress callback is invoked for each evaluation."""
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            pytest.skip("LiteLLM not installed")
+
+        if "OPENAI_API_KEY" not in os.environ:
+            pytest.skip("OPENAI_API_KEY not set")
+
+        domains_dir, domain_name, run1_id, run2_id = test_domain_with_runs
+
+        # Track progress callback invocations
+        callback_invocations = []
+
+        def progress_callback(current, total, successes, failures):
+            callback_invocations.append({
+                "current": current,
+                "total": total,
+                "successes": successes,
+                "failures": failures,
+            })
+
+        comparison = compare_runs(
+            domain=domain_name,
+            run_ids=[str(run1_id), str(run2_id)],
+            model="gpt-3.5-turbo",
+            concurrency=2,
+            progress_callback=progress_callback,
+            domains_dir=domains_dir,
+        )
+
+        # Verify callback was invoked for each query
+        assert len(callback_invocations) == 2
+
+        # Verify progress is monotonically increasing
+        for i, invocation in enumerate(callback_invocations):
+            assert invocation["total"] == 2
+            assert invocation["current"] >= 1
+            assert invocation["current"] <= 2
+
+        # Final invocation should have all queries completed
+        final = callback_invocations[-1]
+        assert final["current"] == 2
+        assert final["successes"] + final["failures"] == 2
+
+    def test_parallel_evaluation_maintains_order(self, test_domain_with_runs):
+        """Test that parallel evaluation maintains query order."""
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            pytest.skip("LiteLLM not installed")
+
+        if "OPENAI_API_KEY" not in os.environ:
+            pytest.skip("OPENAI_API_KEY not set")
+
+        domains_dir, domain_name, run1_id, run2_id = test_domain_with_runs
+
+        # Run with high concurrency
+        comparison = compare_runs(
+            domain=domain_name,
+            run_ids=[str(run1_id), str(run2_id)],
+            model="gpt-3.5-turbo",
+            concurrency=10,
+            domains_dir=domains_dir,
+        )
+
+        # Verify query order is maintained
+        assert comparison.evaluations[0].query == "Query 1"
+        assert comparison.evaluations[1].query == "Query 2"
