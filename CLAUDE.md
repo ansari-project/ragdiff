@@ -74,6 +74,7 @@ uv run ragdiff compare <domain> <run-id-1> <run-id-2> [<run-id-3> ...]
 
 # Examples
 uv run ragdiff compare tafsir abc123 def456
+uv run ragdiff compare tafsir abc123 def456 --concurrency 10
 uv run ragdiff compare tafsir abc123 def456 --format json --output comparison.json
 
 # With options
@@ -81,6 +82,7 @@ uv run ragdiff compare tafsir abc123 def456 \
   --domains-dir ./domains \
   --model gpt-4 \
   --temperature 0.0 \
+  --concurrency 10 \
   --format markdown \
   --output report.md
 ```
@@ -93,8 +95,16 @@ uv run ragdiff compare tafsir abc123 def456 \
 **What it does:**
 - Loads runs from `domains/<domain>/runs/`
 - Uses LLM (via LiteLLM) to evaluate which provider performed better
+- Executes evaluations in parallel (configurable with `--concurrency`, default: 5)
+- Shows real-time progress bar with evaluation status
 - Saves comparison to `domains/<domain>/comparisons/<comparison-id>.json`
 - Outputs results in specified format
+
+**Performance tips:**
+- Use `--concurrency 10-20` for large query sets (faster evaluation)
+- Default concurrency is 5 (balanced for most cases)
+- Higher concurrency may hit API rate limits - adjust based on your LLM provider
+- Use `--quiet` to suppress progress output for automation
 
 ### Domain Directory Structure
 
@@ -428,6 +438,17 @@ This project follows the SPIDER protocol for systematic development:
 - **Defense**: Comprehensive test coverage (78 v2.0 tests)
 - **Evaluation**: Code reviews in codev/reviews/
 - **Reflection**: Architecture documentation in codev/resources/arch.md
+
+## TICK Protocol
+
+For smaller feature additions and changes, use the TICK protocol (see example in codev/specs/0002-adapter-variants.md):
+
+- **T - Task/Specification**: Problem statement, proposed solution, example use cases, success criteria
+- **I - Implementation**: Detailed changes required, files to modify, code snippets
+- **C - Check/Testing**: Test cases (unit, integration, manual), verification steps
+- **K - Knowledge/Documentation**: Configuration format, migration guide, design rationale
+
+TICK specs should be created in `codev/specs/` with format: `NNNN-feature-name.md`
 
 ## v2.0 Implementation Status
 

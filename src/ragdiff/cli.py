@@ -186,6 +186,9 @@ def compare(
     temperature: Optional[float] = typer.Option(
         None, help="Temperature override (default: use domain config)"
     ),
+    concurrency: int = typer.Option(
+        5, help="Maximum concurrent evaluations (default: 5)"
+    ),
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Output file path (default: print to console)"
     ),
@@ -209,29 +212,62 @@ def compare(
     Example:
         $ ragdiff compare tafsir 550e 660e
         $ ragdiff compare tafsir run1 run2 --model claude-3-5-sonnet-20241022
+        $ ragdiff compare tafsir 550e 660e --concurrency 10
         $ ragdiff compare tafsir 550e 660e --format json --output comparison.json
     """
     domains_path = Path(domains_dir) if domains_dir else Path("domains")
 
     try:
-        # Show spinner unless quiet mode
+        # Show progress bar unless quiet mode
         if not quiet:
-            with console.status(
-                f"[bold green]Comparing {len(run_ids)} runs...", spinner="dots"
-            ):
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                # Track progress
+                task = progress.add_task(
+                    f"Comparing {len(run_ids)} runs", total=100
+                )
+
+                completed_evals = 0
+                total_evals = 0
+
+                def progress_callback(current, total, successes, failures):
+                    nonlocal completed_evals, total_evals
+                    completed_evals = current
+                    total_evals = total
+                    progress.update(
+                        task,
+                        completed=current,
+                        total=total,
+                        description=f"Evaluation {current}/{total} ({successes} ok, {failures} failed)",
+                    )
+
+                # Execute comparison
                 result = compare_runs(
                     domain=domain,
                     run_ids=run_ids,
                     model=model,
                     temperature=temperature,
+                    concurrency=concurrency,
+                    progress_callback=progress_callback,
                     domains_dir=domains_path,
                 )
+
+                progress.update(task, completed=total_evals, total=total_evals)
         else:
+            # Quiet mode - no progress bar
             result = compare_runs(
                 domain=domain,
                 run_ids=run_ids,
                 model=model,
                 temperature=temperature,
+                concurrency=concurrency,
+                progress_callback=None,
                 domains_dir=domains_path,
             )
 
