@@ -17,15 +17,15 @@ The demo now compares **two different embedding models** to show quality differe
 
 2. **Build the small model index:**
    ```bash
-   uv run python scripts/build_faiss_l2.py
+   uv run python scripts/build_faiss_small.py
    ```
-   This creates `data/faiss_small.index` using paraphrase-MiniLM-L3-v2
+   This creates `data/faiss_small.index` using paraphrase-MiniLM-L3-v2 with L2 distance
 
 3. **Build the large model index:**
    ```bash
-   uv run python scripts/build_faiss_ip.py
+   uv run python scripts/build_faiss_large.py
    ```
-   This creates `data/faiss_large.index` using all-mpnet-base-v2
+   This creates `data/faiss_large.index` using all-MiniLM-L12-v2 with Inner Product (cosine similarity)
 
 4. **Run queries against both providers:**
    ```bash
