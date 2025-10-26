@@ -1,7 +1,10 @@
-"""Exception hierarchy for RAGDiff.
+"""Exception hierarchy for RAGDiff v2.0.
 
 This module defines a clear taxonomy of errors to help users and developers
 understand what went wrong and how to fix it.
+
+All custom exceptions inherit from RagDiffError, making it easy to catch
+all RAGDiff-specific errors in a single except clause.
 """
 
 
@@ -10,94 +13,112 @@ class RagDiffError(Exception):
 
     All custom exceptions in RAGDiff inherit from this base class,
     making it easy to catch all RAGDiff-specific errors.
+
+    Example:
+        try:
+            ragdiff.execute_run(...)
+        except RagDiffError as e:
+            print(f"RAGDiff error: {e}")
     """
 
     pass
 
 
-class ConfigurationError(RagDiffError):
-    """Invalid configuration detected.
+class ConfigError(RagDiffError):
+    """Configuration-related errors.
 
     Raised when:
-    - Required configuration fields are missing
-    - Configuration values are invalid (wrong type, out of range, etc.)
-    - Environment variables required by config are missing
-    - Config file cannot be parsed
+    - Config files are missing or cannot be read
+    - YAML syntax is invalid
+    - Required fields are missing
+    - Field values are invalid
+    - Environment variables are missing
+    - Domain/system/query-set names are invalid
 
     Examples:
-        - Missing required field: "config.tools.vectara.corpus_id is required"
-        - Invalid value: "top_k must be positive integer, got -5"
-        - Missing env var: "VECTARA_API_KEY environment variable not set"
+        - "Domain 'tafsir' not found at domains/tafsir/domain.yaml"
+        - "Missing required field: evaluator.model in domain.yaml"
+        - "Environment variable VECTARA_API_KEY not set"
+        - "Invalid domain name 'my/domain': cannot contain slashes"
+        - "Query set exceeds 1000 query limit (got 1500)"
     """
 
     pass
 
 
-class AdapterError(RagDiffError):
-    """Error from RAG system adapter.
+class RunError(RagDiffError):
+    """Run execution errors.
 
     Raised when:
-    - Network request to RAG system fails
-    - Authentication/authorization fails
-    - RAG system returns an error
-    - Response cannot be parsed
-    - Timeout occurs
+    - System initialization fails
+    - System search() method raises an error
+    - Query execution times out
+    - File I/O errors during run storage
+    - Run state transitions are invalid
 
     Examples:
-        - Network error: "Connection timeout to Vectara API"
-        - Auth error: "Invalid API key for Goodmem"
-        - Parse error: "Unable to parse Agentset response: invalid JSON"
+        - "System 'vectara-mmr' initialization failed: Invalid API key"
+        - "Query timeout after 30s: What is Islamic inheritance law?"
+        - "Failed to save run to domains/tafsir/runs/2025-10-25/abc123.json"
+        - "Cannot transition run from 'completed' to 'running'"
 
-    Note: This is for errors from the RAG system itself, not configuration issues.
+    Note: Per-query errors are captured in QueryResult.error, not raised as RunError.
     """
 
     pass
 
 
-class AdapterRegistryError(RagDiffError):
-    """Error in adapter registration or discovery.
+class ComparisonError(RagDiffError):
+    """Comparison and LLM evaluation errors.
 
     Raised when:
-    - Adapter with duplicate name is registered
-    - Requested adapter not found in registry
-    - Adapter API version incompatible with registry
+    - Runs are from different domains
+    - LLM API authentication fails
+    - LLM evaluation exhausts all retries
+    - Comparison file storage fails
+    - Run loading fails during comparison
 
     Examples:
-        - Duplicate: "Adapter 'vectara' already registered"
-        - Not found: "No adapter found with name 'unknown_tool'"
-        - Version mismatch: "Adapter requires API v2.0.0, registry supports v1.0.0"
+        - "Cannot compare runs from different domains: tafsir vs legal"
+        - "LLM API authentication failed: Invalid ANTHROPIC_API_KEY"
+        - "LLM evaluation failed after 3 retries: Rate limit exceeded"
+        - "Run not found: abc123 in domain tafsir"
+
+    Note: Per-query evaluation errors are captured in EvaluationResult, not raised.
     """
 
     pass
 
 
 class ValidationError(RagDiffError):
-    """Data validation failed.
+    """Input validation errors.
 
     Raised when:
-    - Input data doesn't match expected schema
-    - Required fields are missing from data
+    - Pydantic model validation fails
+    - Data doesn't match expected schema
+    - Required fields are missing
     - Data types are incorrect
+    - Constraints are violated
 
     Examples:
-        - Schema mismatch: "RagResult missing required field 'id'"
-        - Type error: "Expected str for query, got int"
+        - "Query text cannot be empty"
+        - "Query set cannot exceed 1000 queries (got 1500)"
+        - "Timestamp must be timezone-aware (UTC)"
+        - "Domain name must be alphanumeric with hyphens/underscores only"
+
+    Note: This is typically raised by Pydantic validators.
     """
 
     pass
 
 
-class EvaluationError(RagDiffError):
-    """Error during LLM evaluation.
+# ============================================================================
+# Backward Compatibility Aliases (v1.x)
+# ============================================================================
+# These aliases allow v1.x adapters to continue working during the v2.0 migration.
+# They will be removed when v1.x code is fully deprecated.
 
-    Raised when:
-    - LLM API request fails
-    - LLM response cannot be parsed
-    - Evaluation prompt is invalid
-
-    Examples:
-        - API error: "Claude API returned 429 (rate limit)"
-        - Parse error: "Could not extract quality scores from LLM response"
-    """
-
-    pass
+AdapterError = RunError  # v1.x: Adapter-specific errors
+ConfigurationError = ConfigError  # v1.x: Configuration errors
+AdapterRegistryError = ConfigError  # v1.x: Adapter registry errors
+EvaluationError = ComparisonError  # v1.x: Evaluation errors
