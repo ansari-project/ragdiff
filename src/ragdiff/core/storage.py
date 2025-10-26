@@ -4,7 +4,6 @@ This module handles JSON serialization and persistence of Run and Comparison obj
 """
 
 import json
-from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -61,7 +60,7 @@ def save_run(run: Run, domains_dir: Path = Path("domains")) -> Path:
         return run_path
 
     except Exception as e:
-        raise RunError(f"Failed to save run {run.id}: {e}")
+        raise RunError(f"Failed to save run {run.id}: {e}") from e
 
 
 def load_run(
@@ -101,23 +100,21 @@ def load_run(
             run_path = _find_run_by_full_uuid(domain_name, run_id, domains_dir)
 
         # Read JSON file
-        with open(run_path, "r", encoding="utf-8") as f:
+        with open(run_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Deserialize with Pydantic
         return Run(**data)
 
     except ValidationError as e:
-        raise RunError(f"Invalid run data in {run_path}: {e}")
+        raise RunError(f"Invalid run data in {run_path}: {e}") from e
     except RunError:
         raise
     except Exception as e:
-        raise RunError(f"Failed to load run {run_id}: {e}")
+        raise RunError(f"Failed to load run {run_id}: {e}") from e
 
 
-def _find_run_by_full_uuid(
-    domain_name: str, run_id: UUID, domains_dir: Path
-) -> Path:
+def _find_run_by_full_uuid(domain_name: str, run_id: UUID, domains_dir: Path) -> Path:
     """Find a run file by searching all date directories."""
     from .paths import get_domain_dir
 
@@ -161,9 +158,7 @@ def save_comparison(
     """
     try:
         # Ensure directory exists
-        ensure_comparisons_dir(
-            comparison.domain, comparison.created_at, domains_dir
-        )
+        ensure_comparisons_dir(comparison.domain, comparison.created_at, domains_dir)
 
         # Get file path
         comparison_path = get_comparison_path(
@@ -181,7 +176,7 @@ def save_comparison(
         return comparison_path
 
     except Exception as e:
-        raise ComparisonError(f"Failed to save comparison {comparison.id}: {e}")
+        raise ComparisonError(f"Failed to save comparison {comparison.id}: {e}") from e
 
 
 def load_comparison(
@@ -222,18 +217,20 @@ def load_comparison(
             )
 
         # Read JSON file
-        with open(comparison_path, "r", encoding="utf-8") as f:
+        with open(comparison_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Deserialize with Pydantic
         return Comparison(**data)
 
     except ValidationError as e:
-        raise ComparisonError(f"Invalid comparison data in {comparison_path}: {e}")
+        raise ComparisonError(
+            f"Invalid comparison data in {comparison_path}: {e}"
+        ) from e
     except ComparisonError:
         raise
     except Exception as e:
-        raise ComparisonError(f"Failed to load comparison {comparison_id}: {e}")
+        raise ComparisonError(f"Failed to load comparison {comparison_id}: {e}") from e
 
 
 def _find_comparison_by_prefix(
@@ -297,7 +294,7 @@ def _find_comparison_by_full_uuid(
 def list_runs(
     domain_name: str,
     limit: int | None = None,
-    system: str | None = None,
+    provider: str | None = None,
     query_set: str | None = None,
     domains_dir: Path = Path("domains"),
 ) -> list[Run]:
@@ -306,7 +303,7 @@ def list_runs(
     Args:
         domain_name: Name of the domain
         limit: Maximum number of runs to return (most recent first)
-        system: Filter by system name
+        provider: Filter by provider name
         query_set: Filter by query set name
         domains_dir: Root directory containing all domains
 
@@ -315,7 +312,7 @@ def list_runs(
 
     Example:
         >>> runs = list_runs("tafsir", limit=10)
-        >>> runs = list_runs("tafsir", system="vectara-default")
+        >>> runs = list_runs("tafsir", provider="vectara-default")
         >>> runs = list_runs("tafsir", query_set="test-queries")
     """
     from .paths import get_domain_dir
@@ -338,11 +335,11 @@ def list_runs(
     runs = []
     for run_file in run_files:
         try:
-            with open(run_file, "r", encoding="utf-8") as f:
+            with open(run_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Apply filters without loading full Run object
-            if system and data.get("system") != system:
+            if provider and data.get("provider") != provider:
                 continue
             if query_set and data.get("query_set") != query_set:
                 continue
@@ -400,7 +397,7 @@ def list_comparisons(
     comparisons = []
     for comparison_file in comparison_files:
         try:
-            with open(comparison_file, "r", encoding="utf-8") as f:
+            with open(comparison_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             comparison = Comparison(**data)

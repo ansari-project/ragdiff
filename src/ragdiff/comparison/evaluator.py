@@ -220,9 +220,7 @@ def _evaluate_all_queries(
         run_results = {}
         for run in runs:
             # Find matching result for this query
-            matching_results = [
-                r for r in run.results if r.query == query.text
-            ]
+            matching_results = [r for r in run.results if r.query == query.text]
             if matching_results:
                 run_results[run.system] = matching_results[0].retrieved
 
@@ -303,8 +301,8 @@ def _format_evaluation_prompt(
     """
     # Build results section
     results_text = ""
-    for system_name, chunks in run_results.items():
-        results_text += f"\n\n## System: {system_name}\n"
+    for provider_name, chunks in run_results.items():
+        results_text += f"\n\n## System: {provider_name}\n"
         if chunks:
             for i, chunk in enumerate(chunks, 1):
                 score_text = f" (score: {chunk.score:.3f})" if chunk.score else ""
@@ -399,7 +397,7 @@ def _call_llm_with_retry(
         except Exception as e:
             if attempt < max_retries:
                 # Exponential backoff: 2s, 4s, 8s
-                wait_time = 2 ** attempt
+                wait_time = 2**attempt
                 logger.warning(
                     f"LLM call failed (attempt {attempt+1}/{max_retries+1}): {e}. "
                     f"Retrying in {wait_time}s..."

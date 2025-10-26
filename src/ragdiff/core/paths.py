@@ -31,7 +31,7 @@ def get_domain_dir(domain_name: str, domains_dir: Path = Path("domains")) -> Pat
     return domains_dir / domain_name
 
 
-def get_systems_dir(domain_name: str, domains_dir: Path = Path("domains")) -> Path:
+def get_providers_dir(domain_name: str, domains_dir: Path = Path("domains")) -> Path:
     """Get the systems directory for a domain.
 
     Args:
@@ -42,10 +42,10 @@ def get_systems_dir(domain_name: str, domains_dir: Path = Path("domains")) -> Pa
         Path to systems directory
 
     Example:
-        >>> get_systems_dir("tafsir")
+        >>> get_providers_dir("tafsir")
         PosixPath('domains/tafsir/systems')
     """
-    return domains_dir / domain_name / "systems"
+    return domains_dir / domain_name / "providers"
 
 
 def get_query_sets_dir(domain_name: str, domains_dir: Path = Path("domains")) -> Path:
@@ -194,17 +194,25 @@ def ensure_domain_structure(
     """
     try:
         domain_dir = get_domain_dir(domain_name, domains_dir)
-        systems_dir = get_systems_dir(domain_name, domains_dir)
+        systems_dir = get_providers_dir(domain_name, domains_dir)
         query_sets_dir = get_query_sets_dir(domain_name, domains_dir)
         runs_dir = domain_dir / "runs"
         comparisons_dir = domain_dir / "comparisons"
 
-        for directory in [domain_dir, systems_dir, query_sets_dir, runs_dir, comparisons_dir]:
+        for directory in [
+            domain_dir,
+            systems_dir,
+            query_sets_dir,
+            runs_dir,
+            comparisons_dir,
+        ]:
             directory.mkdir(parents=True, exist_ok=True)
             logger.debug(f"Ensured directory exists: {directory}")
 
     except Exception as e:
-        raise ConfigError(f"Failed to create domain structure for '{domain_name}': {e}")
+        raise ConfigError(
+            f"Failed to create domain structure for '{domain_name}': {e}"
+        ) from e
 
 
 def ensure_runs_dir(
@@ -233,7 +241,7 @@ def ensure_runs_dir(
         logger.debug(f"Ensured runs directory exists: {runs_dir}")
         return runs_dir
     except Exception as e:
-        raise RunError(f"Failed to create runs directory: {e}")
+        raise RunError(f"Failed to create runs directory: {e}") from e
 
 
 def ensure_comparisons_dir(
@@ -262,7 +270,7 @@ def ensure_comparisons_dir(
         logger.debug(f"Ensured comparisons directory exists: {comparisons_dir}")
         return comparisons_dir
     except Exception as e:
-        raise RunError(f"Failed to create comparisons directory: {e}")
+        raise RunError(f"Failed to create comparisons directory: {e}") from e
 
 
 def find_run_by_prefix(
@@ -326,14 +334,12 @@ def list_systems(domain_name: str, domains_dir: Path = Path("domains")) -> list[
         >>> list_systems("tafsir")
         ['vectara-default', 'vectara-mmr', 'agentset']
     """
-    systems_dir = get_systems_dir(domain_name, domains_dir)
+    systems_dir = get_providers_dir(domain_name, domains_dir)
 
     if not systems_dir.exists():
         return []
 
-    return sorted(
-        [f.stem for f in systems_dir.glob("*.yaml") if f.is_file()]
-    )
+    return sorted([f.stem for f in systems_dir.glob("*.yaml") if f.is_file()])
 
 
 def list_query_sets(domain_name: str, domains_dir: Path = Path("domains")) -> list[str]:

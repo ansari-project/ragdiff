@@ -1,14 +1,14 @@
-"""System abstract base class for RAGDiff v2.0.
+"""Provider abstract base class for RAGDiff v2.0.
 
-A System is a RAG tool (like Vectara, MongoDB, Agentset) configured with
-specific settings. Systems implement a simple interface: search(query, top_k).
+A Provider is a RAG service/platform (like Vectara, MongoDB, Agentset) configured
+with specific settings. Providers implement a simple interface: search(query, top_k).
 
 Example:
-    >>> system = VectaraSystem(config={
+    >>> provider = VectaraProvider(config={
     ...     "api_key": "...",
     ...     "corpus_id": 123,
     ... })
-    >>> chunks = system.search("What is Islamic law?", top_k=5)
+    >>> chunks = provider.search("What is Islamic law?", top_k=5)
     >>> for chunk in chunks:
     ...     print(f"Score: {chunk.score}, Content: {chunk.content[:100]}")
 """
@@ -18,25 +18,25 @@ from abc import ABC, abstractmethod
 from ..core.models_v2 import RetrievedChunk
 
 
-class System(ABC):
-    """Abstract base class for all RAG systems.
+class Provider(ABC):
+    """Abstract base class for all RAG providers.
 
-    A System wraps a RAG tool (Vectara, MongoDB, Agentset, etc.) with specific
-    configuration. All systems must implement the search() method.
+    A Provider wraps a RAG service/platform (Vectara, MongoDB, Agentset, etc.) with
+    specific configuration. All providers must implement the search() method.
 
-    Systems are instantiated from SystemConfig objects and registered in the
+    Providers are instantiated from ProviderConfig objects and registered in the
     TOOL_REGISTRY for discovery.
 
     Thread Safety:
-        Systems must be thread-safe for parallel query execution. If your
+        Providers must be thread-safe for parallel query execution. If your
         underlying client is not thread-safe, use locks or create per-query
         clients.
 
     Attributes:
-        config: Dictionary of tool-specific configuration (API keys, endpoints, etc.)
+        config: Dictionary of provider-specific configuration (API keys, endpoints, etc.)
 
     Example:
-        class MySystem(System):
+        class MyProvider(Provider):
             def __init__(self, config: dict):
                 self.config = config
                 self.client = MyClient(api_key=config["api_key"])
@@ -54,10 +54,10 @@ class System(ABC):
     """
 
     def __init__(self, config: dict):
-        """Initialize the system with configuration.
+        """Initialize the provider with configuration.
 
         Args:
-            config: Tool-specific configuration dictionary (API keys, endpoints, etc.)
+            config: Provider-specific configuration dictionary (API keys, endpoints, etc.)
 
         Raises:
             ConfigError: If required configuration is missing or invalid
@@ -83,7 +83,7 @@ class System(ABC):
             RunError: If search fails (API error, timeout, network issue, etc.)
 
         Example:
-            >>> chunks = system.search("What is Islamic law?", top_k=3)
+            >>> chunks = provider.search("What is Islamic law?", top_k=3)
             >>> chunks[0].content
             'Islamic law, also known as Sharia...'
             >>> chunks[0].score
@@ -94,5 +94,5 @@ class System(ABC):
         pass
 
     def __repr__(self) -> str:
-        """String representation of the system."""
+        """String representation of the provider."""
         return f"{self.__class__.__name__}()"

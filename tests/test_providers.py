@@ -10,25 +10,24 @@ Tests cover:
 import pytest
 
 from ragdiff.core.errors import ConfigError, RunError
-from ragdiff.core.models_v2 import RetrievedChunk, SystemConfig
-from ragdiff.systems import (
-    System,
-    create_system,
+from ragdiff.core.models_v2 import ProviderConfig, RetrievedChunk
+from ragdiff.providers import (
+    Provider,
+    create_provider,
     get_tool,
     is_tool_registered,
     list_tools,
     register_tool,
 )
-from ragdiff.systems.registry import TOOL_REGISTRY
-
+from ragdiff.providers.registry import TOOL_REGISTRY
 
 # ============================================================================
 # Test Fixtures
 # ============================================================================
 
 
-class MockSystem(System):
-    """Mock system for testing."""
+class MockProvider(Provider):
+    """Mock provider for testing."""
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         """Mock search that returns dummy chunks."""
@@ -36,14 +35,14 @@ class MockSystem(System):
             RetrievedChunk(
                 content=f"Mock result {i} for: {query}",
                 score=1.0 - (i * 0.1),
-                metadata={"index": i}
+                metadata={"index": i},
             )
             for i in range(min(top_k, 3))
         ]
 
 
-class ErrorSystem(System):
-    """System that always raises errors for testing."""
+class ErrorProvider(Provider):
+    """Provider that always raises errors for testing."""
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         """Always raises an error."""
@@ -61,29 +60,30 @@ def clean_registry():
 
 
 # ============================================================================
-# System ABC Tests
+# Provider ABC Tests
 # ============================================================================
 
 
-class TestSystemABC:
+class TestProviderABC:
     """Tests for System abstract base class."""
 
     def test_system_abc_cannot_instantiate(self):
-        """Test that System ABC cannot be instantiated directly."""
+        """Test that Provider ABC cannot be instantiated directly."""
         with pytest.raises(TypeError, match="Can't instantiate abstract class"):
-            System(config={})
+            Provider(config={})
 
     def test_system_requires_search_method(self):
-        """Test that System subclasses must implement search()."""
-        class IncompleteSystem(System):
+        """Test that Provider subclasses must implement search()."""
+
+        class IncompleteProvider(Provider):
             pass
 
         with pytest.raises(TypeError, match="Can't instantiate abstract class"):
-            IncompleteSystem(config={})
+            IncompleteProvider(config={})
 
     def test_mock_system_works(self):
-        """Test that a valid System implementation works."""
-        system = MockSystem(config={"test": "config"})
+        """Test that a valid Provider implementation works."""
+        system = MockProvider(config={"test": "config"})
         assert system.config == {"test": "config"}
 
         chunks = system.search("test query", top_k=2)
@@ -93,9 +93,9 @@ class TestSystemABC:
         assert chunks[1].score == 0.9
 
     def test_system_repr(self):
-        """Test System __repr__."""
-        system = MockSystem(config={})
-        assert repr(system) == "MockSystem()"
+        """Test Provider __repr__."""
+        system = MockProvider(config={})
+        assert repr(system) == "MockProvider()"
 
 
 # ============================================================================
@@ -108,43 +108,44 @@ class TestToolRegistry:
 
     def test_register_tool(self, clean_registry):
         """Test registering a tool."""
-        register_tool("mock", MockSystem)
+        register_tool("mock", MockProvider)
         assert "mock" in TOOL_REGISTRY
-        assert TOOL_REGISTRY["mock"] == MockSystem
+        assert TOOL_REGISTRY["mock"] == MockProvider
 
     def test_register_tool_invalid_name(self, clean_registry):
         """Test registering tool with invalid name."""
         with pytest.raises(ConfigError, match="Tool name cannot be empty"):
-            register_tool("", MockSystem)
+            register_tool("", MockProvider)
 
         with pytest.raises(ConfigError, match="must be alphanumeric"):
-            register_tool("my/tool", MockSystem)
+            register_tool("my/tool", MockProvider)
 
         with pytest.raises(ConfigError, match="must be alphanumeric"):
-            register_tool("my tool", MockSystem)
+            register_tool("my tool", MockProvider)
 
     def test_register_tool_not_system_subclass(self, clean_registry):
-        """Test registering a class that doesn't inherit from System."""
-        class NotASystem:
+        """Test registering a class that doesn't inherit from Provider."""
+
+        class NotAProvider:
             pass
 
-        with pytest.raises(ConfigError, match="must inherit from System"):
-            register_tool("bad", NotASystem)
+        with pytest.raises(ConfigError, match="must inherit from Provider"):
+            register_tool("bad", NotAProvider)
 
     def test_register_tool_duplicate_warning(self, clean_registry):
         """Test registering the same tool name twice overwrites."""
-        register_tool("mock", MockSystem)
-        assert TOOL_REGISTRY["mock"] == MockSystem
+        register_tool("mock", MockProvider)
+        assert TOOL_REGISTRY["mock"] == MockProvider
 
-        register_tool("mock", ErrorSystem)  # Overwrite
-        assert TOOL_REGISTRY["mock"] == ErrorSystem  # Second registration wins
+        register_tool("mock", ErrorProvider)  # Overwrite
+        assert TOOL_REGISTRY["mock"] == ErrorProvider  # Second registration wins
 
     def test_get_tool(self, clean_registry):
         """Test getting a tool from registry."""
-        register_tool("mock", MockSystem)
+        register_tool("mock", MockProvider)
 
         tool_class = get_tool("mock")
-        assert tool_class == MockSystem
+        assert tool_class == MockProvider
 
     def test_get_tool_not_found(self, clean_registry):
         """Test getting a tool that doesn't exist."""
@@ -152,7 +153,7 @@ class TestToolRegistry:
             get_tool("missing")
 
         # Register one tool to test error message shows available tools
-        register_tool("mock", MockSystem)
+        register_tool("mock", MockProvider)
         with pytest.raises(ConfigError, match="Available tools: mock"):
             get_tool("missing")
 
@@ -160,9 +161,9 @@ class TestToolRegistry:
         """Test listing all registered tools."""
         assert list_tools() == []
 
-        register_tool("vectara", MockSystem)
-        register_tool("mongodb", MockSystem)
-        register_tool("agentset", MockSystem)
+        register_tool("vectara", MockProvider)
+        register_tool("mongodb", MockProvider)
+        register_tool("agentset", MockProvider)
 
         tools = list_tools()
         assert tools == ["agentset", "mongodb", "vectara"]  # Sorted
@@ -171,7 +172,7 @@ class TestToolRegistry:
         """Test checking if tool is registered."""
         assert not is_tool_registered("mock")
 
-        register_tool("mock", MockSystem)
+        register_tool("mock", MockProvider)
         assert is_tool_registered("mock")
 
         assert not is_tool_registered("other")
@@ -185,34 +186,29 @@ class TestToolRegistry:
 class TestToolFactory:
     """Tests for create_system factory."""
 
-    def test_create_system_success(self, clean_registry):
+    def test_create_provider_success(self, clean_registry):
         """Test creating a system from config."""
-        register_tool("mock", MockSystem)
+        register_tool("mock", MockProvider)
 
-        config = SystemConfig(
-            name="test-system",
-            tool="mock",
-            config={"api_key": "test123"}
+        config = ProviderConfig(
+            name="test-system", tool="mock", config={"api_key": "test123"}
         )
 
-        system = create_system(config)
-        assert isinstance(system, MockSystem)
+        system = create_provider(config)
+        assert isinstance(system, MockProvider)
         assert system.config == {"api_key": "test123"}
 
-    def test_create_system_tool_not_found(self, clean_registry):
+    def test_create_provider_tool_not_found(self, clean_registry):
         """Test creating system with unknown tool."""
-        config = SystemConfig(
-            name="test-system",
-            tool="missing",
-            config={}
-        )
+        config = ProviderConfig(name="test-system", tool="missing", config={})
 
         with pytest.raises(ConfigError, match="Failed to create system"):
-            create_system(config)
+            create_provider(config)
 
-    def test_create_system_initialization_error(self, clean_registry):
+    def test_create_provider_initialization_error(self, clean_registry):
         """Test handling system initialization errors."""
-        class BadSystem(System):
+
+        class BadSystem(Provider):
             def __init__(self, config: dict):
                 raise ValueError("Bad config!")
 
@@ -221,14 +217,10 @@ class TestToolFactory:
 
         register_tool("bad", BadSystem)
 
-        config = SystemConfig(
-            name="bad-system",
-            tool="bad",
-            config={}
-        )
+        config = ProviderConfig(name="bad-system", tool="bad", config={})
 
         with pytest.raises(RunError, match="Failed to initialize system"):
-            create_system(config)
+            create_provider(config)
 
 
 # ============================================================================
@@ -236,8 +228,8 @@ class TestToolFactory:
 # ============================================================================
 
 
-class TestVectaraSystem:
-    """Tests for VectaraSystem."""
+class TestVectaraProvider:
+    """Tests for VectaraProvider."""
 
     def test_vectara_registered(self):
         """Test that Vectara tool is registered."""
@@ -246,51 +238,47 @@ class TestVectaraSystem:
     def test_vectara_missing_api_key(self):
         """Test Vectara requires api_key."""
         with pytest.raises(ConfigError, match="missing required field: api_key"):
-            config = SystemConfig(
-                name="vectara-test",
-                tool="vectara",
-                config={"corpus_id": "test"}
+            config = ProviderConfig(
+                name="vectara-test", tool="vectara", config={"corpus_id": "test"}
             )
-            create_system(config)
+            create_provider(config)
 
     def test_vectara_missing_corpus_id(self):
         """Test Vectara requires corpus_id."""
         with pytest.raises(ConfigError, match="missing required field: corpus_id"):
-            config = SystemConfig(
-                name="vectara-test",
-                tool="vectara",
-                config={"api_key": "test"}
+            config = ProviderConfig(
+                name="vectara-test", tool="vectara", config={"api_key": "test"}
             )
-            create_system(config)
+            create_provider(config)
 
     def test_vectara_initialization_success(self):
         """Test Vectara system initializes successfully."""
-        config = SystemConfig(
+        config = ProviderConfig(
             name="vectara-test",
             tool="vectara",
             config={
                 "api_key": "vsk_test123",
                 "corpus_id": "test-corpus",
                 "base_url": "https://api.vectara.io",
-                "timeout": 30
-            }
+                "timeout": 30,
+            },
         )
 
-        system = create_system(config)
+        system = create_provider(config)
         assert system.api_key == "vsk_test123"
         assert system.corpus_id == "test-corpus"
         assert system.timeout == 30
 
     def test_vectara_repr(self):
         """Test Vectara __repr__."""
-        config = SystemConfig(
+        config = ProviderConfig(
             name="vectara-test",
             tool="vectara",
-            config={"api_key": "test", "corpus_id": "my-corpus"}
+            config={"api_key": "test", "corpus_id": "my-corpus"},
         )
 
-        system = create_system(config)
-        assert repr(system) == "VectaraSystem(corpus_id='my-corpus')"
+        system = create_provider(config)
+        assert repr(system) == "VectaraProvider(corpus_id='my-corpus')"
 
 
 # ============================================================================
@@ -298,8 +286,8 @@ class TestVectaraSystem:
 # ============================================================================
 
 
-class TestMongoDBSystem:
-    """Tests for MongoDBSystem."""
+class TestMongoDBProvider:
+    """Tests for MongoDBProvider."""
 
     def test_mongodb_registered(self):
         """Test that MongoDB tool is registered."""
@@ -309,30 +297,26 @@ class TestMongoDBSystem:
         """Test MongoDB raises error if dependencies not installed."""
         # This test assumes pymongo/sentence-transformers may not be installed
         # If they are installed, the error should be about missing config instead
-        config = SystemConfig(
-            name="mongodb-test",
-            tool="mongodb",
-            config={}
-        )
+        config = ProviderConfig(name="mongodb-test", tool="mongodb", config={})
 
         with pytest.raises(ConfigError):
-            create_system(config)
+            create_provider(config)
 
     def test_mongodb_missing_required_config(self):
         """Test MongoDB requires specific config fields."""
         # Test missing connection_uri
-        config = SystemConfig(
+        config = ProviderConfig(
             name="mongodb-test",
             tool="mongodb",
             config={
                 "database": "test",
                 "collection": "docs",
-                "index_name": "vector_idx"
-            }
+                "index_name": "vector_idx",
+            },
         )
 
         with pytest.raises(ConfigError):
-            create_system(config)
+            create_provider(config)
 
 
 # ============================================================================
@@ -340,8 +324,8 @@ class TestMongoDBSystem:
 # ============================================================================
 
 
-class TestAgentsetSystem:
-    """Tests for AgentsetSystem."""
+class TestAgentsetProvider:
+    """Tests for AgentsetProvider."""
 
     def test_agentset_registered(self):
         """Test that Agentset tool is registered."""
@@ -350,22 +334,18 @@ class TestAgentsetSystem:
     def test_agentset_missing_api_token(self):
         """Test Agentset requires api_token."""
         with pytest.raises(ConfigError, match="missing required field: api_token"):
-            config = SystemConfig(
-                name="agentset-test",
-                tool="agentset",
-                config={"namespace_id": "ns_123"}
+            config = ProviderConfig(
+                name="agentset-test", tool="agentset", config={"namespace_id": "ns_123"}
             )
-            create_system(config)
+            create_provider(config)
 
     def test_agentset_missing_namespace_id(self):
         """Test Agentset requires namespace_id."""
         with pytest.raises(ConfigError, match="missing required field: namespace_id"):
-            config = SystemConfig(
-                name="agentset-test",
-                tool="agentset",
-                config={"api_token": "token_123"}
+            config = ProviderConfig(
+                name="agentset-test", tool="agentset", config={"api_token": "token_123"}
             )
-            create_system(config)
+            create_provider(config)
 
     def test_agentset_initialization_success(self):
         """Test Agentset system initializes successfully.
@@ -374,17 +354,17 @@ class TestAgentsetSystem:
         so we can create a system with any credentials.
         Validation happens when search() is called.
         """
-        config = SystemConfig(
+        config = ProviderConfig(
             name="agentset-test",
             tool="agentset",
             config={
                 "api_token": "test_token",
                 "namespace_id": "test_namespace",
-                "rerank": False
-            }
+                "rerank": False,
+            },
         )
 
-        system = create_system(config)
+        system = create_provider(config)
         assert system.api_token == "test_token"
         assert system.namespace_id == "test_namespace"
         assert system.rerank is False
@@ -395,21 +375,19 @@ class TestAgentsetSystem:
 # ============================================================================
 
 
-class TestSystemIntegration:
+class TestProviderIntegration:
     """Integration tests for system workflow."""
 
     def test_full_workflow_with_mock_system(self, clean_registry):
         """Test complete workflow: register → create → search."""
         # Register tool
-        register_tool("mock", MockSystem)
+        register_tool("mock", MockProvider)
 
         # Create system from config
-        config = SystemConfig(
-            name="mock-system",
-            tool="mock",
-            config={"setting": "value"}
+        config = ProviderConfig(
+            name="mock-system", tool="mock", config={"setting": "value"}
         )
-        system = create_system(config)
+        system = create_provider(config)
 
         # Use system
         chunks = system.search("test query", top_k=3)

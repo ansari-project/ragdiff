@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from .env_vars import check_required_vars, substitute_env_vars
 from .errors import ConfigError
 from .logging import get_logger
-from .models_v2 import Domain, Query, QuerySet, SystemConfig
+from .models_v2 import Domain, ProviderConfig, Query, QuerySet
 
 logger = get_logger(__name__)
 
@@ -32,7 +32,7 @@ def load_yaml(path: Path) -> dict[str, Any]:
         ConfigError: If file cannot be read or YAML is invalid
     """
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
             if not isinstance(data, dict):
                 raise ConfigError(
@@ -40,11 +40,11 @@ def load_yaml(path: Path) -> dict[str, Any]:
                 )
             return data
     except FileNotFoundError:
-        raise ConfigError(f"Configuration file not found: {path}")
+        raise ConfigError(f"Configuration file not found: {path}") from None
     except yaml.YAMLError as e:
-        raise ConfigError(f"Invalid YAML syntax in {path}: {e}")
+        raise ConfigError(f"Invalid YAML syntax in {path}: {e}") from e
     except Exception as e:
-        raise ConfigError(f"Failed to read {path}: {e}")
+        raise ConfigError(f"Failed to read {path}: {e}") from e
 
 
 def load_domain(domain_name: str, domains_dir: Path = Path("domains")) -> Domain:
@@ -94,37 +94,37 @@ def load_domain(domain_name: str, domains_dir: Path = Path("domains")) -> Domain
         return Domain(**resolved_data)
 
     except ValidationError as e:
-        raise ConfigError(f"Invalid domain configuration in {domain_path}: {e}")
+        raise ConfigError(f"Invalid domain configuration in {domain_path}: {e}") from e
 
 
-def load_system(
-    domain_name: str, system_name: str, domains_dir: Path = Path("domains")
-) -> SystemConfig:
+def load_provider(
+    domain_name: str, provider_name: str, domains_dir: Path = Path("domains")
+) -> ProviderConfig:
     """Load system configuration from domains/<domain>/systems/<name>.yaml.
 
     Args:
         domain_name: Name of the domain
-        system_name: Name of the system (e.g., "vectara-default")
+        provider_name: Name of the system (e.g., "vectara-default")
         domains_dir: Root directory containing all domains
 
     Returns:
-        Validated SystemConfig model
+        Validated ProviderConfig model
 
     Raises:
-        ConfigError: If system file not found, invalid, or missing required fields
+        ConfigError: If provider file not found, invalid, or missing required fields
 
     Example:
-        >>> system = load_system("tafsir", "vectara-default")
+        >>> system = load_provider("tafsir", "vectara-default")
         >>> print(system.tool)
         'vectara'
         >>> print(system.config['top_k'])
         5
     """
-    system_path = domains_dir / domain_name / "systems" / f"{system_name}.yaml"
+    system_path = domains_dir / domain_name / "providers" / f"{provider_name}.yaml"
 
     if not system_path.exists():
         raise ConfigError(
-            f"System '{system_name}' not found at {system_path}. "
+            f"System '{provider_name}' not found at {system_path}. "
             f"Create the system configuration file."
         )
 
@@ -135,7 +135,7 @@ def load_system(
 
         # Add system name if not present
         if "name" not in raw_data:
-            raw_data["name"] = system_name
+            raw_data["name"] = provider_name
 
         # Validate all environment variables are set
         check_required_vars(raw_data)
@@ -144,40 +144,40 @@ def load_system(
         resolved_data = substitute_env_vars(raw_data, resolve_secrets=True)
 
         # Validate with Pydantic
-        return SystemConfig(**resolved_data)
+        return ProviderConfig(**resolved_data)
 
     except ValidationError as e:
-        raise ConfigError(f"Invalid system configuration in {system_path}: {e}")
+        raise ConfigError(f"Invalid system configuration in {system_path}: {e}") from e
 
 
-def load_system_for_snapshot(
-    domain_name: str, system_name: str, domains_dir: Path = Path("domains")
-) -> SystemConfig:
-    """Load system configuration WITHOUT resolving secrets (for snapshots).
+def load_provider_for_snapshot(
+    domain_name: str, provider_name: str, domains_dir: Path = Path("domains")
+) -> ProviderConfig:
+    """Load provider configuration WITHOUT resolving secrets (for snapshots).
 
     This is used when creating Run snapshots. It preserves ${VAR_NAME} placeholders
     so that runs can be shared without leaking credentials.
 
     Args:
         domain_name: Name of the domain
-        system_name: Name of the system
+        provider_name: Name of the provider
         domains_dir: Root directory containing all domains
 
     Returns:
-        SystemConfig with unresolved ${VAR_NAME} placeholders
+        ProviderConfig with unresolved ${VAR_NAME} placeholders
 
     Raises:
-        ConfigError: If system file not found or invalid
+        ConfigError: If provider file not found or invalid
 
     Example:
-        >>> system = load_system_for_snapshot("tafsir", "vectara-default")
-        >>> print(system.config['api_key'])
+        >>> provider = load_provider_for_snapshot("tafsir", "vectara-default")
+        >>> print(provider.config['api_key'])
         '${VECTARA_API_KEY}'  # Placeholder preserved!
     """
-    system_path = domains_dir / domain_name / "systems" / f"{system_name}.yaml"
+    system_path = domains_dir / domain_name / "providers" / f"{provider_name}.yaml"
 
     if not system_path.exists():
-        raise ConfigError(f"System '{system_name}' not found at {system_path}")
+        raise ConfigError(f"System '{provider_name}' not found at {system_path}")
 
     logger.debug(f"Loading system (snapshot mode) from {system_path}")
 
@@ -186,16 +186,16 @@ def load_system_for_snapshot(
 
         # Add system name if not present
         if "name" not in raw_data:
-            raw_data["name"] = system_name
+            raw_data["name"] = provider_name
 
         # DO NOT resolve secrets - keep ${VAR_NAME} placeholders
         unresolved_data = substitute_env_vars(raw_data, resolve_secrets=False)
 
         # Validate with Pydantic
-        return SystemConfig(**unresolved_data)
+        return ProviderConfig(**unresolved_data)
 
     except ValidationError as e:
-        raise ConfigError(f"Invalid system configuration in {system_path}: {e}")
+        raise ConfigError(f"Invalid system configuration in {system_path}: {e}") from e
 
 
 def load_query_set(
@@ -247,7 +247,7 @@ def _load_txt_query_set(domain_name: str, query_set_name: str, path: Path) -> Qu
     logger.debug(f"Loading query set from {path}")
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
 
         # Parse queries (skip empty lines and comments)
@@ -262,7 +262,7 @@ def _load_txt_query_set(domain_name: str, query_set_name: str, path: Path) -> Qu
             except ValidationError as e:
                 raise ConfigError(
                     f"Invalid query at line {line_num} in {path}: {e}"
-                )
+                ) from e
 
         if not queries:
             raise ConfigError(f"Query set is empty: {path}")
@@ -273,7 +273,7 @@ def _load_txt_query_set(domain_name: str, query_set_name: str, path: Path) -> Qu
     except ConfigError:
         raise
     except Exception as e:
-        raise ConfigError(f"Failed to read query set {path}: {e}")
+        raise ConfigError(f"Failed to read query set {path}: {e}") from e
 
 
 def _load_jsonl_query_set(
@@ -283,7 +283,7 @@ def _load_jsonl_query_set(
     logger.debug(f"Loading query set from {path}")
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
 
         # Parse JSONL
@@ -296,7 +296,9 @@ def _load_jsonl_query_set(
             try:
                 data = json.loads(line)
                 if not isinstance(data, dict):
-                    raise ConfigError(f"Expected JSON object, got {type(data).__name__}")
+                    raise ConfigError(
+                        f"Expected JSON object, got {type(data).__name__}"
+                    )
 
                 # Support both 'query' and 'text' keys
                 query_text = data.get("query") or data.get("text")
@@ -312,9 +314,13 @@ def _load_jsonl_query_set(
                 )
 
             except json.JSONDecodeError as e:
-                raise ConfigError(f"Invalid JSON at line {line_num} in {path}: {e}")
+                raise ConfigError(
+                    f"Invalid JSON at line {line_num} in {path}: {e}"
+                ) from e
             except ValidationError as e:
-                raise ConfigError(f"Invalid query at line {line_num} in {path}: {e}")
+                raise ConfigError(
+                    f"Invalid query at line {line_num} in {path}: {e}"
+                ) from e
 
         if not queries:
             raise ConfigError(f"Query set is empty: {path}")
@@ -325,4 +331,4 @@ def _load_jsonl_query_set(
     except ConfigError:
         raise
     except Exception as e:
-        raise ConfigError(f"Failed to read query set {path}: {e}")
+        raise ConfigError(f"Failed to read query set {path}: {e}") from e

@@ -4,16 +4,16 @@ This file contains project-specific instructions for Claude Code when working on
 
 ## Project Overview
 
-RAGDiff v2.0 is a domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support. It provides a CLI tool and Python library API for systematic RAG system comparison.
+RAGDiff v2.0 is a domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support. It provides a CLI tool and Python library API for systematic RAG provider comparison.
 
 ## What's New in v2.0
 
 RAGDiff v2.0 introduces a **domain-based architecture** that organizes RAG comparisons around problem domains:
 
 - **Domains**: Separate workspaces for different problem areas (e.g., tafsir, legal, medical)
-- **Systems**: RAG system configurations (e.g., vectara-default, mongodb-local)
+- **Providers**: RAG provider configurations (e.g., vectara-default, mongodb-local)
 - **Query Sets**: Collections of test queries for evaluation
-- **Runs**: Executions of query sets against systems
+- **Runs**: Executions of query sets against providers
 - **Comparisons**: LLM-based evaluations of multiple runs
 
 This architecture replaces the v1.x adapter-based approach with a more structured, reproducible workflow.
@@ -39,11 +39,11 @@ RAGDiff v2.0 has two main commands:
 
 #### 1. `run` - Execute Query Sets
 
-Execute a query set against a system and save results:
+Execute a query set against a provider and save results:
 
 ```bash
 # Basic run
-uv run ragdiff run <domain> <system> <query-set>
+uv run ragdiff run <domain> <provider> <query-set>
 
 # Examples
 uv run ragdiff run tafsir vectara-default test-queries
@@ -58,9 +58,9 @@ uv run ragdiff run tafsir vectara-default test-queries \
 ```
 
 **What it does:**
-- Loads system configuration from `domains/<domain>/systems/<system>.yaml`
+- Loads provider configuration from `domains/<domain>/providers/<provider>.yaml`
 - Loads queries from `domains/<domain>/query-sets/<query-set>.txt`
-- Executes all queries against the system
+- Executes all queries against the provider
 - Saves run results to `domains/<domain>/runs/<run-id>.json`
 - Shows progress bar and summary table
 
@@ -92,7 +92,7 @@ uv run ragdiff compare tafsir abc123 def456 \
 
 **What it does:**
 - Loads runs from `domains/<domain>/runs/`
-- Uses LLM (via LiteLLM) to evaluate which system performed better
+- Uses LLM (via LiteLLM) to evaluate which provider performed better
 - Saves comparison to `domains/<domain>/comparisons/<comparison-id>.json`
 - Outputs results in specified format
 
@@ -102,7 +102,7 @@ uv run ragdiff compare tafsir abc123 def456 \
 domains/
 ├── tafsir/                    # Domain: Islamic tafsir
 │   ├── domain.yaml            # Domain config (evaluator settings)
-│   ├── systems/               # System configurations
+│   ├── providers/               # Provider configurations
 │   │   ├── vectara-default.yaml
 │   │   ├── mongodb-local.yaml
 │   │   └── agentset-prod.yaml
@@ -116,7 +116,7 @@ domains/
 │       └── <comparison-id>.json
 └── legal/                     # Domain: Legal documents
     ├── domain.yaml
-    ├── systems/
+    ├── providers/
     └── query-sets/
 ```
 
@@ -135,13 +135,13 @@ ragdiff/
 │   │   ├── storage.py        # Persistence utilities
 │   │   ├── errors.py         # Custom exceptions
 │   │   └── logging.py        # Logging configuration
-│   ├── systems/              # System implementations
-│   │   ├── abc.py            # System abstract base class
-│   │   ├── registry.py       # System registration
-│   │   ├── factory.py        # System factory
-│   │   ├── vectara.py        # Vectara system
-│   │   ├── mongodb.py        # MongoDB system
-│   │   └── agentset.py       # Agentset system
+│   ├── providers/              # Provider implementations
+│   │   ├── abc.py            # Provider abstract base class
+│   │   ├── registry.py       # Provider registration
+│   │   ├── factory.py        # Provider factory
+│   │   ├── vectara.py        # Vectara provider
+│   │   ├── mongodb.py        # MongoDB provider
+│   │   └── agentset.py       # Agentset provider
 │   ├── execution/            # Run execution
 │   │   └── executor.py       # Parallel query execution
 │   ├── comparison/           # Comparison engine
@@ -149,7 +149,7 @@ ragdiff/
 │   └── display/              # Output formatting (v1.x, kept for compatibility)
 ├── tests/                    # Test suite
 │   ├── test_core_v2.py       # Core v2.0 tests
-│   ├── test_systems.py       # System tests
+│   ├── test_providers.py       # Provider tests
 │   ├── test_execution.py     # Execution engine tests
 │   └── test_cli_v2.py        # CLI tests
 ├── domains/                  # Domain workspaces
@@ -167,37 +167,37 @@ RAGDiff v2.0 organizes everything around **domains**:
    - Name and description
    - Evaluator configuration (LLM model, temperature, prompt template)
 
-2. **System** (`domains/<domain>/systems/<system>.yaml`):
+2. **Provider** (`domains/<domain>/providers/<provider>.yaml`):
    - Name, tool type (vectara, mongodb, agentset)
    - Configuration (API keys, endpoints, etc.)
 
 3. **Query Set** (`domains/<domain>/query-sets/<name>.txt`):
    - Text file with one query per line
-   - Used for consistent evaluation across systems
+   - Used for consistent evaluation across providers
 
 4. **Run** (`domains/<domain>/runs/<run-id>.json`):
-   - Results of executing a query set against a system
+   - Results of executing a query set against a provider
    - Includes all query results, errors, timing info
-   - Snapshots system config and query set for reproducibility
+   - Snapshots provider config and query set for reproducibility
 
 5. **Comparison** (`domains/<domain>/comparisons/<comparison-id>.json`):
    - LLM evaluation of multiple runs
    - Per-query winner determination
    - Quality scores and analysis
 
-### System Pattern
+### Provider Pattern
 
-All RAG systems implement the `System` abstract base class:
+All RAG providers implement the `Provider` abstract base class:
 
 ```python
-class System(ABC):
+class Provider(ABC):
     @abstractmethod
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         """Execute search and return normalized results."""
         pass
 ```
 
-New systems are automatically registered via:
+New providers are automatically registered via:
 ```python
 from .registry import register_tool
 register_tool("mongodb", MongoDBSystem)
@@ -218,7 +218,7 @@ __version__ = "2.0.0"  # Current version
 ```
 
 Follow semantic versioning:
-- MAJOR: Breaking changes to public API or system interface
+- MAJOR: Breaking changes to public API or provider interface
 - MINOR: New features, backward compatible
 - PATCH: Bug fixes
 
@@ -229,7 +229,7 @@ Follow semantic versioning:
 uv run pytest tests/
 
 # Run v2.0 tests only
-uv run pytest tests/test_core_v2.py tests/test_systems.py tests/test_execution.py tests/test_cli_v2.py
+uv run pytest tests/test_core_v2.py tests/test_providers.py tests/test_execution.py tests/test_cli_v2.py
 
 # Run with coverage
 uv run pytest tests/ --cov=src
@@ -268,7 +268,7 @@ Pre-commit hooks will automatically:
 
 ```bash
 # Create domain structure
-mkdir -p domains/my-domain/{systems,query-sets,runs,comparisons}
+mkdir -p domains/my-domain/{providers,query-sets,runs,comparisons}
 
 # Create domain.yaml
 cat > domains/my-domain/domain.yaml <<EOF
@@ -281,8 +281,8 @@ evaluator:
     Compare these RAG results...
 EOF
 
-# Create a system config
-cat > domains/my-domain/systems/vectara-test.yaml <<EOF
+# Create a provider config
+cat > domains/my-domain/providers/vectara-test.yaml <<EOF
 name: vectara-test
 tool: vectara
 config:
@@ -299,15 +299,15 @@ Query 3
 EOF
 ```
 
-### Adding a New System Implementation
+### Adding a New Provider Implementation
 
-1. Create `src/ragdiff/systems/mysystem.py`:
+1. Create `src/ragdiff/providers/myprovider.py`:
 ```python
 from ..core.models_v2 import RetrievedChunk
 from ..core.errors import ConfigError, RunError
 from .abc import System
 
-class MySystem(System):
+class MyProvider(Provider):
     def __init__(self, config: dict):
         super().__init__(config)
         # Validate config
@@ -327,22 +327,22 @@ class MySystem(System):
             for r in results
         ]
 
-# Register the system
+# Register the provider
 from .registry import register_tool
-register_tool("mysystem", MySystem)
+register_tool("myprovider", MyProvider)
 ```
 
-2. Import in `src/ragdiff/systems/__init__.py`:
+2. Import in `src/ragdiff/providers/__init__.py`:
 ```python
-from . import mysystem  # noqa: F401
+from . import myprovider  # noqa: F401
 ```
 
-3. Add tests in `tests/test_systems.py`
+3. Add tests in `tests/test_providers.py`
 
 ### Running Comparisons
 
 ```bash
-# Step 1: Run query sets against different systems
+# Step 1: Run query sets against different providers
 uv run ragdiff run tafsir vectara-default test-queries
 uv run ragdiff run tafsir mongodb-local test-queries
 uv run ragdiff run tafsir agentset-prod test-queries
@@ -406,9 +406,9 @@ uv pip install -e .
 
 **Fix**: Ensure domain directory exists at `domains/<domain>/` with `domain.yaml`
 
-### "System config not found"
+### "Provider config not found"
 
-**Fix**: Ensure system config exists at `domains/<domain>/systems/<system>.yaml`
+**Fix**: Ensure provider config exists at `domains/<domain>/providers/<provider>.yaml`
 
 ### "Query set not found"
 
@@ -432,7 +432,7 @@ This project follows the SPIDER protocol for systematic development:
 ## v2.0 Implementation Status
 
 - ✅ Phase 1: Core data models, file loading, storage (29 tests)
-- ✅ Phase 2: System interface, tool registry (29 tests)
+- ✅ Phase 2: Provider interface, tool registry (29 tests)
 - ✅ Phase 3: Run execution engine (12 tests)
 - ✅ Phase 4: Comparison engine with LiteLLM (5 tests)
 - ✅ Phase 5: CLI commands (8 tests)
@@ -444,7 +444,7 @@ This project follows the SPIDER protocol for systematic development:
 - Always use `uv run ragdiff` for CLI commands
 - v2.0 uses domain-based architecture (not adapters)
 - Source code is in `src/ragdiff/` (note the nested structure)
-- v2.0 models are in `core/models_v2.py`, systems are in `systems/`
+- v2.0 models are in `core/models_v2.py`, providers are in `providers/`
 - Tests are comprehensive - run them after any changes
 - Pre-commit hooks enforce code quality - let them do their job
 - v1.x code still exists but is not the primary interface

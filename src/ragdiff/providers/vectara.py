@@ -1,7 +1,7 @@
-"""Vectara system for RAGDiff v2.0.
+"""Vectara provider for RAGDiff v2.0.
 
 Vectara is a RAG platform that provides semantic search over document corpora.
-This system connects to Vectara's v2 API.
+This provider connects to Vectara's v2 API.
 
 Configuration:
     api_key: Vectara API key (string, required)
@@ -10,12 +10,12 @@ Configuration:
     timeout: Request timeout in seconds (int, optional, default: 60)
 
 Example:
-    >>> system = VectaraSystem(config={
+    >>> provider = VectaraProvider(config={
     ...     "api_key": "vsk_...",
     ...     "corpus_id": "my-corpus",
     ...     "timeout": 30
     ... })
-    >>> chunks = system.search("What is Islamic law?", top_k=5)
+    >>> chunks = provider.search("What is Islamic law?", top_k=5)
 """
 
 import requests
@@ -23,20 +23,20 @@ import requests
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
 from ..core.models_v2 import RetrievedChunk
-from .abc import System
+from .abc import Provider
 
 logger = get_logger(__name__)
 
 
-class VectaraSystem(System):
-    """Vectara RAG system implementation.
+class VectaraProvider(Provider):
+    """Vectara RAG provider implementation.
 
     Uses Vectara's v2 API for semantic search over document corpora.
     Supports custom corpus configuration for different knowledge domains.
     """
 
     def __init__(self, config: dict):
-        """Initialize Vectara system.
+        """Initialize Vectara provider.
 
         Args:
             config: Configuration dictionary with:
@@ -62,7 +62,7 @@ class VectaraSystem(System):
         self.base_url = config.get("base_url", "https://api.vectara.io")
         self.timeout = config.get("timeout", 60)
 
-        logger.debug(f"Initialized VectaraSystem with corpus_id={self.corpus_id}")
+        logger.debug(f"Initialized VectaraProvider with corpus_id={self.corpus_id}")
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         """Search Vectara corpus for relevant documents.
@@ -87,10 +87,7 @@ class VectaraSystem(System):
 
             request_body = {
                 "query": query,
-                "search": {
-                    "corpora": [{"corpus_key": self.corpus_id}],
-                    "limit": top_k
-                },
+                "search": {"corpora": [{"corpus_key": self.corpus_id}], "limit": top_k},
             }
 
             logger.debug(f"Vectara API request: query='{query[:50]}...', top_k={top_k}")
@@ -125,14 +122,12 @@ class VectaraSystem(System):
                     metadata["document_id"] = doc["document_id"]
 
                 # Create chunk
-                chunk = RetrievedChunk(
-                    content=text,
-                    score=score,
-                    metadata=metadata
-                )
+                chunk = RetrievedChunk(content=text, score=score, metadata=metadata)
                 chunks.append(chunk)
 
-            logger.info(f"Vectara returned {len(chunks)} chunks for query: '{query[:50]}...'")
+            logger.info(
+                f"Vectara returned {len(chunks)} chunks for query: '{query[:50]}...'"
+            )
             return chunks
 
         except requests.exceptions.Timeout as e:
@@ -142,11 +137,15 @@ class VectaraSystem(System):
         except requests.exceptions.HTTPError as e:
             logger.error(f"Vectara API HTTP error: {e}")
             if e.response.status_code == 401:
-                raise RunError("Vectara authentication failed. Check your API key.") from e
+                raise RunError(
+                    "Vectara authentication failed. Check your API key."
+                ) from e
             elif e.response.status_code == 404:
                 raise RunError(f"Vectara corpus not found: {self.corpus_id}") from e
             else:
-                raise RunError(f"Vectara API error ({e.response.status_code}): {e}") from e
+                raise RunError(
+                    f"Vectara API error ({e.response.status_code}): {e}"
+                ) from e
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Vectara API request failed: {e}")
@@ -158,10 +157,10 @@ class VectaraSystem(System):
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"VectaraSystem(corpus_id='{self.corpus_id}')"
+        return f"VectaraProvider(corpus_id='{self.corpus_id}')"
 
 
 # Register the tool
 from .registry import register_tool
 
-register_tool("vectara", VectaraSystem)
+register_tool("vectara", VectaraProvider)
