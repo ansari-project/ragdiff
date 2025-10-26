@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragdiff-squad-demo"
+version = "1.0.0"
+description = "SQuAD FAISS demo for RAGDiff - comparing distance metrics"
+requires-python = ">=3.9"
+dependencies = [
+    "datasets>=2.14.0",
+    "sentence-transformers>=2.2.0",
+    "faiss-cpu>=1.7.4",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "faiss-gpu>=1.7.4",  # For GPU acceleration
+]
+
+[tool.setuptools]
+py-modules = []  # No Python modules to install, just dependencies
