@@ -5,6 +5,7 @@ RAGDiff v2.0 uses a domain-based architecture for comparing RAG providers.
 Commands:
 - run: Execute a query set against a provider
 - compare: Compare multiple runs using LLM evaluation
+- evaluate: Evaluate a single run against reference answers (correctness evaluation)
 - generate-adapter: Generate OpenAPI adapter configuration
 """
 
@@ -24,7 +25,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from .comparison import compare_runs
+from .comparison import compare_runs, evaluate_run
 from .core.errors import ComparisonError, RunError
 from .core.logging import setup_logging
 from .execution import execute_run
@@ -363,6 +364,146 @@ def compare(
 
 
 # ============================================================================
+# Evaluate Command (Reference-Based)
+# ============================================================================
+
+
+@app.command()
+def evaluate(
+    domain_dir: Path = typer.Option(
+        ...,
+        "--domain-dir",
+        "-d",
+        help="Path to domain directory (e.g., 'examples/squad-demo/domains/squad')",
+    ),
+    run: str = typer.Option(
+        ...,
+        "--run",
+        "-r",
+        help="Run label or ID to evaluate",
+    ),
+    model: Optional[str] = typer.Option(
+        None, help="LLM model override (default: use domain config)"
+    ),
+    temperature: Optional[float] = typer.Option(
+        None, help="Temperature override (default: use domain config)"
+    ),
+    concurrency: int = typer.Option(
+        5, help="Maximum concurrent evaluations (default: 5)"
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file path (default: print to console)"
+    ),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format: table, json"
+    ),
+    quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
+):
+    """Evaluate a run against reference answers (correctness evaluation).
+
+    This command:
+    1. Loads a run with reference answers
+    2. Evaluates each result against its reference using LLM
+    3. Scores correctness, relevance, and completeness
+    4. Outputs aggregate statistics
+
+    Example:
+        $ ragdiff evaluate --domain-dir domains/squad --run faiss-small-001
+        $ ragdiff evaluate -d examples/squad-demo/domains/squad -r faiss-small-001 --format json --output eval.json
+    """
+    # Extract domain name from domain_dir path
+    domain_dir = Path(domain_dir).resolve()
+    domain = domain_dir.name
+    domains_path = domain_dir.parent
+
+    try:
+        # Show progress bar unless quiet mode
+        if not quiet:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                # Track progress
+                task = progress.add_task(f"Evaluating run: {run}", total=100)
+
+                completed_evals = 0
+                total_evals = 0
+
+                def progress_callback(current, total, successes, failures):
+                    nonlocal completed_evals, total_evals
+                    completed_evals = current
+                    total_evals = total
+                    progress.update(
+                        task,
+                        completed=current,
+                        total=total,
+                        description=f"Evaluation {current}/{total} ({successes} ok, {failures} failed)",
+                    )
+
+                # Execute evaluation
+                from .core.loaders import load_domain
+
+                evaluator_config = None
+                if model or temperature is not None:
+                    # Load domain to get default config
+                    domain_obj = load_domain(domain, domains_dir=domains_path)
+                    evaluator_config = domain_obj.evaluator
+                    if model:
+                        evaluator_config.model = model
+                    if temperature is not None:
+                        evaluator_config.temperature = temperature
+
+                result = evaluate_run(
+                    run_id=run,
+                    domain_name=domain,
+                    evaluator_config=evaluator_config,
+                    concurrency=concurrency,
+                    progress_callback=progress_callback,
+                    domains_dir=str(domains_path),
+                )
+
+                progress.update(task, completed=total_evals, total=total_evals)
+        else:
+            # Quiet mode - no progress bar
+            from .core.loaders import load_domain
+
+            evaluator_config = None
+            if model or temperature is not None:
+                domain_obj = load_domain(domain, domains_dir=domains_path)
+                evaluator_config = domain_obj.evaluator
+                if model:
+                    evaluator_config.model = model
+                if temperature is not None:
+                    evaluator_config.temperature = temperature
+
+            result = evaluate_run(
+                run_id=run,
+                domain_name=domain,
+                evaluator_config=evaluator_config,
+                concurrency=concurrency,
+                progress_callback=None,
+                domains_dir=str(domains_path),
+            )
+
+        # Display or export results based on format
+        if format == "json":
+            _output_eval_json(result, output)
+        else:  # table
+            _output_eval_table(result, output)
+
+    except ComparisonError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
+    except Exception as e:
+        console.print(f"[bold red]Unexpected error:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
+
+
+# ============================================================================
 # Generate Adapter Command
 # ============================================================================
 
@@ -625,6 +766,89 @@ def _output_markdown(comparison, output_path):
         console.print(f"[green]✓[/green] Comparison exported to {output_path}")
     else:
         console.print(markdown)
+
+
+def _output_eval_table(evaluation_result, output_path):
+    """Output evaluation results as a table."""
+    if output_path:
+        console.print(
+            "[yellow]Warning:[/yellow] Table format only supports console output"
+        )
+        console.print("[dim]Use --format json for file output[/dim]")
+
+    console.print()
+    console.print(f"[bold]Evaluation: {evaluation_result['run_label']}[/bold]")
+    console.print(f"Provider: {evaluation_result['provider']}")
+    console.print(f"Query Set: {evaluation_result['query_set']}")
+    console.print()
+
+    # Summary
+    summary = evaluation_result["summary"]
+    table = Table(title="Evaluation Summary", show_header=False)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Score", style="white")
+
+    table.add_row("Total Queries", str(summary["total_queries"]))
+    table.add_row(
+        "Successful",
+        f"[green]{summary['successful_evaluations']}[/green]",
+    )
+    table.add_row("Failed", f"[red]{summary['failed_evaluations']}[/red]")
+    table.add_row("Avg Correctness", f"{summary['avg_correctness']:.1f}/100")
+    table.add_row("Avg Relevance", f"{summary['avg_relevance']:.1f}/100")
+    table.add_row("Avg Completeness", f"{summary['avg_completeness']:.1f}/100")
+    table.add_row(
+        "Avg Overall Quality", f"[bold]{summary['avg_overall_quality']:.1f}/100[/bold]"
+    )
+
+    console.print(table)
+    console.print()
+
+    # Show sample evaluations
+    console.print("[bold]Sample Evaluations:[/bold]")
+    for i, eval_result in enumerate(evaluation_result["evaluations"][:5], 1):
+        if eval_result["status"] == "failed":
+            continue
+
+        console.print(f"\n[cyan]{i}. Query:[/cyan] {eval_result['query'][:80]}...")
+        console.print(f"   [dim]Reference:[/dim] {eval_result['reference'][:80]}...")
+
+        evaluation = eval_result["evaluation"]
+        console.print(
+            f"   [green]Correctness:[/green] {evaluation.get('correctness', 0):.0f}/100"
+        )
+        console.print(
+            f"   [green]Relevance:[/green] {evaluation.get('relevance', 0):.0f}/100"
+        )
+        console.print(
+            f"   [green]Completeness:[/green] {evaluation.get('completeness', 0):.0f}/100"
+        )
+        console.print(
+            f"   [bold green]Overall:[/bold green] {evaluation.get('overall_quality', 0):.0f}/100"
+        )
+
+        if "reasoning" in evaluation:
+            reasoning = evaluation.get("reasoning", "")[:150]
+            console.print(f"   [dim]Reasoning:[/dim] {reasoning}...")
+
+    if len(evaluation_result["evaluations"]) > 5:
+        console.print(
+            f"\n[dim]... and {len(evaluation_result['evaluations']) - 5} more[/dim]"
+        )
+
+
+def _output_eval_json(evaluation_result, output_path):
+    """Output evaluation results as JSON."""
+    import json
+
+    json_str = json.dumps(evaluation_result, indent=2, ensure_ascii=False)
+
+    if output_path:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(json_str)
+        console.print(f"[green]✓[/green] Evaluation exported to {output_path}")
+    else:
+        console.print(json_str)
 
 
 if __name__ == "__main__":
