@@ -34,11 +34,16 @@ This example compares two FAISS-based RAG systems:
 Install required dependencies:
 
 ```bash
-# Core dependencies (if not already installed)
+# Core dependencies (if not already installed from project root)
+cd /path/to/ragdiff
 uv pip install -e .
 
-# Additional dependencies for this example
-uv pip install datasets sentence-transformers faiss-cpu numpy
+# Install example dependencies
+cd examples/squad-demo
+uv pip install -e .
+
+# Optional: For GPU acceleration
+uv pip install -e ".[gpu]"
 ```
 
 ### Run Setup
@@ -134,6 +139,7 @@ You may observe:
 squad-demo/
 ├── README.md                           # This file
 ├── domain.yaml                         # Domain configuration
+├── pyproject.toml                      # Python dependencies
 ├── providers/                          # Provider configs
 │   ├── faiss-l2.yaml                   # L2 distance config
 │   └── faiss-ip.yaml                   # Inner Product config
@@ -145,7 +151,8 @@ squad-demo/
 │   ├── setup_dataset.py                # Download and prepare SQuAD
 │   ├── build_faiss_l2.py               # Build L2 index
 │   ├── build_faiss_ip.py               # Build Inner Product index
-│   └── generate_queries.py             # Generate query sets
+│   ├── generate_queries.py             # Generate query sets
+│   └── test_setup.py                   # Verify setup
 ├── data/                               # Data files (generated)
 │   ├── documents.jsonl                 # Document corpus
 │   ├── squad_raw.json                  # Raw SQuAD data
@@ -218,7 +225,8 @@ uv run ragdiff run squad-demo faiss-l2 custom-queries --domains-dir examples
 
 Install required dependencies:
 ```bash
-uv pip install datasets sentence-transformers faiss-cpu numpy
+cd examples/squad-demo
+uv pip install -e .
 ```
 
 ### "FAISS index not found"

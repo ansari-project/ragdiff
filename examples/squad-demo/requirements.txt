@@ -1,7 +1,0 @@
-# Dependencies for SQuAD FAISS demo
-# Install with: uv pip install -r requirements.txt
-
-datasets>=2.14.0          # HuggingFace datasets (for SQuAD)
-sentence-transformers>=2.2.0  # Embedding models
-faiss-cpu>=1.7.4          # FAISS for CPU (use faiss-gpu for GPU)
-numpy>=1.24.0             # Numerical operations
