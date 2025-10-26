@@ -51,9 +51,18 @@ console = Console()
 
 @app.command()
 def run(
-    domain: str = typer.Argument(..., help="Domain name (e.g., 'tafsir')"),
-    provider: str = typer.Argument(..., help="Provider name (e.g., 'vectara-default')"),
-    query_set: str = typer.Argument(..., help="Query set name (e.g., 'test-queries')"),
+    domain_dir: Path = typer.Option(
+        ...,
+        "--domain-dir",
+        "-d",
+        help="Path to domain directory (e.g., 'examples/squad-demo/domains/squad')",
+    ),
+    provider: str = typer.Option(
+        ..., "--provider", "-p", help="Provider name (e.g., 'vectara-default')"
+    ),
+    query_set: str = typer.Option(
+        ..., "--query-set", "-q", help="Query set name (e.g., 'test-queries')"
+    ),
     label: Optional[str] = typer.Option(
         None,
         "--label",
@@ -62,10 +71,7 @@ def run(
     ),
     concurrency: int = typer.Option(10, help="Maximum concurrent queries"),
     timeout: float = typer.Option(30.0, help="Timeout per query in seconds"),
-    domains_dir: Optional[Path] = typer.Option(
-        None, help="Domains directory (default: ./domains)"
-    ),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output"),
+    quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
 ):
     """Execute a query set against a provider.
 
@@ -76,10 +82,13 @@ def run(
     4. Saves the run to disk
 
     Example:
-        $ ragdiff run tafsir vectara-default test-queries
-        $ ragdiff run tafsir vectara-default test-queries --concurrency 20
+        $ ragdiff run --domain-dir domains/tafsir --provider vectara-default --query-set test-queries
+        $ ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries --concurrency 20
     """
-    domains_path = Path(domains_dir) if domains_dir else Path("domains")
+    # Extract domain name from domain_dir path
+    domain_dir = Path(domain_dir).resolve()
+    domain = domain_dir.name
+    domains_path = domain_dir.parent
 
     try:
         # Show progress bar unless quiet mode
@@ -185,7 +194,12 @@ def run(
 
 @app.command()
 def compare(
-    domain: str = typer.Argument(..., help="Domain name (e.g., 'tafsir')"),
+    domain_dir: Path = typer.Option(
+        ...,
+        "--domain-dir",
+        "-d",
+        help="Path to domain directory (e.g., 'examples/squad-demo/domains/squad')",
+    ),
     run: list[str] = typer.Option(
         None,
         "--run",
@@ -213,10 +227,7 @@ def compare(
     format: str = typer.Option(
         "table", "--format", "-f", help="Output format: table, json, markdown"
     ),
-    domains_dir: Optional[Path] = typer.Option(
-        None, help="Domains directory (default: ./domains)"
-    ),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output"),
+    quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
 ):
     """Compare multiple runs using LLM evaluation.
 
@@ -228,13 +239,16 @@ def compare(
     5. Displays or exports results
 
     Example:
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --model claude-3-5-sonnet-20241022
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --concurrency 10
-        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --format json --output comparison.json
-        $ ragdiff compare tafsir  # Uses latest run for each provider
+        $ ragdiff compare --domain-dir domains/tafsir --run vectara-001 --run mongodb-002
+        $ ragdiff compare -d examples/squad-demo/domains/squad -r faiss-small-001 -r faiss-large-001
+        $ ragdiff compare -d domains/tafsir --run vectara-001 --run mongodb-002 --model claude-3-5-sonnet-20241022
+        $ ragdiff compare -d domains/tafsir --run vectara-001 --run mongodb-002 --format json --output comparison.json
+        $ ragdiff compare -d domains/tafsir  # Uses latest run for each provider
     """
-    domains_path = Path(domains_dir) if domains_dir else Path("domains")
+    # Extract domain name from domain_dir path
+    domain_dir = Path(domain_dir).resolve()
+    domain = domain_dir.name
+    domains_path = domain_dir.parent
 
     # If no --run flags provided, find latest runs for each provider
     if not run or len(run) == 0:

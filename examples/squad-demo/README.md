@@ -79,10 +79,14 @@ Execute query sets against each provider:
 cd ../..
 
 # Run against small model
-uv run ragdiff run squad faiss-small test-queries --domains-dir examples/squad-demo/domains
+uv run ragdiff run --domain-dir examples/squad-demo/domains/squad --provider faiss-small --query-set test-queries
 
 # Run against large model
-uv run ragdiff run squad faiss-large test-queries --domains-dir examples/squad-demo/domains
+uv run ragdiff run --domain-dir examples/squad-demo/domains/squad --provider faiss-large --query-set test-queries
+
+# Short form with flags
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-large -q test-queries
 ```
 
 ### Compare Results
@@ -90,20 +94,26 @@ uv run ragdiff run squad faiss-large test-queries --domains-dir examples/squad-d
 After running queries, compare the results:
 
 ```bash
-# Compare two runs (replace with actual run IDs from output)
-uv run ragdiff compare squad <run-id-1> <run-id-2> --domains-dir examples/squad-demo/domains
+# Compare two runs (replace with actual run labels/IDs from output)
+uv run ragdiff compare --domain-dir examples/squad-demo/domains/squad --run <run-label-1> --run <run-label-2>
+
+# Short form
+uv run ragdiff compare -d examples/squad-demo/domains/squad -r <run-label-1> -r <run-label-2>
 
 # Export to JSON
-uv run ragdiff compare squad <run-id-1> <run-id-2> \
-  --domains-dir examples/squad-demo/domains \
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r <run-label-1> -r <run-label-2> \
   --format json \
   --output comparison.json
 
 # Export to Markdown report
-uv run ragdiff compare squad <run-id-1> <run-id-2> \
-  --domains-dir examples/squad-demo/domains \
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r <run-label-1> -r <run-label-2> \
   --format markdown \
   --output comparison-report.md
+
+# Auto-compare latest runs for each provider
+uv run ragdiff compare -d examples/squad-demo/domains/squad
 ```
 
 ## Expected Results
@@ -175,14 +185,14 @@ If you want to rebuild the indices with different models:
 4. **Run queries against both providers:**
    ```bash
    cd ../..  # Back to project root
-   uv run ragdiff run squad faiss-small test-queries --domains-dir examples/squad-demo/domains
-   uv run ragdiff run squad faiss-large test-queries --domains-dir examples/squad-demo/domains
+   uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries
+   uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-large -q test-queries
    ```
 
 5. **Compare the results:**
    ```bash
-   uv run ragdiff compare squad <run-id-1> <run-id-2> \
-     --domains-dir examples/squad-demo/domains \
+   uv run ragdiff compare -d examples/squad-demo/domains/squad \
+     -r <run-label-1> -r <run-label-2> \
      --format markdown \
      --output examples/squad-demo/comparison-report.md
    ```
@@ -194,8 +204,8 @@ If you want to rebuild the indices with different models:
 Speed up query execution with parallel requests:
 
 ```bash
-uv run ragdiff run squad faiss-small test-queries \
-  --domains-dir examples/squad-demo/domains \
+uv run ragdiff run -d examples/squad-demo/domains/squad \
+  -p faiss-small -q test-queries \
   --concurrency 10
 ```
 
@@ -217,14 +227,14 @@ Create your own query set:
 
 ```bash
 # Create a new query file
-cat > examples/squad-demo/query-sets/custom-queries.txt <<EOF
+cat > examples/squad-demo/domains/squad/query-sets/custom-queries.txt <<EOF
 What is machine learning?
 How does neural network training work?
 What are transformers in NLP?
 EOF
 
 # Run with custom queries
-uv run ragdiff run squad faiss-small custom-queries --domains-dir examples/squad-demo/domains
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q custom-queries
 ```
 
 ## Troubleshooting

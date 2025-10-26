@@ -112,23 +112,25 @@ class TestCLIRunCommand:
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
         assert "Execute a query set against a provider" in result.stdout
-        assert "DOMAIN" in result.stdout
-        assert "SYSTEM" in result.stdout
-        assert "QUERY_SET" in result.stdout
+        assert "--domain-dir" in result.stdout
+        assert "--provider" in result.stdout
+        assert "--query-set" in result.stdout
 
     def test_run_command_success(self, test_domain_for_cli):
         """Test successful run command execution."""
         domains_dir, domain_name = test_domain_for_cli
+        domain_dir = domains_dir / domain_name
 
         result = runner.invoke(
             app,
             [
                 "run",
-                domain_name,
+                "--domain-dir",
+                str(domain_dir),
+                "--provider",
                 "mock-cli-system",
+                "--query-set",
                 "test-queries",
-                "--domains-dir",
-                str(domains_dir),
                 "--quiet",  # Suppress progress output for testing
             ],
         )
@@ -144,16 +146,18 @@ class TestCLIRunCommand:
     def test_run_command_missing_domain(self, test_domain_for_cli):
         """Test run command with missing domain."""
         domains_dir, _ = test_domain_for_cli
+        missing_domain_dir = domains_dir / "missing-domain"
 
         result = runner.invoke(
             app,
             [
                 "run",
-                "missing-domain",
+                "--domain-dir",
+                str(missing_domain_dir),
+                "--provider",
                 "mock-cli-system",
+                "--query-set",
                 "test-queries",
-                "--domains-dir",
-                str(domains_dir),
                 "--quiet",
             ],
         )
@@ -164,16 +168,18 @@ class TestCLIRunCommand:
     def test_run_command_missing_system(self, test_domain_for_cli):
         """Test run command with missing system."""
         domains_dir, domain_name = test_domain_for_cli
+        domain_dir = domains_dir / domain_name
 
         result = runner.invoke(
             app,
             [
                 "run",
-                domain_name,
+                "--domain-dir",
+                str(domain_dir),
+                "--provider",
                 "missing-system",
+                "--query-set",
                 "test-queries",
-                "--domains-dir",
-                str(domains_dir),
                 "--quiet",
             ],
         )
@@ -195,8 +201,8 @@ class TestCLICompareCommand:
         result = runner.invoke(app, ["compare", "--help"])
         assert result.exit_code == 0
         assert "Compare multiple runs using LLM evaluation" in result.stdout
-        assert "DOMAIN" in result.stdout
-        assert "RUN_IDS" in result.stdout
+        assert "--domain-dir" in result.stdout
+        assert "--run" in result.stdout
 
     def test_compare_command_missing_litellm(self, test_domain_for_cli):
         """Test compare command when LiteLLM is not available."""
