@@ -12,16 +12,14 @@ Tests cover:
 
 import os
 import time
-from pathlib import Path
 
 import pytest
 import yaml
 
 from ragdiff.core.errors import RunError
-from ragdiff.core.models_v2 import Query, QuerySet, RetrievedChunk, RunStatus
+from ragdiff.core.models_v2 import RetrievedChunk, RunStatus
 from ragdiff.execution import execute_run
-from ragdiff.systems import System, register_tool
-
+from ragdiff.providers import System, register_tool
 
 # ============================================================================
 # Test Fixtures
@@ -40,7 +38,7 @@ class MockSuccessSystem(System):
             RetrievedChunk(
                 content=f"Result {i} for: {query}",
                 score=1.0 - (i * 0.1),
-                metadata={"index": i}
+                metadata={"index": i},
             )
             for i in range(min(top_k, 3))
         ]
@@ -65,13 +63,7 @@ class MockPartialSystem(System):
         if "fail" in query.lower():
             raise RuntimeError(f"Query contains 'fail': {query}")
 
-        return [
-            RetrievedChunk(
-                content=f"Result for: {query}",
-                score=0.95,
-                metadata={}
-            )
-        ]
+        return [RetrievedChunk(content=f"Result for: {query}", score=0.95, metadata={})]
 
 
 @pytest.fixture
@@ -93,8 +85,8 @@ def test_domain(tmp_path):
         "evaluator": {
             "model": "claude-3-5-sonnet-20241022",
             "temperature": 0.0,
-            "prompt_template": "Compare: {results}"
-        }
+            "prompt_template": "Compare: {results}",
+        },
     }
     with open(domain_dir / "domain.yaml", "w") as f:
         yaml.dump(domain_config, f)
@@ -105,8 +97,8 @@ def test_domain(tmp_path):
         "tool": "mock-success",
         "config": {
             "api_key": "${MOCK_API_KEY}",  # Placeholder
-            "setting": "value"
-        }
+            "setting": "value",
+        },
     }
     with open(domain_dir / "systems" / "mock-system.yaml", "w") as f:
         yaml.dump(system_config, f)
@@ -119,6 +111,7 @@ def test_domain(tmp_path):
 
     # Create query set (.jsonl format)
     import json
+
     with open(domain_dir / "query-sets" / "test-with-refs.jsonl", "w") as f:
         f.write(json.dumps({"query": "Query A", "reference": "Answer A"}) + "\n")
         f.write(json.dumps({"query": "Query B", "reference": "Answer B"}) + "\n")
@@ -136,7 +129,7 @@ def test_domain(tmp_path):
 @pytest.fixture
 def register_mock_tools():
     """Register mock tools for testing."""
-    from ragdiff.systems.registry import TOOL_REGISTRY
+    from ragdiff.providers.registry import TOOL_REGISTRY
 
     original_registry = TOOL_REGISTRY.copy()
 
@@ -169,7 +162,7 @@ class TestExecuteRun:
             system="mock-system",
             query_set="test-queries",
             concurrency=2,
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
 
         # Check run metadata
@@ -201,7 +194,7 @@ class TestExecuteRun:
             domain=domain_name,
             system="mock-system",
             query_set="test-with-refs",
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
 
         assert run.status == RunStatus.COMPLETED
@@ -217,7 +210,7 @@ class TestExecuteRun:
         failure_system_config = {
             "name": "failure-system",
             "tool": "mock-failure",
-            "config": {}
+            "config": {},
         }
         system_path = domains_dir / domain_name / "systems" / "failure-system.yaml"
         with open(system_path, "w") as f:
@@ -227,7 +220,7 @@ class TestExecuteRun:
             domain=domain_name,
             system="failure-system",
             query_set="test-queries",
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
 
         assert run.status == RunStatus.FAILED
@@ -245,14 +238,16 @@ class TestExecuteRun:
         partial_system_config = {
             "name": "partial-system",
             "tool": "mock-partial",
-            "config": {}
+            "config": {},
         }
         system_path = domains_dir / domain_name / "systems" / "partial-system.yaml"
         with open(system_path, "w") as f:
             yaml.dump(partial_system_config, f)
 
         # Create query set with some "fail" queries
-        query_set_path = domains_dir / domain_name / "query-sets" / "partial-queries.txt"
+        query_set_path = (
+            domains_dir / domain_name / "query-sets" / "partial-queries.txt"
+        )
         with open(query_set_path, "w") as f:
             f.write("Good query 1\n")
             f.write("This will fail\n")
@@ -263,7 +258,7 @@ class TestExecuteRun:
             domain=domain_name,
             system="partial-system",
             query_set="partial-queries",
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
 
         assert run.status == RunStatus.PARTIAL
@@ -280,7 +275,9 @@ class TestExecuteRun:
 class TestConfigSnapshotting:
     """Tests for config snapshotting."""
 
-    def test_config_snapshot_preserves_placeholders(self, test_domain, register_mock_tools):
+    def test_config_snapshot_preserves_placeholders(
+        self, test_domain, register_mock_tools
+    ):
         """Test that config snapshots preserve ${VAR_NAME} placeholders."""
         domains_dir, domain_name = test_domain
 
@@ -288,7 +285,7 @@ class TestConfigSnapshotting:
             domain=domain_name,
             system="mock-system",
             query_set="test-queries",
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
 
         # Check that system config snapshot preserves ${MOCK_API_KEY}
@@ -315,19 +312,21 @@ class TestProgressCallback:
         progress_updates = []
 
         def progress_callback(current, total, successes, failures):
-            progress_updates.append({
-                "current": current,
-                "total": total,
-                "successes": successes,
-                "failures": failures
-            })
+            progress_updates.append(
+                {
+                    "current": current,
+                    "total": total,
+                    "successes": successes,
+                    "failures": failures,
+                }
+            )
 
-        run = execute_run(
+        _run = execute_run(
             domain=domain_name,
-            system="mock-system",
+            provider="mock-provider",
             query_set="test-queries",
             progress_callback=progress_callback,
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
 
         # Should have 3 progress updates (one per query)
@@ -350,7 +349,9 @@ class TestProgressCallback:
 class TestParallelExecution:
     """Tests for parallel query execution."""
 
-    def test_parallel_execution_faster_than_sequential(self, test_domain, register_mock_tools):
+    def test_parallel_execution_faster_than_sequential(
+        self, test_domain, register_mock_tools
+    ):
         """Test that parallel execution is faster than sequential would be."""
         domains_dir, domain_name = test_domain
 
@@ -367,7 +368,7 @@ class TestParallelExecution:
             system="mock-system",
             query_set="many-queries",
             concurrency=10,  # High concurrency
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
         parallel_duration = time.time() - start_time
 
@@ -394,7 +395,7 @@ class TestParallelExecution:
                 system="mock-system",
                 query_set="test-queries",
                 concurrency=concurrency,
-                domains_dir=domains_dir
+                domains_dir=domains_dir,
             )
             assert run.status == RunStatus.COMPLETED
             assert len(run.results) == 3
@@ -416,19 +417,18 @@ class TestFileStorage:
             domain=domain_name,
             system="mock-system",
             query_set="test-queries",
-            domains_dir=domains_dir
+            domains_dir=domains_dir,
         )
 
         # Check that run file exists
         date_str = run.started_at.strftime("%Y-%m-%d")
-        run_path = (
-            domains_dir / domain_name / "runs" / date_str / f"{run.id}.json"
-        )
+        run_path = domains_dir / domain_name / "runs" / date_str / f"{run.id}.json"
         assert run_path.exists()
 
         # Check that file contains valid JSON
         import json
-        with open(run_path, "r") as f:
+
+        with open(run_path) as f:
             run_data = json.load(f)
 
         assert run_data["id"] == str(run.id)
@@ -453,7 +453,7 @@ class TestErrorHandling:
                 domain="missing-domain",
                 system="mock-system",
                 query_set="test-queries",
-                domains_dir=domains_dir
+                domains_dir=domains_dir,
             )
 
     def test_missing_system(self, test_domain, register_mock_tools):
@@ -465,7 +465,7 @@ class TestErrorHandling:
                 domain=domain_name,
                 system="missing-system",
                 query_set="test-queries",
-                domains_dir=domains_dir
+                domains_dir=domains_dir,
             )
 
     def test_missing_query_set(self, test_domain, register_mock_tools):
@@ -477,5 +477,5 @@ class TestErrorHandling:
                 domain=domain_name,
                 system="mock-system",
                 query_set="missing-queries",
-                domains_dir=domains_dir
+                domains_dir=domains_dir,
             )

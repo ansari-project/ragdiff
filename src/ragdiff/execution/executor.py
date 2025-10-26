@@ -1,6 +1,6 @@
 """Run execution engine for RAGDiff v2.0.
 
-This module executes query sets against systems and saves the results as Runs.
+This module executes query sets against providers and saves the results as Runs.
 
 Key features:
 - Parallel query execution with configurable concurrency
@@ -13,7 +13,7 @@ Key features:
 Example:
     >>> run = execute_run(
     ...     domain="tafsir",
-    ...     system="vectara-default",
+    ...     provider="vectara-default",
     ...     query_set="test-queries",
     ...     concurrency=10
     ... )
@@ -28,11 +28,11 @@ from typing import Callable
 from uuid import uuid4
 
 from ..core.errors import RunError
-from ..core.loaders import load_domain, load_query_set, load_system_for_snapshot
+from ..core.loaders import load_domain, load_provider_for_snapshot, load_query_set
 from ..core.logging import get_logger
 from ..core.models_v2 import QueryResult, Run, RunStatus
 from ..core.storage import save_run
-from ..systems import create_system
+from ..providers import create_provider
 
 logger = get_logger(__name__)
 
@@ -43,7 +43,7 @@ ProgressCallback = Callable[[int, int, int, int], None]
 
 def execute_run(
     domain: str,
-    system: str,
+    provider: str,
     query_set: str,
     concurrency: int = 10,
     per_query_timeout: float = 30.0,
@@ -62,7 +62,7 @@ def execute_run(
 
     Args:
         domain: Domain name (e.g., "tafsir")
-        system: System name (e.g., "vectara-default")
+        provider: Provider name (e.g., "vectara-default")
         query_set: Query set name (e.g., "test-queries")
         concurrency: Maximum number of concurrent queries (default: 10)
         per_query_timeout: Timeout per query in seconds (default: 30.0)
@@ -73,7 +73,7 @@ def execute_run(
         Completed Run object with all results
 
     Raises:
-        RunError: If system initialization fails or run cannot be saved
+        RunError: If provider initialization fails or run cannot be saved
 
     Example:
         >>> def progress(current, total, successes, failures):
@@ -81,7 +81,7 @@ def execute_run(
         >>>
         >>> run = execute_run(
         ...     domain="tafsir",
-        ...     system="vectara-default",
+        ...     provider="vectara-default",
         ...     query_set="test-queries",
         ...     concurrency=10,
         ...     progress_callback=progress
@@ -90,7 +90,7 @@ def execute_run(
         'completed'
     """
     logger.info(
-        f"Starting run: domain={domain}, system={system}, query_set={query_set}, "
+        f"Starting run: domain={domain}, provider={provider}, query_set={query_set}, "
         f"concurrency={concurrency}"
     )
 
@@ -101,20 +101,23 @@ def execute_run(
         # Load domain (for validation)
         load_domain(domain, domains_dir)
 
-        # Load system config for snapshot (preserves ${VAR_NAME})
-        system_config_snapshot = load_system_for_snapshot(domain, system, domains_dir)
-        logger.debug(f"Loaded system config snapshot (secrets preserved)")
+        # Load provider config for snapshot (preserves ${VAR_NAME})
+        provider_config_snapshot = load_provider_for_snapshot(
+            domain, provider, domains_dir
+        )
+        logger.debug("Loaded provider config snapshot (secrets preserved)")
 
         # Load query set
         query_set_obj = load_query_set(domain, query_set, domains_dir)
         logger.info(f"Loaded query set with {len(query_set_obj.queries)} queries")
 
-        # Create System instance (resolves ${VAR_NAME})
-        # Note: We need to load the system config WITH resolved secrets
-        from ..core.loaders import load_system
-        system_config_resolved = load_system(domain, system, domains_dir)
-        system_instance = create_system(system_config_resolved)
-        logger.info(f"Created system instance: {system_instance}")
+        # Create Provider instance (resolves ${VAR_NAME})
+        # Note: We need to load the provider config WITH resolved secrets
+        from ..core.loaders import load_provider
+
+        provider_config_resolved = load_provider(domain, provider, domains_dir)
+        provider_instance = create_provider(provider_config_resolved)
+        logger.info(f"Created provider instance: {provider_instance}")
 
     except Exception as e:
         logger.error(f"Failed to initialize run: {e}")
@@ -124,11 +127,11 @@ def execute_run(
     run = Run(
         id=run_id,
         domain=domain,
-        system=system,
+        provider=provider,
         query_set=query_set,
         status=RunStatus.PENDING,
         results=[],
-        system_config=system_config_snapshot,  # Snapshot with ${VAR_NAME}
+        provider_config=provider_config_snapshot,  # Snapshot with ${VAR_NAME}
         query_set_snapshot=query_set_obj,
         started_at=started_at,
         completed_at=None,
@@ -141,7 +144,7 @@ def execute_run(
 
     # Execute queries in parallel
     results = _execute_queries_parallel(
-        system_instance=system_instance,
+        provider_instance=provider_instance,
         queries=query_set_obj.queries,
         concurrency=concurrency,
         per_query_timeout=per_query_timeout,
@@ -169,12 +172,14 @@ def execute_run(
     )
 
     # Calculate metadata
-    run.metadata.update({
-        "total_queries": len(results),
-        "successes": successes,
-        "failures": failures,
-        "duration_seconds": (run.completed_at - run.started_at).total_seconds(),
-    })
+    run.metadata.update(
+        {
+            "total_queries": len(results),
+            "successes": successes,
+            "failures": failures,
+            "duration_seconds": (run.completed_at - run.started_at).total_seconds(),
+        }
+    )
 
     # Save run to file
     try:
@@ -188,7 +193,7 @@ def execute_run(
 
 
 def _execute_queries_parallel(
-    system_instance,
+    provider_instance,
     queries,
     concurrency: int,
     per_query_timeout: float,
@@ -197,7 +202,7 @@ def _execute_queries_parallel(
     """Execute queries in parallel using ThreadPoolExecutor.
 
     Args:
-        system_instance: System instance to use for queries
+        provider_instance: System instance to use for queries
         queries: List of Query objects
         concurrency: Maximum number of concurrent queries
         per_query_timeout: Timeout per query in seconds
@@ -220,7 +225,7 @@ def _execute_queries_parallel(
         for i, query in enumerate(queries):
             future = executor.submit(
                 _execute_single_query,
-                system_instance,
+                provider_instance,
                 query.text,
                 query.reference,
                 per_query_timeout,
@@ -230,7 +235,9 @@ def _execute_queries_parallel(
         # Process completed queries
         for future in as_completed(future_to_index):
             index = future_to_index[future]
-            query_result = future.result()  # This won't raise since we catch in _execute_single_query
+            query_result = (
+                future.result()
+            )  # This won't raise since we catch in _execute_single_query
 
             # Store result
             results[index] = query_result
@@ -250,7 +257,7 @@ def _execute_queries_parallel(
 
 
 def _execute_single_query(
-    system_instance,
+    provider_instance,
     query_text: str,
     reference: str | None,
     timeout: float,
@@ -258,7 +265,7 @@ def _execute_single_query(
     """Execute a single query with timeout and error handling.
 
     Args:
-        system_instance: System instance
+        provider_instance: System instance
         query_text: Query text
         reference: Optional reference answer
         timeout: Timeout in seconds
@@ -272,7 +279,7 @@ def _execute_single_query(
         # Execute search with timeout
         # Note: ThreadPoolExecutor doesn't have built-in timeout for individual tasks,
         # so we rely on the system's internal timeout or HTTP client timeout
-        retrieved = system_instance.search(query_text, top_k=5)
+        retrieved = provider_instance.search(query_text, top_k=5)
 
         duration_ms = (time.time() - start_time) * 1000
 

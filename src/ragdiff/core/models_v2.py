@@ -11,7 +11,6 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # ============================================================================
 # Core Models
 # ============================================================================
@@ -32,7 +31,9 @@ class RetrievedChunk(BaseModel):
 
     content: str
     score: float | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)  # source_id, doc_id, chunk_id, etc.
+    metadata: dict[str, Any] = Field(
+        default_factory=dict
+    )  # source_id, doc_id, chunk_id, etc.
 
 
 class Query(BaseModel):
@@ -87,7 +88,7 @@ class Domain(BaseModel):
         return v
 
 
-class SystemConfig(BaseModel):
+class ProviderConfig(BaseModel):
     """System configuration (loaded from domains/<domain>/systems/<name>.yaml)."""
 
     name: str
@@ -158,13 +159,13 @@ class Run(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     domain: str
-    system: str  # system name
+    provider: str  # system name
     query_set: str  # query set name
     status: RunStatus
     results: list[QueryResult]
 
     # Snapshots for reproducibility (CRITICAL: keep ${VAR_NAME} placeholders, do NOT resolve secrets)
-    system_config: SystemConfig
+    provider_config: ProviderConfig
     query_set_snapshot: QuerySet
 
     # Timing

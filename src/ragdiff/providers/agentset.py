@@ -10,7 +10,7 @@ Configuration:
     timeout: Request timeout in seconds (int, optional, default: 60)
 
 Example:
-    >>> system = AgentsetSystem(config={
+    >>> system = AgentsetProvider(config={
     ...     "api_token": "agentset_token_...",
     ...     "namespace_id": "ns_abc123",
     ...     "rerank": True
@@ -26,12 +26,12 @@ from agentset.models.searchop import SearchData
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
 from ..core.models_v2 import RetrievedChunk
-from .abc import System
+from .abc import Provider
 
 logger = get_logger(__name__)
 
 
-class AgentsetSystem(System):
+class AgentsetProvider(Provider):
     """Agentset RAG system implementation.
 
     Uses the Agentset SDK for semantic search over documents stored in
@@ -69,11 +69,10 @@ class AgentsetSystem(System):
 
         # Initialize Agentset client
         try:
-            self.client = Agentset(
-                token=self.api_token,
-                namespace_id=self.namespace_id
+            self.client = Agentset(token=self.api_token, namespace_id=self.namespace_id)
+            logger.info(
+                f"Agentset client initialized for namespace: {self.namespace_id}"
             )
-            logger.info(f"Agentset client initialized for namespace: {self.namespace_id}")
         except Exception as e:
             raise ConfigError(f"Failed to initialize Agentset client: {e}") from e
 
@@ -103,7 +102,9 @@ class AgentsetSystem(System):
             )
 
             # Extract data from response
-            if hasattr(search_response, "data") and isinstance(search_response.data, list):
+            if hasattr(search_response, "data") and isinstance(
+                search_response.data, list
+            ):
                 search_results: list[SearchData] = search_response.data
             else:
                 search_results = []
@@ -137,7 +138,9 @@ class AgentsetSystem(System):
 
                     # Add optional metadata fields if present
                     if search_data.metadata.sequence_number is not None:
-                        metadata["sequence_number"] = str(search_data.metadata.sequence_number)
+                        metadata["sequence_number"] = str(
+                            search_data.metadata.sequence_number
+                        )
                     if search_data.metadata.languages:
                         metadata["languages"] = (
                             search_data.metadata.languages
@@ -146,14 +149,12 @@ class AgentsetSystem(System):
                         )
 
                 # Create chunk
-                chunk = RetrievedChunk(
-                    content=text,
-                    score=score,
-                    metadata=metadata
-                )
+                chunk = RetrievedChunk(content=text, score=score, metadata=metadata)
                 chunks.append(chunk)
 
-            logger.info(f"Converted {len(chunks)} Agentset results to RetrievedChunk format")
+            logger.info(
+                f"Converted {len(chunks)} Agentset results to RetrievedChunk format"
+            )
             return chunks
 
         except Exception as e:
@@ -162,10 +163,10 @@ class AgentsetSystem(System):
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"AgentsetSystem(namespace_id='{self.namespace_id}')"
+        return f"AgentsetProvider(namespace_id='{self.namespace_id}')"
 
 
 # Register the tool
 from .registry import register_tool
 
-register_tool("agentset", AgentsetSystem)
+register_tool("agentset", AgentsetProvider)

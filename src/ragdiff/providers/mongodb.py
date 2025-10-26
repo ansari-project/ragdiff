@@ -16,7 +16,7 @@ Configuration:
     timeout: Request timeout in seconds (int, optional, default: 60)
 
 Example:
-    >>> system = MongoDBSystem(config={
+    >>> system = MongoDBProvider(config={
     ...     "connection_uri": "mongodb://localhost:27017",
     ...     "database": "tafsir",
     ...     "collection": "documents",
@@ -31,15 +31,15 @@ from typing import Any
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
 from ..core.models_v2 import RetrievedChunk
-from .abc import System
+from .abc import Provider
 
 logger = get_logger(__name__)
 
 # Check for optional dependencies
 try:
+    import numpy as np
     from pymongo import MongoClient
     from pymongo.errors import PyMongoError
-    import numpy as np
 
     PYMONGO_AVAILABLE = True
 except ImportError:
@@ -53,7 +53,7 @@ except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 
-class MongoDBSystem(System):
+class MongoDBProvider(Provider):
     """MongoDB vector search system implementation.
 
     Uses sentence-transformers for local embedding generation and MongoDB
@@ -128,8 +128,7 @@ class MongoDBSystem(System):
         # Initialize MongoDB client
         try:
             self.mongo_client = MongoClient(
-                config["connection_uri"],
-                serverSelectionTimeoutMS=self.timeout * 1000
+                config["connection_uri"], serverSelectionTimeoutMS=self.timeout * 1000
             )
             self.database = self.mongo_client[self.database_name]
             self.collection = self.database[self.collection_name]
@@ -168,7 +167,7 @@ class MongoDBSystem(System):
             all_docs = list(
                 self.collection.find(
                     {self.vector_field: {"$exists": True}},
-                    limit=10000  # Safety limit
+                    limit=10000,  # Safety limit
                 )
             )
 
@@ -185,8 +184,8 @@ class MongoDBSystem(System):
 
                 # Cosine similarity
                 similarity = float(
-                    np.dot(query_vector, doc_vector) /
-                    (np.linalg.norm(query_vector) * np.linalg.norm(doc_vector))
+                    np.dot(query_vector, doc_vector)
+                    / (np.linalg.norm(query_vector) * np.linalg.norm(doc_vector))
                 )
 
                 results_with_scores.append((doc, similarity))
@@ -207,7 +206,7 @@ class MongoDBSystem(System):
                 # Build metadata
                 metadata = {
                     "_id": str(doc.get("_id", "")),
-                    "source": doc.get(self.source_field, "MongoDB")
+                    "source": doc.get(self.source_field, "MongoDB"),
                 }
 
                 # Add configured metadata fields
@@ -216,14 +215,12 @@ class MongoDBSystem(System):
                         metadata[field] = doc[field]
 
                 # Create chunk
-                chunk = RetrievedChunk(
-                    content=text,
-                    score=score,
-                    metadata=metadata
-                )
+                chunk = RetrievedChunk(content=text, score=score, metadata=metadata)
                 chunks.append(chunk)
 
-            logger.info(f"MongoDB returned {len(chunks)} chunks for query: '{query[:50]}...'")
+            logger.info(
+                f"MongoDB returned {len(chunks)} chunks for query: '{query[:50]}...'"
+            )
             return chunks
 
         except PyMongoError as e:
@@ -255,10 +252,10 @@ class MongoDBSystem(System):
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"MongoDBSystem(database='{self.database_name}', collection='{self.collection_name}')"
+        return f"MongoDBProvider(database='{self.database_name}', collection='{self.collection_name}')"
 
 
 # Register the tool
 from .registry import register_tool
 
-register_tool("mongodb", MongoDBSystem)
+register_tool("mongodb", MongoDBProvider)

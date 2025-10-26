@@ -10,7 +10,6 @@ Tests cover:
 import json
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -28,7 +27,7 @@ from ragdiff.core.models_v2 import (
     SystemConfig,
 )
 from ragdiff.core.storage import save_run
-from ragdiff.systems import register_tool, System
+from ragdiff.providers import System, register_tool
 
 runner = CliRunner()
 
@@ -43,13 +42,7 @@ class MockCLISystem(System):
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         """Return mock results."""
-        return [
-            RetrievedChunk(
-                content=f"Result for: {query}",
-                score=0.9,
-                metadata={}
-            )
-        ]
+        return [RetrievedChunk(content=f"Result for: {query}", score=0.9, metadata={})]
 
 
 @pytest.fixture
@@ -94,7 +87,7 @@ def test_domain_for_cli(tmp_path):
         f.write("Query 3\n")
 
     # Register mock tool
-    from ragdiff.systems.registry import TOOL_REGISTRY
+    from ragdiff.providers.registry import TOOL_REGISTRY
 
     original_registry = TOOL_REGISTRY.copy()
     register_tool("mock-cli", MockCLISystem)

@@ -1,7 +1,7 @@
 """RAGDiff v2.0 CLI commands.
 
 This module provides CLI commands for the v2.0 domain-based architecture:
-- run: Execute a query set against a system
+- run: Execute a query set against a provider
 - compare: Compare multiple runs using LLM evaluation
 
 Example:
@@ -32,7 +32,7 @@ from .execution import execute_run
 
 app = typer.Typer(
     name="ragdiff-v2",
-    help="RAGDiff v2.0 - Domain-based RAG system comparison",
+    help="RAGDiff v2.0 - Domain-based RAG provider comparison",
     no_args_is_help=True,
 )
 
@@ -42,7 +42,7 @@ console = Console()
 @app.command()
 def run(
     domain: str = typer.Argument(..., help="Domain name (e.g., 'tafsir')"),
-    system: str = typer.Argument(..., help="System name (e.g., 'vectara-default')"),
+    provider: str = typer.Argument(..., help="Provider name (e.g., 'vectara-default')"),
     query_set: str = typer.Argument(..., help="Query set name (e.g., 'test-queries')"),
     concurrency: int = typer.Option(10, help="Maximum concurrent queries"),
     timeout: float = typer.Option(30.0, help="Timeout per query in seconds"),
@@ -51,11 +51,11 @@ def run(
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output"),
 ):
-    """Execute a query set against a system.
+    """Execute a query set against a provider.
 
     This command:
-    1. Loads the domain, system config, and query set
-    2. Creates the system instance
+    1. Loads the domain, provider config, and query set
+    2. Creates the provider instance
     3. Executes queries in parallel
     4. Saves the run to disk
 
@@ -78,7 +78,7 @@ def run(
             ) as progress:
                 # Track progress
                 task = progress.add_task(
-                    f"Executing run: {domain}/{system}/{query_set}", total=100
+                    f"Executing run: {domain}/{provider}/{query_set}", total=100
                 )
 
                 completed_queries = 0
@@ -98,7 +98,7 @@ def run(
                 # Execute run
                 result = execute_run(
                     domain=domain,
-                    system=system,
+                    provider=provider,
                     query_set=query_set,
                     concurrency=concurrency,
                     per_query_timeout=timeout,
@@ -111,7 +111,7 @@ def run(
             # Quiet mode - no progress bar
             result = execute_run(
                 domain=domain,
-                system=system,
+                provider=provider,
                 query_set=query_set,
                 concurrency=concurrency,
                 per_query_timeout=timeout,
@@ -131,11 +131,13 @@ def run(
 
         table.add_row("Run ID", str(result.id))
         table.add_row("Domain", result.domain)
-        table.add_row("System", result.system)
+        table.add_row("Provider", result.provider)
         table.add_row("Query Set", result.query_set)
         table.add_row("Status", f"[bold]{result.status.value}[/bold]")
         table.add_row("Total Queries", str(result.metadata.get("total_queries", 0)))
-        table.add_row("Successes", f"[green]{result.metadata.get('successes', 0)}[/green]")
+        table.add_row(
+            "Successes", f"[green]{result.metadata.get('successes', 0)}[/green]"
+        )
         table.add_row("Failures", f"[red]{result.metadata.get('failures', 0)}[/red]")
         table.add_row(
             "Duration",
@@ -151,10 +153,10 @@ def run(
 
     except RunError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     except Exception as e:
         console.print(f"[bold red]Unexpected error:[/bold red] {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command()
@@ -236,17 +238,21 @@ def compare(
 
     except ComparisonError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     except Exception as e:
         console.print(f"[bold red]Unexpected error:[/bold red] {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 def _output_table(comparison, output_path):
     """Output comparison results as a table."""
     if output_path:
-        console.print("[yellow]Warning:[/yellow] Table format only supports console output")
-        console.print("[dim]Use --format json or --format markdown for file output[/dim]")
+        console.print(
+            "[yellow]Warning:[/yellow] Table format only supports console output"
+        )
+        console.print(
+            "[dim]Use --format json or --format markdown for file output[/dim]"
+        )
 
     console.print()
     console.print(f"[bold]Comparison {comparison.id}[/bold]")
@@ -259,7 +265,9 @@ def _output_table(comparison, output_path):
     table.add_column("Property", style="cyan")
     table.add_column("Value", style="white")
 
-    table.add_row("Total Evaluations", str(comparison.metadata.get("total_evaluations", 0)))
+    table.add_row(
+        "Total Evaluations", str(comparison.metadata.get("total_evaluations", 0))
+    )
     table.add_row(
         "Successful",
         f"[green]{comparison.metadata.get('successful_evaluations', 0)}[/green]",
@@ -295,7 +303,6 @@ def _output_table(comparison, output_path):
 
 def _output_json(comparison, output_path):
     """Output comparison results as JSON."""
-    import json
 
     json_str = comparison.model_dump_json(indent=2)
 
@@ -336,11 +343,15 @@ def _output_markdown(comparison, output_path):
             lines.append("")
 
         if "winner" in eval_result.evaluation:
-            lines.append(f"**Winner:** {eval_result.evaluation.get('winner', 'unknown')}")
+            lines.append(
+                f"**Winner:** {eval_result.evaluation.get('winner', 'unknown')}"
+            )
             lines.append("")
 
         if "reasoning" in eval_result.evaluation:
-            lines.append(f"**Reasoning:** {eval_result.evaluation.get('reasoning', '')}")
+            lines.append(
+                f"**Reasoning:** {eval_result.evaluation.get('reasoning', '')}"
+            )
             lines.append("")
 
         if "_metadata" in eval_result.evaluation:
