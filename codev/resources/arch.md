@@ -6,6 +6,7 @@ RAGDiff is a flexible framework for comparing Retrieval-Augmented Generation (RA
 
 The system emphasizes:
 - **Adapter Pattern**: Clean separation between comparison logic and tool-specific implementations
+- **Meta-Adapter Pattern**: Generic OpenAPI adapter enables zero-code integration of any REST API
 - **Subjective Quality Assessment**: LLM-based evaluation (Claude) for qualitative insights
 - **Flexible Configuration**: YAML-based configuration with environment variable support and adapter variants
 - **Multiple Output Formats**: Display, JSON, JSONL, CSV, and Markdown
@@ -13,6 +14,7 @@ The system emphasizes:
 - **SearchVectara Compatibility**: All adapters implement the SearchVectara interface for Ansari Backend integration
 - **Multi-Tenant Support**: Thread-safe credential management for SaaS and multi-user environments
 - **Thread-Safe Library API**: Production-ready for web services and concurrent usage
+- **AI-Powered Generation**: Automatic adapter configuration from OpenAPI specifications using LLMs
 
 ## Technology Stack
 
@@ -33,9 +35,11 @@ The system emphasizes:
 ### Optional Dependencies
 - **pymongo**: 4.0.0+ (MongoDB Atlas Vector Search adapter)
 - **openai**: 1.0.0+ (Embeddings for MongoDB vector search)
+- **jmespath**: 1.0.1+ (JSON query language for OpenAPI response mapping)
+- **litellm**: 1.0.0+ (Unified LLM client for AI-powered config generation)
 
 ### Development Tools
-- **pytest**: 7.4.0+ (Testing framework with 246+ tests)
+- **pytest**: 7.4.0+ (Testing framework with 300+ tests)
 - **pytest-cov**: 4.1.0+ (Test coverage reporting)
 - **black**: 23.0.0+ (Code formatting)
 - **ruff**: 0.1.0+ (Fast Python linter)
@@ -92,7 +96,15 @@ ragdiff/
 │       │   ├── goodmem.py     # Goodmem adapter
 │       │   ├── agentset.py    # Agentset adapter
 │       │   ├── mongodb.py     # MongoDB Atlas Vector Search adapter
+│       │   ├── openapi.py     # Generic OpenAPI adapter (config-driven)
+│       │   ├── openapi_mapping.py  # JMESPath response mapping engine
 │       │   └── search_vectara_mock.py  # Mock SearchVectara for testing
+│       ├── openapi/           # OpenAPI specification tools
+│       │   ├── __init__.py
+│       │   ├── models.py      # Data models (EndpointInfo, AuthScheme)
+│       │   ├── parser.py      # OpenAPI 3.x spec parser
+│       │   ├── ai_analyzer.py # AI-powered endpoint/mapping analysis
+│       │   └── generator.py   # Configuration generator orchestration
 │       ├── comparison/        # Comparison engine
 │       │   ├── __init__.py
 │       │   └── engine.py      # Parallel/sequential search execution
@@ -102,7 +114,7 @@ ragdiff/
 │       └── display/           # Output formatters
 │           ├── __init__.py
 │           └── formatter.py   # Multiple format support
-├── tests/                     # Test suite (230+ tests)
+├── tests/                     # Test suite (300+ tests)
 │   ├── test_cli.py
 │   ├── test_adapters.py
 │   ├── test_api.py           # Library API tests
@@ -110,11 +122,16 @@ ragdiff/
 │   ├── test_api_multi_tenant.py  # API multi-tenant integration tests
 │   ├── test_thread_safety.py # Thread safety tests
 │   ├── test_reentrancy.py    # Reentrancy tests
+│   ├── test_openapi_adapter.py   # OpenAPI adapter tests (28 tests)
+│   ├── test_openapi_parser.py    # OpenAPI parser tests (26 tests)
 │   └── ...
 ├── configs/                   # Configuration files
 │   ├── tafsir.yaml           # Tafsir corpus configuration
 │   ├── mawsuah.yaml          # Mawsuah corpus configuration
-│   └── mongodb-example.yaml  # MongoDB Atlas Vector Search example config
+│   ├── mongodb-example.yaml  # MongoDB Atlas Vector Search example config
+│   ├── examples/
+│   │   └── openapi-adapter-example.yaml  # OpenAPI adapter usage examples
+│   └── kalimat-example.yaml  # Auto-generated Kalimat API config
 ├── inputs/                    # Test queries and batch input files
 │   └── tafsir-test-queries.txt
 ├── sampledata/                # Sample data scripts and utilities
@@ -260,6 +277,30 @@ All adapters now support multi-tenant credentials through the base class:
   - Configurable metadata extraction
   - Score normalization for consistent comparison
 
+#### OpenAPI Adapter (`src/ragdiff/adapters/openapi.py`)
+- **Type**: Meta-adapter - a single generic adapter for any REST API
+- **Constructor**: `__init__(config, credentials=None)`
+- **Configuration-Driven**: Entirely configured via YAML, no code needed
+- **Response Mapping**: Uses JMESPath query language for flexible field extraction
+- **Template Engine**: Substitutes ${query} and ${top_k} in requests
+- **Authentication Support**:
+  - Bearer token (Authorization: Bearer <token>)
+  - API key (in header or query parameter)
+  - Basic authentication (username/password)
+- **Configuration Options** (in `options` dict):
+  - `base_url`: API base URL
+  - `endpoint`: API endpoint path
+  - `method`: HTTP method (GET, POST, etc.)
+  - `auth`: Authentication configuration
+  - `request_body`: Template for request body
+  - `request_params`: Template for query parameters
+  - `response_mapping`: JMESPath expressions for field extraction
+- **Features**:
+  - HTTP retry with exponential backoff
+  - Score normalization from various ranges
+  - Support for nested response structures
+  - Flexible metadata construction
+
 ### 7. Comparison Engine (`src/ragdiff/comparison/engine.py`)
 - **Location**: `src/ragdiff/comparison/engine.py`
 - **Purpose**: Orchestrate parallel or sequential RAG tool searches
@@ -269,7 +310,90 @@ All adapters now support multi-tenant credentials through the base class:
   - Each adapter instance has isolated credentials
   - Methods remain unchanged but benefit from thread-safe adapters
 
-### 8. LLM Evaluator (`src/ragdiff/evaluation/evaluator.py`)
+### 8. OpenAPI Package (`src/ragdiff/openapi/`)
+- **Location**: `src/ragdiff/openapi/`
+- **Purpose**: Tools for generating adapter configurations from OpenAPI specifications
+
+#### OpenAPI Parser (`src/ragdiff/openapi/parser.py`)
+- **Class**: `OpenAPISpec`
+- **Purpose**: Fetch and parse OpenAPI 3.x specifications
+- **Features**:
+  - Fetch specs from URLs (handles JSON and YAML)
+  - Parse OpenAPI 3.0 and 3.1 specifications
+  - Extract endpoint information with full metadata
+  - Extract authentication schemes
+  - Load from local files
+- **Methods**:
+  - `from_url(url)`: Fetch spec from URL
+  - `from_file(path)`: Load spec from file
+  - `get_endpoints()`: List all API endpoints
+  - `get_auth_schemes()`: Extract auth configurations
+  - `get_info()`: Get API metadata
+
+#### AI Analyzer (`src/ragdiff/openapi/ai_analyzer.py`)
+- **Class**: `AIAnalyzer`
+- **Purpose**: Use AI to analyze specs and generate mappings
+- **LLM Provider**: LiteLLM (supports Claude, GPT, any LLM)
+- **Features**:
+  - Identify search/query endpoints from spec
+  - Generate JMESPath mappings from API responses
+  - Structured JSON output for reliable parsing
+- **Methods**:
+  - `identify_search_endpoint(endpoints)`: AI identifies search endpoint
+  - `generate_response_mappings(response_json)`: Generate field mappings
+  - `_build_prompts()`: Structured prompts for consistent results
+
+#### Config Generator (`src/ragdiff/openapi/generator.py`)
+- **Class**: `ConfigGenerator`
+- **Purpose**: Orchestrate complete config generation workflow
+- **Workflow**:
+  1. Fetch and parse OpenAPI spec
+  2. Identify search endpoint (AI or manual)
+  3. Make test query to API
+  4. Generate response mappings with AI
+  5. Construct complete configuration
+  6. Validate configuration works
+- **Methods**:
+  - `generate()`: Complete generation workflow
+  - `_test_endpoint()`: Execute test query
+  - `_validate_config()`: Ensure config works
+
+#### Data Models (`src/ragdiff/openapi/models.py`)
+- **EndpointInfo**: Represents a single API endpoint
+  - Fields: path, method, summary, parameters, schemas
+- **AuthScheme**: Represents an authentication scheme
+  - Fields: type, scheme, location, parameter_name
+- **OpenAPIInfo**: General API information
+  - Fields: title, version, description, servers
+
+### 9. Response Mapping Engine (`src/ragdiff/adapters/openapi_mapping.py`)
+- **Location**: `src/ragdiff/adapters/openapi_mapping.py`
+- **Purpose**: Handle template substitution and response mapping
+
+#### Template Engine
+- **Class**: `TemplateEngine`
+- **Purpose**: Variable substitution in request templates
+- **Features**:
+  - Supports ${variable} syntax
+  - Preserves types (${top_k} stays integer)
+  - Recursive substitution in nested structures
+- **Methods**:
+  - `render(template, variables)`: Substitute variables
+
+#### Response Mapper
+- **Class**: `ResponseMapper`
+- **Purpose**: Extract fields from JSON using JMESPath
+- **JMESPath**: Query language for JSON (like XPath for XML)
+- **Features**:
+  - Navigate nested structures
+  - Transform and reshape data
+  - Construct new objects from fields
+  - Handle arrays and projections
+- **Methods**:
+  - `map_results(response, mapping)`: Extract RAG results
+  - `_normalize_score(score, scale)`: Normalize to 0-1 range
+
+### 10. LLM Evaluator (`src/ragdiff/evaluation/evaluator.py`)
 - **Location**: `src/ragdiff/evaluation/evaluator.py`
 - **Purpose**: Use Claude to provide qualitative RAG result evaluation
 - **Multi-Tenant Support**:
@@ -277,13 +401,20 @@ All adapters now support multi-tenant credentials through the base class:
   - Config object provides credential resolution for LLM API key
   - Thread-safe for concurrent evaluations
 
-### 9. CLI (`src/ragdiff/cli.py`)
+### 11. CLI (`src/ragdiff/cli.py`)
 - **Location**: `src/ragdiff/cli.py`
 - **Purpose**: Typer-based command-line interface
 - **Multi-Tenant Compatibility**:
   - CLI uses library API functions internally
   - Environment variables used by default (single-tenant mode)
   - Could be extended to accept credentials file for multi-tenant CLI usage
+- **Commands**:
+  - `query`: Run single query against one tool
+  - `compare`: Compare multiple tools
+  - `batch`: Process multiple queries
+  - `validate`: Validate configuration file
+  - `list-adapters`: Show available adapters
+  - `generate-adapter`: Generate OpenAPI adapter config (NEW)
 
 ## Utility Functions & Helpers
 
@@ -339,6 +470,45 @@ All adapters now support multi-tenant credentials through the base class:
   - Normalizes scores from different scales to 0-1 range
   - Handles "0-1", "0-100", "0-1000" scales
   - Class method for consistent normalization
+
+### OpenAPI Utilities (`src/ragdiff/openapi/` and `src/ragdiff/adapters/openapi_mapping.py`)
+
+#### JMESPath Response Mapping
+- `ResponseMapper.map_results(response, mapping)`: Extract RAG results from JSON
+  - Navigate nested structures with JMESPath expressions
+  - Transform and reshape response data
+  - Score normalization from various scales
+  - Construct metadata objects from multiple fields
+
+#### Template Variable Substitution
+- `TemplateEngine.render(template, variables)`: Substitute ${var} in templates
+  - Preserves variable types (${top_k} stays integer)
+  - Recursive substitution in nested structures
+  - Used for request bodies and query parameters
+
+#### OpenAPI Spec Parsing
+- `OpenAPISpec.from_url(url)`: Fetch and parse spec from URL
+  - Handles JSON and YAML formats
+  - Supports OpenAPI 3.0 and 3.1
+  - Extracts endpoints, auth schemes, schemas
+
+#### AI-Powered Analysis
+- `AIAnalyzer.identify_search_endpoint()`: Find search endpoint in spec
+  - Uses LLM to analyze endpoint descriptions
+  - Returns path, method, and reasoning
+
+- `AIAnalyzer.generate_response_mappings()`: Create JMESPath from response
+  - Analyzes example API response
+  - Generates field extraction expressions
+  - Returns complete mapping configuration
+
+#### Config Generation Workflow
+- `ConfigGenerator.generate()`: Complete workflow orchestration
+  - Fetches OpenAPI spec
+  - Identifies search endpoint (AI or manual)
+  - Tests with sample query
+  - Generates mappings from response
+  - Validates configuration
 
 ### Sample Data Utilities (`sampledata/`)
 
@@ -553,8 +723,24 @@ The CLI provides these commands via Typer:
 2. **Configuration Commands**
    - `validate` - Validate configuration file
    - `list-adapters` - Show available adapters
+   - `generate-adapter` - Generate OpenAPI adapter config from spec
 
-3. **Output Options**
+3. **OpenAPI Generation Command**
+   ```bash
+   ragdiff generate-adapter \
+     --openapi-url https://api.example.com/openapi.json \
+     --api-key $MY_API_KEY \
+     --test-query "test search" \
+     --adapter-name my-api \
+     --output configs/my-api.yaml
+   ```
+   - Fetches OpenAPI specification
+   - Uses AI to identify search endpoint
+   - Tests the endpoint with sample query
+   - Generates JMESPath mappings from response
+   - Creates complete YAML configuration
+
+4. **Output Options**
    - `--format` - Choose output format (display, json, csv, markdown)
    - `--output` - Save results to file
    - `--evaluate` - Enable LLM evaluation
@@ -660,6 +846,53 @@ The system maintains minimal state:
 - Automatic vector field mapping
 - Metadata field extraction configuration
 
+### 8. JMESPath for OpenAPI Response Mapping
+**Decision**: Use JMESPath as the query language for extracting fields from API responses.
+
+**Rationale**:
+- Industry standard used by AWS CLI, Azure CLI
+- Powerful query language specifically designed for JSON
+- Extensive documentation and community support
+- More powerful than simple JSONPath
+- Supports complex transformations and projections
+
+**Implementation Details**:
+- Navigate nested structures: `data.results[*].content.text`
+- Transform data: `{id: id, text: content}`
+- Handle arrays: `results[?score > 0.5]`
+- Construct new objects from multiple fields
+
+### 9. LiteLLM for AI Analysis
+**Decision**: Use LiteLLM instead of direct Anthropic/OpenAI SDKs for AI-powered config generation.
+
+**Rationale**:
+- Provider flexibility - not locked to one LLM vendor
+- Unified interface for Claude, GPT, Gemini, etc.
+- Automatic fallback between providers
+- Simpler dependency management
+- User choice of preferred LLM
+
+**Implementation Details**:
+- Default to Claude 3.5 Sonnet
+- Automatic API key detection from environment
+- Structured JSON output for reliability
+- Low temperature for consistent results
+
+### 10. Meta-Adapter Pattern for OpenAPI
+**Decision**: Create a single generic OpenAPI adapter instead of generating code for each API.
+
+**Rationale**:
+- Zero-code integration of new APIs
+- All configuration in YAML files
+- No need to maintain multiple adapter classes
+- Easier updates and bug fixes (one place)
+- Configuration can be generated or hand-written
+
+**Alternative Considered**: Code generation for each API
+- Rejected: More complex maintenance
+- Rejected: Harder to update generated code
+- Rejected: Version control issues with generated files
+
 ## Integration Points
 
 ### External Services (Multi-Tenant Ready)
@@ -703,6 +936,14 @@ All external service integrations now support per-request credentials:
 - **Model Selection**: Configurable per tenant
 - **Context**: Isolated evaluation per request
 
+#### Generic REST APIs (via OpenAPI Adapter)
+- **Endpoint**: Any REST API with OpenAPI specification
+- **Authentication**: Bearer, API Key, or Basic auth
+- **Configuration**: YAML-based, no code required
+- **Response Mapping**: JMESPath expressions
+- **Multi-Tenant**: Per-tenant API configurations
+- **Auto-Generation**: AI-powered config generation from specs
+
 ## Development Patterns
 
 ### 1. Installing Optional Dependencies
@@ -716,7 +957,54 @@ uv pip install -e ".[mongodb]"
 # - openai>=1.0.0 (Embedding generation)
 ```
 
-### 2. Adding a New Multi-Tenant Ready Adapter
+### 2. Adding a REST API via OpenAPI Adapter (Zero-Code)
+
+```yaml
+# configs/my-api.yaml
+tools:
+  my-api:
+    adapter: openapi  # Use generic OpenAPI adapter
+    api_key_env: MY_API_KEY
+
+    options:
+      base_url: https://api.example.com
+      endpoint: /v1/search
+      method: POST
+
+      auth:
+        type: bearer
+        header: Authorization
+        scheme: Bearer
+
+      request_body:
+        query: "${query}"
+        limit: ${top_k}
+
+      response_mapping:
+        results_array: "data.results"
+        fields:
+          id: "id"
+          text: "content.text"
+          score: "relevance_score"
+          source: "metadata.source"
+```
+
+Or auto-generate configuration:
+
+```bash
+# Auto-generate from OpenAPI spec
+ragdiff generate-adapter \
+  --openapi-url https://api.example.com/openapi.json \
+  --api-key $MY_API_KEY \
+  --test-query "sample search" \
+  --adapter-name my-api \
+  --output configs/my-api.yaml
+
+# Test the generated config
+ragdiff query "test query" --tool my-api --config configs/my-api.yaml
+```
+
+### 3. Adding a New Multi-Tenant Ready Adapter (Code-Based)
 
 ```python
 from typing import Optional
@@ -926,6 +1214,35 @@ def test_multi_tenant_isolation():
 
 ## Version History
 
+### v1.3.0 (2025-10-26) - OpenAPI Adapter System
+**Major Feature**: Zero-code integration of any REST API via OpenAPI specifications
+
+**Key Changes**:
+- Generic OpenAPI adapter that works with any REST API
+- JMESPath-based response mapping engine for flexible field extraction
+- OpenAPI 3.x specification parser for fetching and analyzing specs
+- AI-powered configuration generator using LiteLLM (Claude/GPT)
+- New CLI command: `generate-adapter` for auto-generating configs
+- Template engine for request variable substitution
+- Support for Bearer, API Key, and Basic authentication
+- HTTP retry logic with exponential backoff
+
+**New Components**:
+- `src/ragdiff/adapters/openapi.py` - Generic OpenAPI adapter
+- `src/ragdiff/adapters/openapi_mapping.py` - Response mapping engine
+- `src/ragdiff/openapi/` package - Spec parsing and AI generation tools
+  - `models.py` - Data models for OpenAPI elements
+  - `parser.py` - OpenAPI 3.x specification parser
+  - `ai_analyzer.py` - AI-powered endpoint and mapping analysis
+  - `generator.py` - Configuration generator orchestration
+- `configs/examples/openapi-adapter-example.yaml` - Usage examples
+
+**Dependencies Added**:
+- `jmespath>=1.0.1` - JSON query language
+- `litellm>=1.0.0` - Unified LLM interface
+
+**Total Tests**: 300+ (54 new tests for OpenAPI functionality)
+
 ### v1.2.1 (2025-10-25) - MongoDB Atlas Vector Search Support
 **Major Feature**: MongoDB Atlas Vector Search adapter with embedding integration
 
@@ -980,7 +1297,16 @@ def test_multi_tenant_isolation():
 
 ### Planned Features
 
-1. **MongoDB Enhancements**
+1. **OpenAPI Adapter Enhancements**
+   - Support for OAuth 2.0 authentication flows
+   - GraphQL endpoint support via introspection
+   - Automatic rate limiting and backoff strategies
+   - Response caching for identical queries
+   - Support for paginated responses
+   - Webhook/callback authentication patterns
+   - Multiple endpoint chaining for complex queries
+
+2. **MongoDB Enhancements**
    - Support for additional embedding providers (Cohere, HuggingFace)
    - Metadata filtering in vector search queries
    - Hybrid search combining vector and text search
@@ -1013,7 +1339,20 @@ def test_multi_tenant_isolation():
 
 ---
 
-**Document Status**: Complete with MongoDB Atlas Support v1.2.1
-**Last Updated**: 2025-10-25
+**Document Status**: Complete with OpenAPI Adapter System v1.3.0
+**Last Updated**: 2025-10-26
 **Next Review**: After next major feature implementation
 **Maintained By**: Architecture Documenter Agent
+
+## Key Architectural Highlights
+
+### OpenAPI Adapter System (v1.3.0)
+The OpenAPI Adapter System represents a paradigm shift in how RAGDiff integrates with external RAG APIs:
+
+1. **Zero-Code Integration**: New APIs can be integrated purely through YAML configuration
+2. **Meta-Adapter Pattern**: A single generic adapter handles all REST APIs
+3. **JMESPath Power**: Industry-standard query language for flexible response mapping
+4. **AI-Powered Generation**: Automatic configuration from OpenAPI specifications
+5. **Provider Flexibility**: LiteLLM enables choice of AI provider (Claude, GPT, etc.)
+
+This system enables RAGDiff to integrate with any REST-based RAG system without writing adapter code, dramatically expanding the framework's reach while maintaining clean architecture.
