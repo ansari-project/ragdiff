@@ -45,6 +45,7 @@ def execute_run(
     domain: str,
     provider: str,
     query_set: str,
+    label: str | None = None,
     concurrency: int = 10,
     per_query_timeout: float = 30.0,
     progress_callback: ProgressCallback | None = None,
@@ -64,6 +65,7 @@ def execute_run(
         domain: Domain name (e.g., "tafsir")
         provider: Provider name (e.g., "vectara-default")
         query_set: Query set name (e.g., "test-queries")
+        label: Optional label for the run (auto-generated if not provided)
         concurrency: Maximum number of concurrent queries (default: 10)
         per_query_timeout: Timeout per query in seconds (default: 30.0)
         progress_callback: Optional callback for progress updates
@@ -97,6 +99,14 @@ def execute_run(
     run_id = uuid4()
     started_at = datetime.now(timezone.utc)
 
+    # Generate label if not provided
+    if label is None:
+        from ..core.storage import generate_run_label
+
+        date_str = started_at.strftime("%Y-%m-%d")
+        label = generate_run_label(domain, provider, date_str, domains_dir)
+        logger.info(f"Auto-generated label: {label}")
+
     try:
         # Load domain (for validation)
         load_domain(domain, domains_dir)
@@ -126,6 +136,7 @@ def execute_run(
     # Initialize run with pending status
     run = Run(
         id=run_id,
+        label=label,
         domain=domain,
         provider=provider,
         query_set=query_set,

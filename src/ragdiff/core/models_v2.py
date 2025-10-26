@@ -158,6 +158,7 @@ class Run(BaseModel):
     """Run execution result (stored as domains/<domain>/runs/YYYY-MM-DD/<id>.json)."""
 
     id: UUID = Field(default_factory=uuid4)
+    label: str  # Human-readable label (e.g., "vectara-20251026-001")
     domain: str
     provider: str  # system name
     query_set: str  # query set name
@@ -201,6 +202,7 @@ class Comparison(BaseModel):
     """Comparison of multiple runs (stored as domains/<domain>/comparisons/YYYY-MM-DD/<id>.json)."""
 
     id: UUID = Field(default_factory=uuid4)
+    label: str  # Human-readable label (e.g., "comparison-20251026-001")
     domain: str
     runs: list[UUID]  # run IDs being compared
     evaluations: list[EvaluationResult]

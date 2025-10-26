@@ -50,6 +50,7 @@ except ImportError:
 def compare_runs(
     domain: str,
     run_ids: list[str | UUID],
+    label: str | None = None,
     model: str | None = None,
     temperature: float | None = None,
     max_retries: int = 3,
@@ -105,6 +106,14 @@ def compare_runs(
 
     comparison_id = uuid4()
     created_at = datetime.now(timezone.utc)
+
+    # Generate label if not provided
+    if label is None:
+        from ..core.storage import generate_comparison_label
+
+        date_str = created_at.strftime("%Y-%m-%d")
+        label = generate_comparison_label(domain, date_str, domains_dir)
+        logger.info(f"Auto-generated label: {label}")
 
     try:
         # Load domain
@@ -170,6 +179,7 @@ def compare_runs(
     # Create comparison object
     comparison = Comparison(
         id=comparison_id,
+        label=label,
         domain=domain,
         runs=run_uuids,
         evaluations=evaluations,

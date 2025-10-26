@@ -54,6 +54,7 @@ def run(
     domain: str = typer.Argument(..., help="Domain name (e.g., 'tafsir')"),
     provider: str = typer.Argument(..., help="Provider name (e.g., 'vectara-default')"),
     query_set: str = typer.Argument(..., help="Query set name (e.g., 'test-queries')"),
+    label: Optional[str] = typer.Option(None, "--label", "-l", help="Label for this run (auto-generated if not provided)"),
     concurrency: int = typer.Option(10, help="Maximum concurrent queries"),
     timeout: float = typer.Option(30.0, help="Timeout per query in seconds"),
     domains_dir: Optional[Path] = typer.Option(
@@ -110,6 +111,7 @@ def run(
                     domain=domain,
                     provider=provider,
                     query_set=query_set,
+                    label=label,
                     concurrency=concurrency,
                     per_query_timeout=timeout,
                     progress_callback=progress_callback,
@@ -123,6 +125,7 @@ def run(
                 domain=domain,
                 provider=provider,
                 query_set=query_set,
+                label=label,
                 concurrency=concurrency,
                 per_query_timeout=timeout,
                 progress_callback=None,
@@ -131,7 +134,7 @@ def run(
 
         # Display results
         console.print()
-        console.print(f"[bold green]✓[/bold green] Run completed: {result.id}")
+        console.print(f"[bold green]✓[/bold green] Run completed: {result.label}")
         console.print()
 
         # Summary table
@@ -139,7 +142,8 @@ def run(
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="white")
 
-        table.add_row("Run ID", str(result.id))
+        table.add_row("Label", result.label)
+        table.add_row("Run ID", str(result.id)[:8] + "...")
         table.add_row("Domain", result.domain)
         table.add_row("Provider", result.provider)
         table.add_row("Query Set", result.query_set)
@@ -177,9 +181,10 @@ def run(
 @app.command()
 def compare(
     domain: str = typer.Argument(..., help="Domain name (e.g., 'tafsir')"),
-    run_ids: list[str] = typer.Argument(
-        ..., help="Run IDs to compare (full UUID or short prefix like '550e')"
+    run: list[str] = typer.Option(
+        None, "--run", "-r", help="Run label or ID to compare (can be specified multiple times)"
     ),
+    label: Optional[str] = typer.Option(None, "--label", "-l", help="Label for this comparison (auto-generated if not provided)"),
     model: Optional[str] = typer.Option(
         None, help="LLM model override (default: use domain config)"
     ),
@@ -203,19 +208,47 @@ def compare(
     """Compare multiple runs using LLM evaluation.
 
     This command:
-    1. Loads all runs from disk
+    1. Loads all runs from disk (or finds latest runs if --run not specified)
     2. Validates runs are from same domain and query set
     3. For each query, evaluates results using LLM
     4. Saves comparison to disk
     5. Displays or exports results
 
     Example:
-        $ ragdiff compare tafsir 550e 660e
-        $ ragdiff compare tafsir run1 run2 --model claude-3-5-sonnet-20241022
-        $ ragdiff compare tafsir 550e 660e --concurrency 10
-        $ ragdiff compare tafsir 550e 660e --format json --output comparison.json
+        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002
+        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --model claude-3-5-sonnet-20241022
+        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --concurrency 10
+        $ ragdiff compare tafsir --run vectara-001 --run mongodb-002 --format json --output comparison.json
+        $ ragdiff compare tafsir  # Uses latest run for each provider
     """
     domains_path = Path(domains_dir) if domains_dir else Path("domains")
+
+    # If no --run flags provided, find latest runs for each provider
+    if not run or len(run) == 0:
+        from .core.storage import list_runs
+
+        all_runs = list_runs(domain, domains_dir=domains_path)
+
+        if len(all_runs) == 0:
+            console.print(f"[bold red]Error:[/bold red] No runs found for domain '{domain}'")
+            raise typer.Exit(code=1)
+
+        # Group runs by provider and get the latest for each
+        provider_runs = {}
+        for r in all_runs:
+            if r.provider not in provider_runs or r.started_at > provider_runs[r.provider].started_at:
+                provider_runs[r.provider] = r
+
+        run = [r.label for r in provider_runs.values()]
+        console.print(f"[dim]No --run flags provided. Using latest runs:[/dim]")
+        for r_label in run:
+            console.print(f"[dim]  - {r_label}[/dim]")
+        console.print()
+
+    # Ensure at least 2 runs to compare
+    if len(run) < 2:
+        console.print(f"[bold red]Error:[/bold red] Need at least 2 runs to compare (got {len(run)})")
+        raise typer.Exit(code=1)
 
     try:
         # Show progress bar unless quiet mode
@@ -230,7 +263,7 @@ def compare(
             ) as progress:
                 # Track progress
                 task = progress.add_task(
-                    f"Comparing {len(run_ids)} runs", total=100
+                    f"Comparing {len(run)} runs", total=100
                 )
 
                 completed_evals = 0
@@ -250,7 +283,8 @@ def compare(
                 # Execute comparison
                 result = compare_runs(
                     domain=domain,
-                    run_ids=run_ids,
+                    run_ids=run,
+                    label=label,
                     model=model,
                     temperature=temperature,
                     concurrency=concurrency,
@@ -263,7 +297,8 @@ def compare(
             # Quiet mode - no progress bar
             result = compare_runs(
                 domain=domain,
-                run_ids=run_ids,
+                run_ids=run,
+                label=label,
                 model=model,
                 temperature=temperature,
                 concurrency=concurrency,
@@ -443,9 +478,9 @@ def _output_table(comparison, output_path):
         )
 
     console.print()
-    console.print(f"[bold]Comparison {comparison.id}[/bold]")
+    console.print(f"[bold]Comparison: {comparison.label}[/bold]")
     console.print(f"Domain: {comparison.domain}")
-    console.print(f"Runs: {', '.join(str(r)[:8] for r in comparison.runs)}")
+    console.print(f"Comparison ID: {str(comparison.id)[:8]}...")
     console.print()
 
     # Summary
@@ -505,10 +540,10 @@ def _output_json(comparison, output_path):
 def _output_markdown(comparison, output_path):
     """Output comparison results as Markdown."""
     lines = [
-        f"# Comparison {comparison.id}",
+        f"# Comparison: {comparison.label}",
         "",
         f"**Domain:** {comparison.domain}",
-        f"**Runs:** {', '.join(str(r)[:8] for r in comparison.runs)}",
+        f"**Comparison ID:** {str(comparison.id)[:8]}...",
         f"**Model:** {comparison.evaluator_config.model}",
         f"**Temperature:** {comparison.evaluator_config.temperature}",
         "",

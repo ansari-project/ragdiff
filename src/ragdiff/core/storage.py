@@ -70,7 +70,7 @@ def load_run(
 
     Args:
         domain_name: Name of the domain
-        run_id: UUID of the run (full UUID or prefix like '550e')
+        run_id: UUID of the run, UUID prefix, or label (e.g., 'vectara-20251026-001')
         domains_dir: Root directory containing all domains
 
     Returns:
@@ -81,15 +81,21 @@ def load_run(
 
     Example:
         >>> run = load_run("tafsir", "550e8400-e29b-41d4-a716-446655440000")
-        >>> print(run.system)
+        >>> print(run.provider)
         'vectara-default'
 
         # Also supports prefixes
         >>> run = load_run("tafsir", "550e")
+
+        # Also supports labels
+        >>> run = load_run("tafsir", "vectara-20251026-001")
     """
     try:
+        # Try to find by label first (if it doesn't look like a UUID)
+        if isinstance(run_id, str) and "-" in run_id and not _is_uuid_like(run_id):
+            run_path = _find_run_by_label(domain_name, run_id, domains_dir)
         # Handle UUID prefix matching
-        if isinstance(run_id, str) and len(run_id) < 36:
+        elif isinstance(run_id, str) and len(run_id) < 36:
             # Short prefix - search for match
             run_path = find_run_by_prefix(domain_name, run_id, domains_dir)
         else:
@@ -289,6 +295,169 @@ def _find_comparison_by_full_uuid(
     raise ComparisonError(
         f"Comparison {comparison_id} not found in domain '{domain_name}'"
     )
+
+
+def _is_uuid_like(s: str) -> bool:
+    """Check if a string looks like a UUID (8-4-4-4-12 format)."""
+    try:
+        UUID(s)
+        return True
+    except (ValueError, AttributeError):
+        # Check if it's a valid UUID prefix (starts with hex chars)
+        if len(s) <= 8 and all(c in "0123456789abcdefABCDEF-" for c in s):
+            return True
+        return False
+
+
+def _find_run_by_label(domain_name: str, label: str, domains_dir: Path) -> Path:
+    """Find a run by its label.
+
+    Args:
+        domain_name: Name of the domain
+        label: Run label (e.g., 'vectara-20251026-001')
+        domains_dir: Root directory containing all domains
+
+    Returns:
+        Path to the run file
+
+    Raises:
+        RunError: If run not found or multiple matches found
+    """
+    from .paths import get_domain_dir
+
+    runs_base_dir = get_domain_dir(domain_name, domains_dir) / "runs"
+
+    if not runs_base_dir.exists():
+        raise RunError(f"No runs found for domain '{domain_name}'")
+
+    # Search all date directories
+    matches = []
+    for date_dir in sorted(runs_base_dir.iterdir(), reverse=True):
+        if not date_dir.is_dir():
+            continue
+
+        for run_file in date_dir.glob("*.json"):
+            try:
+                with open(run_file, encoding="utf-8") as f:
+                    data = json.load(f)
+                if data.get("label") == label:
+                    matches.append(run_file)
+            except Exception:
+                continue
+
+    if len(matches) == 0:
+        raise RunError(f"No run found with label '{label}' in domain '{domain_name}'")
+    elif len(matches) > 1:
+        raise RunError(
+            f"Multiple runs found with label '{label}' (this should not happen)"
+        )
+
+    return matches[0]
+
+
+def generate_run_label(
+    domain_name: str, provider: str, date_str: str, domains_dir: Path = Path("domains")
+) -> str:
+    """Generate the next available label for a run.
+
+    Args:
+        domain_name: Name of the domain
+        provider: Provider name (e.g., 'vectara-default')
+        date_str: Date string in YYYY-MM-DD format
+        domains_dir: Root directory containing all domains
+
+    Returns:
+        Next available label (e.g., 'vectara-default-20251026-001')
+
+    Example:
+        >>> label = generate_run_label("tafsir", "vectara-default", "2025-10-26")
+        >>> print(label)
+        'vectara-default-20251026-001'
+    """
+    from .paths import get_domain_dir
+
+    # Format: {provider}-{YYYYMMDD}-{counter}
+    date_part = date_str.replace("-", "")
+    label_prefix = f"{provider}-{date_part}-"
+
+    runs_base_dir = get_domain_dir(domain_name, domains_dir) / "runs"
+
+    # Find existing runs with this prefix
+    existing_counters = []
+    if runs_base_dir.exists():
+        for date_dir in runs_base_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+
+            for run_file in date_dir.glob("*.json"):
+                try:
+                    with open(run_file, encoding="utf-8") as f:
+                        data = json.load(f)
+                    label = data.get("label", "")
+                    if label.startswith(label_prefix):
+                        # Extract counter from label
+                        counter_str = label[len(label_prefix) :]
+                        if counter_str.isdigit():
+                            existing_counters.append(int(counter_str))
+                except Exception:
+                    continue
+
+    # Get next counter
+    next_counter = max(existing_counters, default=0) + 1
+
+    return f"{label_prefix}{next_counter:03d}"
+
+
+def generate_comparison_label(
+    domain_name: str, date_str: str, domains_dir: Path = Path("domains")
+) -> str:
+    """Generate the next available label for a comparison.
+
+    Args:
+        domain_name: Name of the domain
+        date_str: Date string in YYYY-MM-DD format
+        domains_dir: Root directory containing all domains
+
+    Returns:
+        Next available label (e.g., 'comparison-20251026-001')
+
+    Example:
+        >>> label = generate_comparison_label("tafsir", "2025-10-26")
+        >>> print(label)
+        'comparison-20251026-001'
+    """
+    from .paths import get_domain_dir
+
+    # Format: comparison-{YYYYMMDD}-{counter}
+    date_part = date_str.replace("-", "")
+    label_prefix = f"comparison-{date_part}-"
+
+    comparisons_base_dir = get_domain_dir(domain_name, domains_dir) / "comparisons"
+
+    # Find existing comparisons with this prefix
+    existing_counters = []
+    if comparisons_base_dir.exists():
+        for date_dir in comparisons_base_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+
+            for comp_file in date_dir.glob("*.json"):
+                try:
+                    with open(comp_file, encoding="utf-8") as f:
+                        data = json.load(f)
+                    label = data.get("label", "")
+                    if label.startswith(label_prefix):
+                        # Extract counter from label
+                        counter_str = label[len(label_prefix) :]
+                        if counter_str.isdigit():
+                            existing_counters.append(int(counter_str))
+                except Exception:
+                    continue
+
+    # Get next counter
+    next_counter = max(existing_counters, default=0) + 1
+
+    return f"{label_prefix}{next_counter:03d}"
 
 
 def list_runs(
