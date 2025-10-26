@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ragdiff-squad-demo"
 version = "1.0.0"
@@ -14,3 +18,6 @@ dependencies = [
 gpu = [
     "faiss-gpu>=1.7.4",  # For GPU acceleration
 ]
+
+[tool.setuptools]
+py-modules = []  # No Python modules to install, just dependencies
