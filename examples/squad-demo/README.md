@@ -79,10 +79,10 @@ Execute query sets against each provider:
 cd ../..
 
 # Run against small model
-uv run ragdiff run squad-demo faiss-small test-queries --domains-dir examples
+uv run ragdiff run squad faiss-small test-queries --domains-dir examples/squad-demo/domains
 
 # Run against large model
-uv run ragdiff run squad-demo faiss-large test-queries --domains-dir examples
+uv run ragdiff run squad faiss-large test-queries --domains-dir examples/squad-demo/domains
 ```
 
 ### Compare Results
@@ -91,17 +91,17 @@ After running queries, compare the results:
 
 ```bash
 # Compare two runs (replace with actual run IDs from output)
-uv run ragdiff compare squad-demo <run-id-1> <run-id-2> --domains-dir examples
+uv run ragdiff compare squad <run-id-1> <run-id-2> --domains-dir examples/squad-demo/domains
 
 # Export to JSON
-uv run ragdiff compare squad-demo <run-id-1> <run-id-2> \
-  --domains-dir examples \
+uv run ragdiff compare squad <run-id-1> <run-id-2> \
+  --domains-dir examples/squad-demo/domains \
   --format json \
   --output comparison.json
 
 # Export to Markdown report
-uv run ragdiff compare squad-demo <run-id-1> <run-id-2> \
-  --domains-dir examples \
+uv run ragdiff compare squad <run-id-1> <run-id-2> \
+  --domains-dir examples/squad-demo/domains \
   --format markdown \
   --output comparison-report.md
 ```
@@ -125,27 +125,29 @@ The comparison report will show:
 ```
 squad-demo/
 ├── README.md                           # This file
-├── domain.yaml                         # Domain configuration
 ├── pyproject.toml                      # Python dependencies
-├── providers/                          # Provider configs
-│   ├── faiss-small.yaml                # Small model config
-│   └── faiss-large.yaml                # Large model config
-├── query-sets/                         # Query files (generated)
-│   └── test-queries.txt                # 100 test questions
-├── scripts/                            # Setup scripts
-│   ├── setup_all.sh                    # Master setup script
-│   ├── setup_dataset.py                # Download and prepare SQuAD
-│   ├── build_faiss_small.py            # Build small model index
-│   ├── build_faiss_large.py            # Build large model index
-│   ├── generate_queries.py             # Generate query sets
-│   └── test_setup.py                   # Verify setup
-├── data/                               # Data files (generated)
+├── domains/                            # Domain configurations
+│   └── squad/                          # The "squad" domain
+│       ├── domain.yaml                 # Domain configuration
+│       ├── providers/                  # Provider configs
+│       │   ├── faiss-small.yaml        # Small model config
+│       │   └── faiss-large.yaml        # Large model config
+│       ├── query-sets/                 # Query files
+│       │   └── test-queries.txt        # 100 test questions
+│       ├── runs/                       # Run results (auto-created)
+│       └── comparisons/                # Comparison results (auto-created)
+├── data/                               # Shared data files (generated)
 │   ├── documents.jsonl                 # Document corpus
 │   ├── squad_raw.json                  # Raw SQuAD data
 │   ├── faiss_small.index               # Small model FAISS index
 │   └── faiss_large.index               # Large model FAISS index
-├── runs/                               # Run results (auto-created)
-└── comparisons/                        # Comparison results (auto-created)
+└── scripts/                            # Setup scripts
+    ├── setup_all.sh                    # Master setup script
+    ├── setup_dataset.py                # Download and prepare SQuAD
+    ├── build_faiss_small.py            # Build small model index
+    ├── build_faiss_large.py            # Build large model index
+    ├── generate_queries.py             # Generate query sets
+    └── test_setup.py                   # Verify setup
 ```
 
 ## Rebuilding Indices
@@ -173,14 +175,14 @@ If you want to rebuild the indices with different models:
 4. **Run queries against both providers:**
    ```bash
    cd ../..  # Back to project root
-   uv run ragdiff run squad-demo faiss-small test-queries --domains-dir examples
-   uv run ragdiff run squad-demo faiss-large test-queries --domains-dir examples
+   uv run ragdiff run squad faiss-small test-queries --domains-dir examples/squad-demo/domains
+   uv run ragdiff run squad faiss-large test-queries --domains-dir examples/squad-demo/domains
    ```
 
 5. **Compare the results:**
    ```bash
-   uv run ragdiff compare squad-demo <run-id-1> <run-id-2> \
-     --domains-dir examples \
+   uv run ragdiff compare squad <run-id-1> <run-id-2> \
+     --domains-dir examples/squad-demo/domains \
      --format markdown \
      --output examples/squad-demo/comparison-report.md
    ```
@@ -192,8 +194,8 @@ If you want to rebuild the indices with different models:
 Speed up query execution with parallel requests:
 
 ```bash
-uv run ragdiff run squad-demo faiss-small test-queries \
-  --domains-dir examples \
+uv run ragdiff run squad faiss-small test-queries \
+  --domains-dir examples/squad-demo/domains \
   --concurrency 10
 ```
 
@@ -222,7 +224,7 @@ What are transformers in NLP?
 EOF
 
 # Run with custom queries
-uv run ragdiff run squad-demo faiss-small custom-queries --domains-dir examples
+uv run ragdiff run squad faiss-small custom-queries --domains-dir examples/squad-demo/domains
 ```
 
 ## Troubleshooting
