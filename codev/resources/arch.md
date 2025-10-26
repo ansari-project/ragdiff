@@ -33,12 +33,14 @@ Key architectural principles:
 - **agentset**: 0.4.0+ (Agentset RAG platform)
 - **pymongo**: 4.0.0+ (MongoDB Atlas Vector Search)
 - **openai**: 1.0.0+ (Embeddings for MongoDB)
+- **jmespath**: 1.0.1+ (JSON query language for OpenAPI response mapping)
 
 ### Development Tools
-- **pytest**: 7.4.0+ (Testing framework with 78+ v2.0 tests)
+- **pytest**: 7.4.0+ (Testing framework with 132+ tests: 78 v2.0 + 54 OpenAPI)
 - **pytest-cov**: 4.1.0+ (Coverage reporting)
 - **ruff**: 0.1.0+ (Fast Python linter and formatter)
 - **pre-commit**: 3.0.0+ (Git hooks for code quality)
+- **responses**: 0.24.0+ (HTTP mocking for tests)
 
 ## Directory Structure
 
@@ -79,7 +81,16 @@ ragdiff/
 │   ├── display/                    # Output formatting
 │   │   └── formatter.py            # Table, JSON, Markdown formatters
 │   │
-│   ├── adapters/                   # Legacy v1.x adapters (deprecated)
+│   ├── adapters/                   # Legacy v1.x adapters + OpenAPI adapter
+│   │   ├── openapi.py              # Generic OpenAPI adapter
+│   │   └── openapi_mapping.py      # JMESPath response mapping
+│   │
+│   ├── openapi/                    # OpenAPI specification tools
+│   │   ├── models.py               # Data models (EndpointInfo, AuthScheme)
+│   │   ├── parser.py               # OpenAPI 3.x spec parser
+│   │   ├── ai_analyzer.py          # AI-powered analysis
+│   │   └── generator.py            # Configuration generator
+│   │
 │   └── api.py                      # Legacy v1.x API (deprecated)
 │
 ├── tests/                          # Test suite
@@ -88,6 +99,8 @@ ragdiff/
 │   ├── test_execution.py           # Execution engine tests (12 tests)
 │   ├── test_comparison.py          # Comparison tests (5 tests)
 │   ├── test_cli_v2.py              # CLI tests (8 tests)
+│   ├── test_openapi_adapter.py     # OpenAPI adapter tests (28 tests)
+│   ├── test_openapi_parser.py      # OpenAPI parser tests (26 tests)
 │   └── [legacy v1.x test files]
 │
 ├── domains/                        # Domain experiment directories
@@ -303,6 +316,14 @@ class System(ABC):
 - Optional reranking
 - Multi-space support
 - Fallback handling
+
+**OpenAPI System** (`adapters/openapi.py`):
+- Generic adapter for any REST API
+- Configuration-driven (zero code needed)
+- JMESPath response mapping
+- Bearer, API Key, and Basic authentication
+- Template variable substitution (${query}, ${top_k})
+- AI-powered config generation from OpenAPI specs
 
 ### 5. Execution Engine (`src/ragdiff/execution/executor.py`)
 
@@ -955,6 +976,27 @@ pytest tests/test_core_v2.py -v
 - LLM comparison evaluator
 - 78 comprehensive tests
 
+### v2.1.0 (2025-10-26) - OpenAPI Adapter System
+**Enhancement**: Zero-code integration of REST APIs via OpenAPI specifications
+
+**Major Changes**:
+- Generic OpenAPI adapter for any REST API
+- JMESPath-based response mapping engine
+- OpenAPI 3.x specification parser
+- AI-powered configuration generator using LiteLLM
+- CLI command: `generate-adapter` for auto-config generation
+- Support for Bearer, API Key, and Basic authentication
+
+**New Components**:
+- `adapters/openapi.py` - Generic OpenAPI adapter
+- `adapters/openapi_mapping.py` - JMESPath response mapping
+- `openapi/` package - Spec parsing and AI generation
+- 54 new tests for OpenAPI functionality
+
+**Dependencies Added**:
+- `jmespath>=1.0.1` - JSON query language
+- `litellm>=1.0.0` - Unified LLM interface (also used in v2.0)
+
 ### v1.2.1 (Previous) - Adapter-Based Architecture
 **Status**: Deprecated, replaced by v2.0
 
@@ -989,7 +1031,7 @@ pytest tests/test_core_v2.py -v
 
 ---
 
-**Document Status**: Complete for v2.0.0
-**Last Updated**: 2025-10-25
-**Architecture Version**: 2.0.0 (Domain-Based)
+**Document Status**: Complete for v2.1.0
+**Last Updated**: 2025-10-26
+**Architecture Version**: 2.1.0 (Domain-Based + OpenAPI Adapter)
 **Maintained By**: Architecture Documenter Agent

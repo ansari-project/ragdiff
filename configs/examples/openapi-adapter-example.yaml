@@ -1,0 +1,194 @@
+# Example OpenAPI Adapter Configuration
+#
+# This file demonstrates how to configure the generic OpenAPI adapter
+# to work with any REST API without writing code.
+#
+# The OpenAPI adapter uses JMESPath for flexible response mapping,
+# allowing you to extract data from arbitrary JSON response structures.
+
+tools:
+  # Example 1: Simple API with Bearer token authentication
+  simple-api-example:
+    adapter: openapi  # Use the generic OpenAPI adapter
+    api_key_env: SIMPLE_API_KEY  # Environment variable for API key
+    timeout: 30
+    max_retries: 3
+
+    options:
+      # API endpoint configuration
+      base_url: https://api.example.com
+      endpoint: /v1/search
+      method: POST  # HTTP method: GET, POST, PUT, PATCH
+
+      # Authentication configuration
+      auth:
+        type: bearer  # Auth types: bearer, api_key, basic
+        header: Authorization  # Header name
+        scheme: Bearer  # Scheme prefix (for bearer auth)
+
+      # Request body template
+      # Use ${query} for the search query and ${top_k} for the result limit
+      request_body:
+        query: "${query}"
+        limit: ${top_k}
+        # You can include static fields too
+        filters:
+          language: "ar"
+
+      # Response mapping using JMESPath
+      # JMESPath is a query language for JSON (like XPath for XML)
+      # Learn more: https://jmespath.org/
+      response_mapping:
+        # Path to the array of results in the response
+        results_array: "data.results"
+
+        # Field mappings (required: id, text, score; optional: source, metadata)
+        fields:
+          id: "id"  # Unique identifier
+          text: "content.text"  # Main content text
+          score: "relevance_score"  # Relevance score (will be normalized to 0-1)
+          source: "source.name"  # Source document name
+          # Metadata can construct new objects using JMESPath syntax
+          metadata: "{author: metadata.author, date: published_date}"
+
+  # Example 2: Complex nested response structure
+  complex-api-example:
+    adapter: openapi
+    api_key_env: COMPLEX_API_KEY
+
+    options:
+      base_url: https://api.complex.com
+      endpoint: /search
+      method: POST
+
+      auth:
+        type: bearer
+        header: Authorization
+        scheme: Bearer
+
+      request_body:
+        q: "${query}"
+        max_results: ${top_k}
+        options:
+          include_metadata: true
+          language: "ar"
+
+      # Handling deeply nested response structures
+      response_mapping:
+        # Navigate through nested objects
+        results_array: "data.search_results.items"
+
+        fields:
+          id: "document.id"
+          text: "document.content.full_text"
+          score: "ranking.relevance_score"
+          source: "document.metadata.source_name"
+          # Construct complex metadata objects
+          metadata: "{author: document.metadata.author, date: document.metadata.published_date, tags: document.tags[*].name, category: document.category}"
+
+  # Example 3: GET request with query parameters
+  get-api-example:
+    adapter: openapi
+    api_key_env: GET_API_KEY
+
+    options:
+      base_url: https://api.getexample.com
+      endpoint: /search
+      method: GET  # GET requests use query parameters
+
+      # API key in query parameter (not header)
+      auth:
+        type: api_key
+        header: X-API-Key
+
+      # For GET requests, use request_params instead of request_body
+      request_params:
+        q: "${query}"
+        limit: ${top_k}
+        format: json
+
+      response_mapping:
+        results_array: "items"
+        fields:
+          id: "id"
+          text: "snippet"
+          score: "relevance"
+          source: "title"
+
+  # Example 4: API with custom headers
+  custom-headers-example:
+    adapter: openapi
+    api_key_env: CUSTOM_API_KEY
+
+    options:
+      base_url: https://api.custom.com
+      endpoint: /v2/search
+      method: POST
+
+      auth:
+        type: bearer
+        header: Authorization
+        scheme: Bearer
+
+      # Add custom headers (also supports template variables)
+      request_headers:
+        X-Custom-Header: "my-value"
+        X-Request-ID: "ragdiff-${query}"
+
+      request_body:
+        query: "${query}"
+        size: ${top_k}
+
+      response_mapping:
+        results_array: "results"
+        fields:
+          id: "doc_id"
+          text: "text"
+          score: "score"
+          source: "source"
+
+  # Example 5: API with array manipulation
+  array-example:
+    adapter: openapi
+    api_key_env: ARRAY_API_KEY
+
+    options:
+      base_url: https://api.array.com
+      endpoint: /search
+      method: POST
+
+      auth:
+        type: bearer
+        header: Authorization
+
+      request_body:
+        query_text: "${query}"
+        num_results: ${top_k}
+
+      response_mapping:
+        # JMESPath can filter and transform arrays
+        results_array: "data.hits[?score > `0.5`]"  # Filter results with score > 0.5
+
+        fields:
+          id: "hit_id"
+          text: "content"
+          score: "score"
+          # Combine multiple text fields
+          source: "join(' - ', [source_type, source_name])"
+          # Access first element of array
+          metadata: "{primary_tag: tags[0], author: metadata.author}"
+
+# JMESPath Tips:
+#
+# 1. Simple path: "data.results" -> response["data"]["results"]
+# 2. Array index: "results[0].text" -> results[0]["text"]
+# 3. Array slice: "results[0:5]" -> first 5 results
+# 4. Array wildcard: "results[*].text" -> all text fields
+# 5. Object construction: "{a: field_a, b: field_b}" -> {"a": value_a, "b": value_b}
+# 6. Filtering: "results[?score > `0.8`]" -> results where score > 0.8
+# 7. Functions: "length(results)" -> number of results
+# 8. Pipe: "results | [0]" -> first result
+# 9. Multi-select: "[field_a, field_b]" -> [value_a, value_b]
+# 10. Defaults: "field || 'default'" -> use default if field is null
+#
+# Full documentation: https://jmespath.org/tutorial.html

@@ -49,6 +49,7 @@ dependencies = [
     "goodmem-client>=1.5.5",
     "markdown>=3.9",
     "agentset>=0.4.0",
+    "jmespath>=1.0.1",
     "litellm>=1.0.0",
 ]
 
@@ -66,6 +67,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
     "pre-commit>=3.5.0",
+    "responses>=0.24.0",
 ]
 
 [project.scripts]
