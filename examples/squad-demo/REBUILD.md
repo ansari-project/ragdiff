@@ -25,7 +25,7 @@ The demo now compares **two different embedding models** to show quality differe
    ```bash
    uv run python scripts/build_faiss_large.py
    ```
-   This creates `data/faiss_large.index` using all-MiniLM-L12-v2 with Inner Product (cosine similarity)
+   This creates `data/faiss_large.index` using all-MiniLM-L12-v2 with L2 distance
 
 4. **Run queries against both providers:**
    ```bash

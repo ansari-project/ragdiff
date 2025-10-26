@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build FAISS index with large/quality embedding model.
 
-This script creates a FAISS index using the all-mpnet-base-v2 model,
-which is larger (438MB) and more accurate than smaller models.
+This script creates a FAISS index using the all-MiniLM-L12-v2 model,
+which is larger (120MB, 12 layers) and more accurate than smaller models.
+Uses L2 (Euclidean) distance for similarity search.
 """
 
 import json
@@ -26,7 +27,7 @@ except ImportError:
 
 
 def main() -> None:
-    """Build FAISS index with Inner Product."""
+    """Build FAISS index with L2 distance."""
     # Set up paths
     script_dir = Path(__file__).parent
     data_dir = script_dir.parent / "data"
@@ -63,19 +64,16 @@ def main() -> None:
         show_progress_bar=True,
         batch_size=8,  # Smaller batch size to avoid memory issues with large model
         convert_to_numpy=True,
-        normalize_embeddings=True,  # Normalize for proper cosine similarity
     )
 
     # Ensure correct dtype
     embeddings = np.array(embeddings, dtype="float32")
 
-    print(
-        f"Generated {len(embeddings)} normalized embeddings with dimension {embedding_dim}"
-    )
+    print(f"Generated {len(embeddings)} embeddings with dimension {embedding_dim}")
 
-    # Create FAISS index with Inner Product
-    print("Building FAISS index with Inner Product (cosine similarity)...")
-    index = faiss.IndexFlatIP(embedding_dim)
+    # Create FAISS index with L2 distance
+    print("Building FAISS index with L2 (Euclidean) distance...")
+    index = faiss.IndexFlatL2(embedding_dim)
 
     # Add vectors to index
     index.add(embeddings)
@@ -88,7 +86,7 @@ def main() -> None:
 
     print(f"✓ Created FAISS index (large model) at {output_file}")
     print("  Model: all-MiniLM-L12-v2")
-    print("  Metric: Inner Product (cosine similarity with normalized vectors)")
+    print("  Metric: L2 (Euclidean distance)")
     print(f"  Vectors: {index.ntotal}")
     print(f"  Dimensions: {index.d}")
     print("\nModel characteristics:")
