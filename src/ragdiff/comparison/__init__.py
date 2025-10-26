@@ -1,5 +1,10 @@
-"""Comparison module for RAG tool evaluation."""
+"""Comparison module for RAG tool evaluation.
 
-from .engine import ComparisonEngine
+v1.x: ComparisonEngine (deprecated)
+v2.0: compare_runs function
+"""
 
-__all__ = ["ComparisonEngine"]
+from .engine import ComparisonEngine  # v1.x
+from .evaluator import compare_runs  # v2.0
+
+__all__ = ["ComparisonEngine", "compare_runs"]
