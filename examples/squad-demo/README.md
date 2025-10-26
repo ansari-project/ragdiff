@@ -36,51 +36,43 @@ Install required dependencies:
 ```bash
 # Core dependencies (if not already installed from project root)
 cd /path/to/ragdiff
+uv venv
 uv pip install -e .
 
 # Install example dependencies
 cd examples/squad-demo
 uv pip install -e .
 
-# Optional: For GPU acceleration
-uv pip install -e ".[gpu]"
+# Optional: For GPU acceleration (not recommended - use CPU version)
+# uv pip install -e ".[gpu]"
 ```
 
 ### Run Setup
 
-Execute the master setup script:
+Execute the setup steps:
 
 ```bash
 cd examples/squad-demo
-./scripts/setup_all.sh
+
+# Step 1: Download and prepare dataset
+uv run python scripts/setup_dataset.py
+
+# Step 2: Build L2 index
+uv run python scripts/build_faiss_l2.py
+
+# Step 3: Build Inner Product index
+uv run python scripts/build_faiss_ip.py
+
+# Step 4: Generate query sets
+uv run python scripts/generate_queries.py
 ```
 
-This will:
+**What this does:**
 1. Download SQuAD v2.0 dataset from HuggingFace
 2. Extract unique context paragraphs as documents
 3. Generate embeddings using sentence-transformers
 4. Build two FAISS indices (L2 and Inner Product)
 5. Create query sets
-
-### Manual Setup (Optional)
-
-You can also run each step individually:
-
-```bash
-cd examples/squad-demo/scripts
-
-# Step 1: Download and prepare dataset
-python3 setup_dataset.py
-
-# Step 2: Build L2 index
-python3 build_faiss_l2.py
-
-# Step 3: Build Inner Product index
-python3 build_faiss_ip.py
-
-# Step 4: Generate query sets
-python3 generate_queries.py
-```
 
 ## Usage
 

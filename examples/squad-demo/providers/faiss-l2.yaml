@@ -1,9 +1,0 @@
-name: faiss-l2
-description: FAISS with L2 (Euclidean) distance metric
-tool: faiss
-config:
-  index_path: examples/squad-demo/data/faiss_l2.index
-  documents_path: examples/squad-demo/data/documents.jsonl
-  embedding_service: sentence-transformers
-  embedding_model: all-MiniLM-L6-v2
-  dimensions: 384

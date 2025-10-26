@@ -19,6 +19,7 @@ Example:
     >>> print(f"Comparison {comparison.id}: {len(comparison.evaluations)} evaluations")
 """
 
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -45,6 +46,46 @@ except ImportError:
         "LiteLLM not installed. Install with: pip install litellm. "
         "Comparison functionality will not work without it."
     )
+
+
+def _validate_api_key(model: str) -> None:
+    """Validate that the required API key is available for the model.
+
+    Args:
+        model: The LLM model name (e.g., "claude-3-5-sonnet-20241022", "gpt-4")
+
+    Raises:
+        ComparisonError: If the required API key is not set
+    """
+    # Map model prefixes to required environment variables
+    api_key_mapping = {
+        "claude": "ANTHROPIC_API_KEY",
+        "gpt": "OPENAI_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "o1": "OPENAI_API_KEY",
+    }
+
+    # Find the required key
+    required_key = None
+    for prefix, env_var in api_key_mapping.items():
+        if model.startswith(prefix):
+            required_key = env_var
+            break
+
+    if not required_key:
+        logger.warning(
+            f"Unknown model prefix for '{model}', skipping API key validation"
+        )
+        return
+
+    # Check if the key is set
+    if not os.getenv(required_key):
+        raise ComparisonError(
+            f"API key '{required_key}' is required for model '{model}' but is not set. "
+            f"Please set the environment variable or add it to your .env file."
+        )
+
+    logger.info(f"✓ API key '{required_key}' found for model '{model}'")
 
 
 def compare_runs(
@@ -151,6 +192,9 @@ def compare_runs(
             evaluator_config = domain_obj.evaluator
 
         logger.info(f"Using evaluator: model={evaluator_config.model}")
+
+        # Validate API key is available before starting evaluation
+        _validate_api_key(evaluator_config.model)
 
     except ComparisonError:
         raise
@@ -398,6 +442,11 @@ def _evaluate_single_query(
     Returns:
         EvaluationResult with evaluation or error
     """
+    # Get provider names for normalizing response
+    provider_names = list(run_results.keys())
+    provider_a = provider_names[0] if len(provider_names) > 0 else "Provider A"
+    provider_b = provider_names[1] if len(provider_names) > 1 else "Provider B"
+
     # Format prompt
     prompt = _format_evaluation_prompt(
         query=query,
@@ -412,6 +461,8 @@ def _evaluate_single_query(
         model=evaluator_config.model,
         temperature=evaluator_config.temperature,
         max_retries=max_retries,
+        provider_a=provider_a,
+        provider_b=provider_b,
     )
 
     return EvaluationResult(
@@ -439,7 +490,7 @@ def _format_evaluation_prompt(
     Returns:
         Formatted prompt
     """
-    # Build results section
+    # Build results section (legacy format)
     results_text = ""
     for provider_name, chunks in run_results.items():
         results_text += f"\n\n## System: {provider_name}\n"
@@ -450,10 +501,31 @@ def _format_evaluation_prompt(
         else:
             results_text += "No results\n"
 
-    # Format template
-    # Simple replacement for now - could be extended with Jinja2 later
+    # Extract providers for new comparative format
+    provider_names = list(run_results.keys())
+    provider_a = provider_names[0] if len(provider_names) > 0 else "Provider A"
+    provider_b = provider_names[1] if len(provider_names) > 1 else "Provider B"
+
+    # Build response_a and response_b (concatenate chunks - NO TRUNCATION)
+    def format_response(chunks):
+        if not chunks:
+            return "[No results returned]"
+        response_parts = []
+        for chunk in chunks:
+            # Include full content without truncation
+            response_parts.append(chunk.content)
+        return "\n\n".join(response_parts)
+
+    response_a = format_response(run_results.get(provider_a, []))
+    response_b = format_response(run_results.get(provider_b, []))
+
+    # Format template - support both legacy and new comparative formats
     prompt = prompt_template.replace("{query}", query)
     prompt = prompt.replace("{results}", results_text)
+    prompt = prompt.replace("{provider_a}", provider_a)
+    prompt = prompt.replace("{provider_b}", provider_b)
+    prompt = prompt.replace("{response_a}", response_a)
+    prompt = prompt.replace("{response_b}", response_b)
 
     if reference:
         prompt = prompt.replace("{reference}", f"\n\nReference Answer:\n{reference}\n")
@@ -468,6 +540,8 @@ def _call_llm_with_retry(
     model: str,
     temperature: float,
     max_retries: int,
+    provider_a: str | None = None,
+    provider_b: str | None = None,
 ) -> dict[str, Any]:
     """Call LLM with retry logic and cost tracking.
 
@@ -476,6 +550,8 @@ def _call_llm_with_retry(
         model: Model name (LiteLLM format)
         temperature: Temperature
         max_retries: Maximum retries
+        provider_a: Name of first provider (for normalizing JSON keys)
+        provider_b: Name of second provider (for normalizing JSON keys)
 
     Returns:
         Dict with evaluation results and metadata (cost, tokens, etc.)
@@ -503,17 +579,79 @@ def _call_llm_with_retry(
                 logger.warning(f"Failed to calculate cost: {e}")
                 cost = 0.0
 
-            # Parse response (simple JSON parsing for now)
+            # Parse response (JSON parsing with key normalization)
             try:
                 import json
+                import re
 
-                evaluation = json.loads(content)
+                raw_json = json.loads(content)
+
+                # Normalize provider-specific keys to generic a/b keys
+                evaluation = {}
+                for key, value in raw_json.items():
+                    if provider_a and key == f"score_{provider_a}":
+                        evaluation["score_a"] = value
+                    elif provider_b and key == f"score_{provider_b}":
+                        evaluation["score_b"] = value
+                    elif key == "winner":
+                        # Normalize winner to a/b/tie
+                        winner_value = value.lower()
+                        if provider_a and provider_a.lower() in winner_value:
+                            evaluation["winner"] = "a"
+                        elif provider_b and provider_b.lower() in winner_value:
+                            evaluation["winner"] = "b"
+                        elif "tie" in winner_value:
+                            evaluation["winner"] = "tie"
+                        else:
+                            evaluation["winner"] = winner_value
+                    else:
+                        evaluation[key] = value
             except json.JSONDecodeError:
-                # If not JSON, treat as raw text
+                # If not JSON, parse as text response
+                # Expected format with scores:
+                # Score A: 75
+                # Score B: 82
+                # Winner: B
+                # Reasoning: ...
+
+                import re
+
+                score_a = None
+                score_b = None
+                winner = "unknown"
+                reasoning = content
+
+                # Try to parse structured format
+                score_a_match = re.search(r"Score\s+A:\s*(\d+)", content, re.IGNORECASE)
+                score_b_match = re.search(r"Score\s+B:\s*(\d+)", content, re.IGNORECASE)
+                winner_match = re.search(r"Winner:\s*(A|B|tie)", content, re.IGNORECASE)
+                reasoning_match = re.search(
+                    r"Reasoning:\s*(.+)", content, re.IGNORECASE | re.DOTALL
+                )
+
+                if score_a_match:
+                    score_a = int(score_a_match.group(1))
+                if score_b_match:
+                    score_b = int(score_b_match.group(1))
+                if winner_match:
+                    winner = winner_match.group(1).lower()
+                if reasoning_match:
+                    reasoning = reasoning_match.group(1).strip()
+
+                # If structured format not found, try simple format
+                if winner == "unknown":
+                    lines = content.strip().split("\n", 1)
+                    first_line = lines[0].strip().upper()
+                    if first_line in ["A", "B", "TIE"]:
+                        winner = first_line.lower()
+                        reasoning = lines[1].strip() if len(lines) > 1 else content
+
                 evaluation = {
                     "response": content,
-                    "winner": "unknown",
-                    "reasoning": content,
+                    "score_a": score_a,
+                    "score_b": score_b,
+                    "winner": winner,
+                    "reasoning": reasoning,
                 }
 
             # Add metadata

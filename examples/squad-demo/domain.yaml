@@ -1,24 +1,35 @@
 name: squad-demo
 description: Example RAG comparison using SQuAD dataset with FAISS providers
 evaluator:
-  model: gpt-4
+  model: anthropic/claude-sonnet-4-5
   temperature: 0.0
   prompt_template: |
-    You are evaluating two RAG system responses to the same question.
+    You are evaluating two RAG system responses to the same question by comparing them side-by-side.
 
     Question: {query}
 
-    Response A ({provider_a}):
+    Response from {provider_a}:
     {response_a}
 
-    Response B ({provider_b}):
+    Response from {provider_b}:
     {response_b}
 
-    Evaluate which response better answers the question. Consider:
-    - Accuracy and correctness
-    - Completeness
-    - Relevance to the question
-    - Conciseness
+    Compare these responses and score each based on how well they answer the question.
 
-    Respond with ONLY one of: "A", "B", or "tie"
-    Then on a new line, provide a brief explanation (1-2 sentences).
+    Scoring criteria (0-100):
+    - Accuracy and correctness (40 points)
+    - Completeness (30 points)
+    - Relevance to the question (20 points)
+    - Conciseness (10 points)
+
+    Winner determination:
+    - If scores differ by <5 points: tie
+    - Otherwise: higher score wins
+
+    Respond with ONLY a JSON object in this exact format:
+    {{
+      "score_{provider_a}": <0-100>,
+      "score_{provider_b}": <0-100>,
+      "winner": "<{provider_a}, {provider_b}, or tie>",
+      "reasoning": "<2-3 sentences explaining the comparison and scores>"
+    }}

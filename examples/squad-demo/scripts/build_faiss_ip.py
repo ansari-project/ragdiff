@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Build FAISS index with Inner Product (cosine similarity) metric.
+"""Build FAISS index with large/quality embedding model.
 
-This script creates a FAISS index using Inner Product, which when used
-with normalized vectors is equivalent to cosine similarity. Higher
-scores indicate higher similarity.
+This script creates a FAISS index using the all-mpnet-base-v2 model,
+which is larger (438MB) and more accurate than smaller models.
 """
 
 import json
@@ -39,12 +38,13 @@ def main() -> None:
         sys.exit(1)
 
     # Output path
-    output_file = data_dir / "faiss_ip.index"
+    output_file = data_dir / "faiss_large.index"
 
-    # Load embedding model
-    print("Loading embedding model (all-MiniLM-L6-v2)...")
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    embedding_dim = 384  # Dimension for all-MiniLM-L6-v2
+    # Load embedding model (large/quality)
+    # Note: Using L12 instead of L3 for better quality (same 384 dims but 12 layers vs 3)
+    print("Loading embedding model (all-MiniLM-L12-v2 - larger/better quality)...")
+    model = SentenceTransformer("all-MiniLM-L12-v2")
+    embedding_dim = 384  # Dimension for all-MiniLM-L12-v2
 
     # Load documents
     print(f"Loading documents from {documents_file}...")
@@ -61,15 +61,17 @@ def main() -> None:
     embeddings = model.encode(
         texts,
         show_progress_bar=True,
-        batch_size=32,
+        batch_size=8,  # Smaller batch size to avoid memory issues with large model
         convert_to_numpy=True,
-        normalize_embeddings=True  # Normalize for proper cosine similarity
+        normalize_embeddings=True,  # Normalize for proper cosine similarity
     )
 
     # Ensure correct dtype
     embeddings = np.array(embeddings, dtype="float32")
 
-    print(f"Generated {len(embeddings)} normalized embeddings with dimension {embedding_dim}")
+    print(
+        f"Generated {len(embeddings)} normalized embeddings with dimension {embedding_dim}"
+    )
 
     # Create FAISS index with Inner Product
     print("Building FAISS index with Inner Product (cosine similarity)...")
@@ -84,15 +86,15 @@ def main() -> None:
     print(f"Saving index to {output_file}...")
     faiss.write_index(index, str(output_file))
 
-    print(f"✓ Created FAISS Inner Product index at {output_file}")
-    print(f"  Metric: Inner Product (cosine similarity with normalized vectors)")
+    print(f"✓ Created FAISS index (large model) at {output_file}")
+    print("  Model: all-MiniLM-L12-v2")
+    print("  Metric: Inner Product (cosine similarity with normalized vectors)")
     print(f"  Vectors: {index.ntotal}")
     print(f"  Dimensions: {index.d}")
-    print("\nInner Product characteristics:")
-    print("  - Measures dot product between vectors")
-    print("  - With normalized vectors = cosine similarity")
-    print("  - Higher values = higher similarity")
-    print("  - Range: [-1, 1] for normalized vectors")
+    print("\nModel characteristics:")
+    print("  - Larger model (120MB, 12 layers vs 3 layers in small model)")
+    print("  - Better accuracy, slower inference")
+    print("  - Same dimensionality (384) but better representations")
 
 
 if __name__ == "__main__":

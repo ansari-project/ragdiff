@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Build FAISS index with L2 (Euclidean) distance metric.
+"""Build FAISS index with small/fast embedding model.
 
-This script creates a FAISS index using L2 distance, which measures
-Euclidean distance between vectors. Smaller distances indicate
-higher similarity.
+This script creates a FAISS index using the paraphrase-MiniLM-L3-v2 model,
+which is small (17MB) and fast but less accurate than larger models.
 """
 
 import json
@@ -39,12 +38,12 @@ def main() -> None:
         sys.exit(1)
 
     # Output path
-    output_file = data_dir / "faiss_l2.index"
+    output_file = data_dir / "faiss_small.index"
 
-    # Load embedding model
-    print("Loading embedding model (all-MiniLM-L6-v2)...")
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    embedding_dim = 384  # Dimension for all-MiniLM-L6-v2
+    # Load embedding model (small/fast)
+    print("Loading embedding model (paraphrase-MiniLM-L3-v2 - small/fast)...")
+    model = SentenceTransformer("paraphrase-MiniLM-L3-v2")
+    embedding_dim = 384  # Dimension for paraphrase-MiniLM-L3-v2
 
     # Load documents
     print(f"Loading documents from {documents_file}...")
@@ -59,10 +58,7 @@ def main() -> None:
     print("Generating embeddings...")
     texts = [doc["text"] for doc in documents]
     embeddings = model.encode(
-        texts,
-        show_progress_bar=True,
-        batch_size=32,
-        convert_to_numpy=True
+        texts, show_progress_bar=True, batch_size=32, convert_to_numpy=True
     )
 
     # Ensure correct dtype
@@ -83,15 +79,15 @@ def main() -> None:
     print(f"Saving index to {output_file}...")
     faiss.write_index(index, str(output_file))
 
-    print(f"✓ Created FAISS L2 index at {output_file}")
-    print(f"  Metric: L2 (Euclidean distance)")
+    print(f"✓ Created FAISS index (small model) at {output_file}")
+    print("  Model: paraphrase-MiniLM-L3-v2")
+    print("  Metric: L2 (Euclidean distance)")
     print(f"  Vectors: {index.ntotal}")
     print(f"  Dimensions: {index.d}")
-    print("\nL2 distance characteristics:")
-    print("  - Measures Euclidean distance between vectors")
-    print("  - Smaller values = higher similarity")
-    print("  - Sensitive to vector magnitude")
-    print("  - Range: [0, ∞)")
+    print("\nModel characteristics:")
+    print("  - Small/fast model (17MB, 3 layers)")
+    print("  - Lower accuracy but very fast")
+    print("  - Good for speed-sensitive applications")
 
 
 if __name__ == "__main__":
