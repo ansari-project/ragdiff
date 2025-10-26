@@ -16,18 +16,18 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from ragdiff.cli_v2 import app
+from ragdiff.cli import app
 from ragdiff.core.models_v2 import (
+    ProviderConfig,
     Query,
     QueryResult,
     QuerySet,
     RetrievedChunk,
     Run,
     RunStatus,
-    SystemConfig,
 )
 from ragdiff.core.storage import save_run
-from ragdiff.providers import System, register_tool
+from ragdiff.providers import Provider, register_tool
 
 runner = CliRunner()
 
@@ -37,7 +37,7 @@ runner = CliRunner()
 # ============================================================================
 
 
-class MockCLISystem(System):
+class MockCLIProvider(Provider):
     """Mock system for CLI testing."""
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
@@ -53,7 +53,7 @@ def test_domain_for_cli(tmp_path):
 
     # Create domain structure
     domain_dir.mkdir()
-    (domain_dir / "systems").mkdir()
+    (domain_dir / "providers").mkdir()
     (domain_dir / "query-sets").mkdir()
     (domain_dir / "runs").mkdir()
     (domain_dir / "comparisons").mkdir()
@@ -77,7 +77,7 @@ def test_domain_for_cli(tmp_path):
         "tool": "mock-cli",
         "config": {"setting": "value"},
     }
-    with open(domain_dir / "systems" / "mock-cli-system.yaml", "w") as f:
+    with open(domain_dir / "providers" / "mock-cli-system.yaml", "w") as f:
         yaml.dump(system_config, f)
 
     # Create query set
@@ -90,7 +90,7 @@ def test_domain_for_cli(tmp_path):
     from ragdiff.providers.registry import TOOL_REGISTRY
 
     original_registry = TOOL_REGISTRY.copy()
-    register_tool("mock-cli", MockCLISystem)
+    register_tool("mock-cli", MockCLIProvider)
 
     yield tmp_path, domain_name
 
@@ -111,7 +111,7 @@ class TestCLIRunCommand:
         """Test that run command help is displayed."""
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
-        assert "Execute a query set against a system" in result.stdout
+        assert "Execute a query set against a provider" in result.stdout
         assert "DOMAIN" in result.stdout
         assert "SYSTEM" in result.stdout
         assert "QUERY_SET" in result.stdout
@@ -245,7 +245,7 @@ class TestCLICompareCommand:
         run1 = Run(
             id=uuid4(),
             domain=domain_name,
-            system="system-a",
+            provider="system-a",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -264,7 +264,7 @@ class TestCLICompareCommand:
                     error=None,
                 ),
             ],
-            system_config=SystemConfig(name="system-a", tool="mock", config={}),
+            provider_config=ProviderConfig(name="system-a", tool="mock", config={}),
             query_set_snapshot=query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
@@ -273,7 +273,7 @@ class TestCLICompareCommand:
         run2 = Run(
             id=uuid4(),
             domain=domain_name,
-            system="system-b",
+            provider="system-b",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -292,7 +292,7 @@ class TestCLICompareCommand:
                     error=None,
                 ),
             ],
-            system_config=SystemConfig(name="system-b", tool="mock", config={}),
+            provider_config=ProviderConfig(name="system-b", tool="mock", config={}),
             query_set_snapshot=query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
@@ -351,7 +351,7 @@ class TestOutputFormats:
         run1 = Run(
             id=uuid4(),
             domain=domain_name,
-            system="system-a",
+            provider="system-a",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -363,7 +363,7 @@ class TestOutputFormats:
                     error=None,
                 ),
             ],
-            system_config=SystemConfig(name="system-a", tool="mock", config={}),
+            provider_config=ProviderConfig(name="system-a", tool="mock", config={}),
             query_set_snapshot=query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
@@ -372,7 +372,7 @@ class TestOutputFormats:
         run2 = Run(
             id=uuid4(),
             domain=domain_name,
-            system="system-b",
+            provider="system-b",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -384,7 +384,7 @@ class TestOutputFormats:
                     error=None,
                 ),
             ],
-            system_config=SystemConfig(name="system-b", tool="mock", config={}),
+            provider_config=ProviderConfig(name="system-b", tool="mock", config={}),
             query_set_snapshot=query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
@@ -445,7 +445,7 @@ class TestOutputFormats:
         run1 = Run(
             id=uuid4(),
             domain=domain_name,
-            system="system-a",
+            provider="system-a",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -457,7 +457,7 @@ class TestOutputFormats:
                     error=None,
                 ),
             ],
-            system_config=SystemConfig(name="system-a", tool="mock", config={}),
+            provider_config=ProviderConfig(name="system-a", tool="mock", config={}),
             query_set_snapshot=query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
@@ -466,7 +466,7 @@ class TestOutputFormats:
         run2 = Run(
             id=uuid4(),
             domain=domain_name,
-            system="system-b",
+            provider="system-b",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -478,7 +478,7 @@ class TestOutputFormats:
                     error=None,
                 ),
             ],
-            system_config=SystemConfig(name="system-b", tool="mock", config={}),
+            provider_config=ProviderConfig(name="system-b", tool="mock", config={}),
             query_set_snapshot=query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
