@@ -50,6 +50,7 @@ dependencies = [
     "markdown>=3.9",
     "agentset>=0.4.0",
     "jmespath>=1.0.1",
+    "litellm>=1.0.0",
 ]
 
 [project.optional-dependencies]
