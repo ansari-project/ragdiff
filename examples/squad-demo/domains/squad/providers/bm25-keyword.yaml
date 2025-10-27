@@ -1,0 +1,9 @@
+name: bm25-keyword
+description: BM25 keyword search (Lucene variant, k1=1.5, b=0.75)
+tool: bm25
+config:
+  index_path: examples/squad-demo/data/bm25_lucene.index
+  documents_path: examples/squad-demo/data/documents.jsonl
+  variant: lucene
+  k1: 1.5
+  b: 0.75

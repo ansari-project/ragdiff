@@ -1,0 +1,721 @@
+{
+  "run_id": "c3680fc6-9150-4d77-8d4b-bf0a988ac9d4",
+  "run_label": "faiss-small-20251026-001",
+  "provider": "faiss-small",
+  "query_set": "test-queries-with-references",
+  "evaluations": [
+    {
+      "query": "Where did France focus its efforts to rebuild its empire?",
+      "reference": "Africa",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What protestant religions made Northern European counties safe for Huguenot immigration?",
+      "reference": "Lutheran and Reformed",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "BQP and QMA are examples of complexity classes most commonly associated with what type of Turing machine?",
+      "reference": "quantum",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was Apple Talk",
+      "reference": "a proprietary suite of networking protocols developed by Apple Inc. in 1985",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What happens when bathocyroe and ocyropsis clap their lobes together?",
+      "reference": "jet of expelled water drives them backwards very quickly.",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "The Amazon region is home to how many species of insect?",
+      "reference": "2.5 million",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Of what group in the periodic table is oxygen a member?",
+      "reference": "chalcogen",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Which Spanish officer established the settlement at St. Augustine?",
+      "reference": "Pedro Menéndez de Avilés",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What did a greedy merchant do to the mermaid?",
+      "reference": "captured",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Where does the Rhine river's measurement begin?",
+      "reference": "Old Rhine Bridge at Constance",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What Swiss city was the center of the Calvinist movement?",
+      "reference": "Geneva",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "When are subject committees established?",
+      "reference": "beginning of each parliamentary session",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Persistent unemployment has what effect on long-term economic growth?",
+      "reference": "negative",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What implication can be derived for P and NP if P and co-NP are established to be unequal?",
+      "reference": "P is not equal to NP",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What is the problem attributed to defining if two finite graphs are isomorphic?",
+      "reference": "The graph isomorphism problem",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What is located within this district?",
+      "reference": "the oldest street in the United States of America",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What would be needed to host a larger population?",
+      "reference": "agriculture",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What does ctenophora rely on for digestion and respiration?",
+      "reference": "water flow through the body cavity",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What molecules of the adaptive immune system only exist in jawed vertebrates?",
+      "reference": "immunoglobulins and T cell receptors",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What have the two different Islamist movements been described as oscillating between?",
+      "reference": "poles",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "According to reduction, if X and Y can be solved by the same algorithm then X performs what function in relationship to Y?",
+      "reference": "reduces",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What part of the Rhine flows through North Rhine-Westphalia?",
+      "reference": "Lower Rhine",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What must the adoption of laws which will have legal effect in the EU have?",
+      "reference": "a proper legal basis",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was used to create a new electromagnetic theory to reconcile the troubles with electromagnetic theory as it used to stand?",
+      "reference": "quantum mechanics",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What city served as Poland's capital in 1313?",
+      "reference": "Kraków",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What force acted on bodies to retard their velocity?",
+      "reference": "friction",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How was the Dutch name for the Rhine originally spelled?",
+      "reference": "Rhijn",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "According to the wealth concentration theory, what advantage do the wealthy have in accumulating new wealth?",
+      "reference": "means to invest",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was believed to be the cause of devastation to the civilization?",
+      "reference": "diseases from Europe",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "The Maroons compete in what league division?",
+      "reference": "NCAA's Division III",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Where is much of the work of the Scottish Parliament done?",
+      "reference": "committee",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What did Tymnet connect",
+      "reference": "connect host computers (servers)at thousands of large companies, educational institutions, and government agencies",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Who did Alexander I marry?",
+      "reference": "Sybilla of Normandy",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "At first, what did oxygen and iron combine to form?",
+      "reference": "banded iron formations",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was the objective of Royal Proclamation of 1763?",
+      "reference": "outlined the division and administration of the newly conquered territory",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Health problems were lower in places with higher levels of what?",
+      "reference": "equality",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What did Joseph Haas say in his email?",
+      "reference": "\"Wise up or die.\"",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Telnet was sold to",
+      "reference": "Telenet was incorporated in 1973 and started operations in 1975. It went public in 1979 and was then sold to GTE",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "By what process is singlet oxygen made in the tropophere?",
+      "reference": "photolysis of ozone",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How has this debate been proven?",
+      "reference": "This debate has proved difficult",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What group of people performed revolutionary civil disobedience toward the Austrian government?",
+      "reference": "Hungarians",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was the name of the first Huguenot outpost in South Carolina?",
+      "reference": "Charlesfort",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How many protestants live in France today?",
+      "reference": "one million",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Where are the Harvard medical, Dental and school of Public Health located?",
+      "reference": "Longwood Medical and Academic Area",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "The French and Indian War was the New World aspect of what European conflict?",
+      "reference": "Seven Years' War",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What are some existing facilities?",
+      "reference": "electrical, water, sewage, phone, and cable facilities",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Which reason is given sometimes to plead not guilty involving these matters?",
+      "reference": "Guilt implies wrong-doing",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "The idea that Islam can be apolitical isn't able to be embraced by whom?",
+      "reference": "its supporters",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What is the hottest temperature record for Fresno?",
+      "reference": "115 °F",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How many counties initially made up the definition of southern California?",
+      "reference": "seven",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Which tribes did Genghis Khan unite?",
+      "reference": "Mongol and Turkic tribes",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What is a twin prime?",
+      "reference": "pairs of primes with difference 2",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What percentage of electricity was made by steam turbine in the 1990s?",
+      "reference": "90",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Who lead the school back to leading research institution in 2oth century?",
+      "reference": "James Bryant Conant",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What is the Victoria state bird?",
+      "reference": "helmeted honeyeater",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "A small fraction of the cold water flow from Lake Constance goes to what other lake?",
+      "reference": "Lake Überlingen",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "When was the great plague of London?",
+      "reference": "1665",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Colonialism often means a country doing what?",
+      "reference": "taking physical control of another",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Who was the leader of the Islamist regime in Sudan?",
+      "reference": "Hassan al-Turabi",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What region does use the term 'private schools' to refer to universities?",
+      "reference": "North America",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Where is the Rhine Bridge?",
+      "reference": "Arnhem",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Which TFEU article defines the ordinary legislative procedure that applies for majority of EU acts?",
+      "reference": "TFEU article 294",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What is the magnitude of force divided by when external force is added?",
+      "reference": "mass of the system",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was the target percentage of households BSkyB wanted to reach?",
+      "reference": "36%",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What is the high end of the temperature range in winter?",
+      "reference": "70",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What garden was formally only for royalty?",
+      "reference": "The Saxon Garden",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What amount of the worlds carbon is stored in the Amazon forest?",
+      "reference": "10% of the carbon stores",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Who challenged the plague theory first?",
+      "reference": "British bacteriologist J. F. D. Shrewsbury",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What entity owns V/Line?",
+      "reference": "Victorian Government",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Where do ctenophora live?",
+      "reference": "marine waters",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Which central European country had a Calvinist ruler?",
+      "reference": "Prussia",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How much more land does the school own in Allston than Cambridge?",
+      "reference": "approximately fifty percent",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was Tymnet",
+      "reference": "an international data communications network headquartered in San Jose, CA",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What alumni wrote \"The Closing of the American Mind\"?",
+      "reference": "Allan Bloom",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What advancements besides military technology did Europe achieve?",
+      "reference": "communication",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How are ergänzungsschulen funded?",
+      "reference": "tuition",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "To what pathogen that causes gas gangrene is oxygen poisonous?",
+      "reference": "anaerobic bacteria",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What South African law recognized two types of schools?",
+      "reference": "South African Schools Act",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "The presence of who is highly likely even in small projects?",
+      "reference": "the mortgage banker",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How many square kilometers of rainforest is covered in the basin?",
+      "reference": "5,500,000 square kilometres (2,100,000 sq mi) are covered by the rainforest.",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What suffered considerably for Warsaw when it had an Eastern Bloc economy?",
+      "reference": "infrastructure",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was the very first television station to broadcast in Fresno?",
+      "reference": "KMJ-TV",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What law connects relative velocities with inertia?",
+      "reference": "Newton's First",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How did Celeron handle business on trip?",
+      "reference": "British merchants or fur-traders, Céloron informed them of the French claims on the territory and told them to leave.",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What was the capital of the Ottoman empire?",
+      "reference": "Istanbul",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What city in Victoria is called the sporting capital of Australia?",
+      "reference": "Melbourne",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What did Maududi believe Muslim society could not be Islamic in the absence of?",
+      "reference": "Sharia",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What grew on a global scale as a result of imperialism?",
+      "reference": "the world's economy",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Why did OPEC raise the price of oil to $5.11?",
+      "reference": "In response to American aid to Israel",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "If q=9 and a=1,2,4,5,7, or 8, how many primes would be in a progression?",
+      "reference": "infinitely many prime numbers",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What does the bathocyroe and ocyropsis do to escape danger?",
+      "reference": "by clapping their lobes",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What does  oxygen therapy promote the body to take up?",
+      "reference": "gaseous oxygen.",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Where did Korea border Kublai's territory?",
+      "reference": "northeast",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Along what geographic feature are nine residential houses located?",
+      "reference": "Charles River",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Packet Switching contrast with what other principal",
+      "reference": "circuit switching",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "What did France offer that was rare by imperial standards?",
+      "reference": "assimilation",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "How many men did Duquesne send to relieve  Saint-Pierre ?",
+      "reference": "Contrecœur led 500 men south from Fort Venango on April 5, 1754",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Which of the tributaries in Germany contributes most?",
+      "reference": "Moselle",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Which book discussed the theory about low populations in the Amazon rainforest?",
+      "reference": "Amazonia: Man and Culture in a Counterfeit Paradise",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    },
+    {
+      "query": "Who was given land by British goovernment for development of Ohio Country?",
+      "reference": "Ohio Company of Virginia",
+      "evaluation": {},
+      "status": "failed",
+      "error": "'QueryResult' object has no attribute 'chunks'"
+    }
+  ],
+  "summary": {
+    "total_queries": 100,
+    "successful_evaluations": 0,
+    "failed_evaluations": 100,
+    "avg_correctness": 0.0,
+    "avg_relevance": 0.0,
+    "avg_completeness": 0.0,
+    "avg_overall_quality": 0.0
+  },
+  "evaluator_config": {
+    "model": "anthropic/claude-sonnet-4-5",
+    "temperature": 0.0
+  }
+}

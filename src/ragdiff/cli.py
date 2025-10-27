@@ -446,6 +446,7 @@ def _compare_with_references(
     limit: Optional[int],
 ):
     """Perform reference-based evaluation for one or more runs."""
+    from .comparison.reference_evaluator import compare_multiple_runs_batched
     from .core.loaders import load_domain
 
     try:
@@ -459,14 +460,76 @@ def _compare_with_references(
         if temperature is not None:
             evaluator_config.temperature = temperature
 
-        # Evaluate each run
-        evaluations = []
+        # Load all runs
+        runs = []
         for run_id in run_ids:
-            if not quiet:
-                console.print(f"\n[cyan]Evaluating run: {run_id}[/cyan]")
-
-            # Load run
             run_obj = load_run(domain, run_id, domains_dir=domains_path)
+            runs.append(run_obj)
+
+        # If multiple runs, use batched comparison (3x faster, better results!)
+        if len(runs) >= 2:
+            if not quiet:
+                console.print(
+                    f"\n[cyan]Comparing {len(runs)} runs with batched evaluation...[/cyan]"
+                )
+
+            # Run batched comparison with progress
+            if not quiet:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    progress_task = progress.add_task(
+                        f"Comparing {len(runs)} runs", total=100
+                    )
+
+                    completed_evals = 0
+                    total_evals = 0
+
+                    def progress_callback(current, total, successes, failures):
+                        nonlocal completed_evals, total_evals
+                        completed_evals = current
+                        total_evals = total
+                        progress.update(
+                            progress_task,
+                            completed=current,
+                            total=total,
+                            description=f"Comparison {current}/{total} ({successes} ok, {failures} failed)",
+                        )
+
+                    comparison_result = compare_multiple_runs_batched(
+                        runs=runs,
+                        evaluator_config=evaluator_config,
+                        concurrency=concurrency,
+                        progress_callback=progress_callback,
+                        limit=limit,
+                    )
+
+                    progress.update(
+                        progress_task, completed=total_evals, total=total_evals
+                    )
+            else:
+                # Quiet mode
+                comparison_result = compare_multiple_runs_batched(
+                    runs=runs,
+                    evaluator_config=evaluator_config,
+                    concurrency=concurrency,
+                    progress_callback=None,
+                    limit=limit,
+                )
+
+            # Output batched comparison results
+            _output_batched_comparison(comparison_result, output, format)
+
+        else:
+            # Single run - use traditional evaluation
+            run_obj = runs[0]
+            if not quiet:
+                console.print(f"\n[cyan]Evaluating run: {run_ids[0]}[/cyan]")
 
             # Evaluate with progress
             if not quiet:
@@ -478,19 +541,19 @@ def _compare_with_references(
                     TimeElapsedColumn(),
                     console=console,
                 ) as progress:
-                    progress_task = progress.add_task(f"Evaluating {run_id}", total=100)
+                    progress_task = progress.add_task(
+                        f"Evaluating {run_ids[0]}", total=100
+                    )
 
                     completed_evals = 0
                     total_evals = 0
 
-                    def progress_callback(
-                        current, total, successes, failures, _task=progress_task
-                    ):
+                    def progress_callback(current, total, successes, failures):
                         nonlocal completed_evals, total_evals
                         completed_evals = current
                         total_evals = total
                         progress.update(
-                            _task,
+                            progress_task,
                             completed=current,
                             total=total,
                             description=f"Evaluation {current}/{total} ({successes} ok, {failures} failed)",
@@ -517,17 +580,11 @@ def _compare_with_references(
                     limit=limit,
                 )
 
-            evaluations.append(eval_result)
-
-        # If single run, output evaluation results
-        if len(evaluations) == 1:
+            # Output single run evaluation
             if format == "json":
-                _output_eval_json(evaluations[0], output)
+                _output_eval_json(eval_result, output)
             else:  # table
-                _output_eval_table(evaluations[0], output)
-        else:
-            # Multiple runs - show comparison table
-            _output_reference_comparison_table(evaluations, output, format)
+                _output_eval_table(eval_result, output)
 
     except ComparisonError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
@@ -869,6 +926,61 @@ def _output_eval_table(evaluation_result, output_path):
         console.print(
             f"\n[dim]... and {len(evaluation_result['evaluations']) - 5} more[/dim]"
         )
+
+
+def _output_batched_comparison(comparison_result, output_path, format_type):
+    """Output batched comparison results."""
+    import json
+
+    if format_type == "json":
+        json_str = json.dumps(comparison_result, indent=2, ensure_ascii=False)
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(json_str)
+            console.print(f"[green]✓[/green] Comparison exported to {output_path}")
+        else:
+            console.print(json_str)
+        return
+
+    # Table/markdown output
+    console.print()
+    console.print("[bold]Batched Comparison Results[/bold]")
+    console.print()
+
+    # Summary
+    summary = comparison_result["summary"]
+    table = Table(title="Comparison Summary", show_header=True)
+    table.add_column("Provider", style="cyan")
+    table.add_column("Wins", style="green", justify="right")
+    table.add_column("Avg Score", style="yellow", justify="right")
+
+    for run_info in summary["runs_compared"]:
+        provider = run_info["provider"]
+        wins = summary["provider_wins"].get(provider, 0)
+        avg_score = summary["provider_avg_scores"].get(provider, 0.0)
+        table.add_row(provider, str(wins), f"{avg_score:.1f}")
+
+    console.print(table)
+    console.print()
+    console.print(f"Total Queries: {summary['total_queries']}")
+    console.print(
+        f"Successful Comparisons: [green]{summary['successful_comparisons']}[/green]"
+    )
+    console.print(f"Failed Comparisons: [red]{summary['failed_comparisons']}[/red]")
+
+    if output_path and format_type == "markdown":
+        # Save markdown version
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("# Batched Comparison Results\n\n")
+            f.write("## Summary\n\n")
+            f.write("| Provider | Wins | Avg Score |\n")
+            f.write("|----------|------|-----------|\n")
+            for run_info in summary["runs_compared"]:
+                provider = run_info["provider"]
+                wins = summary["provider_wins"].get(provider, 0)
+                avg_score = summary["provider_avg_scores"].get(provider, 0.0)
+                f.write(f"| {provider} | {wins} | {avg_score:.1f} |\n")
+        console.print(f"[green]✓[/green] Comparison exported to {output_path}")
 
 
 def _output_eval_json(evaluation_result, output_path):

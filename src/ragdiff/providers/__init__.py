@@ -21,7 +21,7 @@ Example:
 
 # Import provider implementations to trigger registration
 # These imports have side effects (register_tool calls)
-from . import agentset, faiss, goodmem, mongodb, openapi, vectara  # noqa: F401
+from . import agentset, bm25, faiss, goodmem, mongodb, openapi, vectara  # noqa: F401
 from .abc import Provider
 from .factory import create_provider, validate_provider_config
 from .registry import get_tool, is_tool_registered, list_tools, register_tool

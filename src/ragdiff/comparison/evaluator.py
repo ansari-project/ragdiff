@@ -170,8 +170,8 @@ def compare_runs(
 
         logger.info(f"Loaded {len(runs)} runs")
 
-        # Validate runs are from same domain
-        if not all(r.domain == domain for r in runs):
+        # Validate runs are from same domain (use domain name from domain.yaml, not CLI parameter)
+        if not all(r.domain == domain_obj.name for r in runs):
             domains = {r.domain for r in runs}
             raise ComparisonError(
                 f"Cannot compare runs from different domains: {domains}"

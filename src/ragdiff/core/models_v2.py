@@ -158,7 +158,9 @@ class Run(BaseModel):
     """Run execution result (stored as domains/<domain>/runs/YYYY-MM-DD/<id>.json)."""
 
     id: UUID = Field(default_factory=uuid4)
-    label: str  # Human-readable label (e.g., "vectara-20251026-001")
+    label: str | None = (
+        None  # Human-readable label (e.g., "vectara-20251026-001") - optional for backward compatibility
+    )
     domain: str
     provider: str  # system name
     query_set: str  # query set name
