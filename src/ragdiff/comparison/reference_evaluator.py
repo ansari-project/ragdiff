@@ -5,13 +5,13 @@ against ground truth reference answers. Uses LLM to assess correctness,
 relevance, and quality of retrieved information.
 """
 
-import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 try:
-    from litellm import acompletion
+    from litellm import completion
 except ImportError:
-    acompletion = None
+    completion = None
 
 from ..core.errors import ComparisonError
 from ..core.logging import get_logger
@@ -21,7 +21,7 @@ from ..core.storage import load_run
 logger = get_logger(__name__)
 
 
-async def evaluate_result_against_reference(
+def evaluate_result_against_reference(
     query: str,
     reference: str,
     result: QueryResult,
@@ -47,14 +47,25 @@ async def evaluate_result_against_reference(
     Raises:
         ComparisonError: If LiteLLM is not available or LLM call fails
     """
-    if acompletion is None:
+    if completion is None:
         raise ComparisonError(
             "LiteLLM is not installed. Install with: pip install litellm"
         )
 
     # Combine all retrieved chunks
+    # Handle both Pydantic QueryResult and dict from JSON
+    chunks = (
+        result.retrieved
+        if hasattr(result, "retrieved")
+        else result.chunks
+        if hasattr(result, "chunks")
+        else result.get("retrieved", [])
+    )
     retrieved_text = "\n\n".join(
-        [f"[Chunk {i+1}] {chunk.content}" for i, chunk in enumerate(result.chunks)]
+        [
+            f"[Chunk {i+1}] {chunk.get('content', chunk) if isinstance(chunk, dict) else chunk.content}"
+            for i, chunk in enumerate(chunks)
+        ]
     )
 
     # Create evaluation prompt
@@ -84,8 +95,8 @@ Respond in JSON format:
 }}"""
 
     try:
-        # Call LLM
-        response = await acompletion(
+        # Call LLM (synchronous)
+        response = completion(
             model=evaluator_config.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=evaluator_config.temperature,
@@ -114,11 +125,12 @@ Respond in JSON format:
         raise ComparisonError(f"LLM evaluation failed: {e}") from e
 
 
-async def evaluate_run_async(
+def evaluate_run_threaded(
     run: Run,
     evaluator_config: EvaluatorConfig,
     concurrency: int = 5,
     progress_callback: Callable[[int, int, int, int], None] | None = None,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     """Evaluate all results in a run against their reference answers.
 
@@ -127,6 +139,7 @@ async def evaluate_run_async(
         evaluator_config: LLM evaluator configuration
         concurrency: Maximum concurrent LLM evaluations
         progress_callback: Optional callback(current, total, successes, failures)
+        limit: Optional limit on number of queries to evaluate
 
     Returns:
         Dictionary with:
@@ -137,21 +150,21 @@ async def evaluate_run_async(
     Raises:
         ComparisonError: If run has no references or evaluation fails
     """
-    # Check that queries have references
-    queries_with_refs = [
-        (query, result)
-        for query, result in zip(run.queries.queries, run.results)
-        if query.reference
-    ]
+    # Check that results have references
+    results_with_refs = [result for result in run.results if result.reference]
 
-    if not queries_with_refs:
+    if not results_with_refs:
         raise ComparisonError(
             "Run has no reference answers. "
             "Use a query set with references (JSONL format with 'reference' field)"
         )
 
+    # Apply limit if specified
+    if limit is not None and limit > 0:
+        results_with_refs = results_with_refs[:limit]
+
     logger.info(
-        f"Evaluating {len(queries_with_refs)} results against references "
+        f"Evaluating {len(results_with_refs)} results against references "
         f"(concurrency={concurrency})"
     )
 
@@ -161,52 +174,63 @@ async def evaluate_run_async(
     failures = 0
     evaluations = []
 
-    # Semaphore for concurrency control
-    sem = asyncio.Semaphore(concurrency)
-
-    async def evaluate_one(query, result):
+    def evaluate_one(result):
+        """Evaluate a single result."""
         nonlocal completed, successes, failures
 
-        async with sem:
-            try:
-                evaluation = await evaluate_result_against_reference(
-                    query.text, query.reference, result, evaluator_config
+        try:
+            logger.info(f"Starting evaluation for query: {result.query[:50]}...")
+            evaluation = evaluate_result_against_reference(
+                result.query, result.reference, result, evaluator_config
+            )
+            completed += 1
+            successes += 1
+            logger.info(f"Completed evaluation for query: {result.query[:50]}...")
+
+            if progress_callback:
+                progress_callback(
+                    completed, len(results_with_refs), successes, failures
                 )
-                completed += 1
-                successes += 1
 
-                if progress_callback:
-                    progress_callback(
-                        completed, len(queries_with_refs), successes, failures
-                    )
+            return {
+                "query": result.query,
+                "reference": result.reference,
+                "evaluation": evaluation,
+                "status": "success",
+            }
+        except Exception as e:
+            completed += 1
+            failures += 1
+            logger.error(
+                f"Evaluation failed for query '{result.query}': {e}", exc_info=True
+            )
 
-                return {
-                    "query": query.text,
-                    "reference": query.reference,
-                    "evaluation": evaluation,
-                    "status": "success",
-                }
-            except Exception as e:
-                completed += 1
-                failures += 1
+            if progress_callback:
+                progress_callback(
+                    completed, len(results_with_refs), successes, failures
+                )
 
-                if progress_callback:
-                    progress_callback(
-                        completed, len(queries_with_refs), successes, failures
-                    )
+            logger.warning(f"Evaluation failed for query '{result.query}': {e}")
+            return {
+                "query": result.query,
+                "reference": result.reference,
+                "evaluation": {},
+                "status": "failed",
+                "error": str(e),
+            }
 
-                logger.warning(f"Evaluation failed for query '{query.text}': {e}")
-                return {
-                    "query": query.text,
-                    "reference": query.reference,
-                    "evaluation": {},
-                    "status": "failed",
-                    "error": str(e),
-                }
+    # Run evaluations concurrently using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        # Submit all tasks
+        future_to_result = {
+            executor.submit(evaluate_one, result): result
+            for result in results_with_refs
+        }
 
-    # Run evaluations concurrently
-    tasks = [evaluate_one(query, result) for query, result in queries_with_refs]
-    evaluations = await asyncio.gather(*tasks)
+        # Collect results as they complete
+        for future in as_completed(future_to_result):
+            evaluation = future.result()
+            evaluations.append(evaluation)
 
     # Calculate summary statistics
     successful_evals = [e for e in evaluations if e["status"] == "success"]
@@ -228,7 +252,7 @@ async def evaluate_run_async(
         avg_correctness = avg_relevance = avg_completeness = avg_overall = 0.0
 
     summary = {
-        "total_queries": len(queries_with_refs),
+        "total_queries": len(results_with_refs),
         "successful_evaluations": successes,
         "failed_evaluations": failures,
         "avg_correctness": round(avg_correctness, 2),
@@ -258,8 +282,9 @@ def evaluate_run(
     concurrency: int = 5,
     progress_callback: Callable[[int, int, int, int], None] | None = None,
     domains_dir: str | None = None,
+    limit: int | None = None,
 ) -> dict[str, Any]:
-    """Evaluate a run against reference answers (sync wrapper).
+    """Evaluate a run against reference answers.
 
     Args:
         run_id: Run ID or label to evaluate
@@ -268,6 +293,7 @@ def evaluate_run(
         concurrency: Maximum concurrent evaluations
         progress_callback: Optional callback(current, total, successes, failures)
         domains_dir: Optional domains directory path
+        limit: Optional limit on number of queries to evaluate
 
     Returns:
         Evaluation results dictionary
@@ -291,7 +317,7 @@ def evaluate_run(
         )
         evaluator_config = domain.evaluator
 
-    # Run async evaluation
-    return asyncio.run(
-        evaluate_run_async(run, evaluator_config, concurrency, progress_callback)
+    # Run threaded evaluation
+    return evaluate_run_threaded(
+        run, evaluator_config, concurrency, progress_callback, limit
     )

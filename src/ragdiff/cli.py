@@ -220,7 +220,7 @@ def compare(
         None, help="Temperature override (default: use domain config)"
     ),
     concurrency: int = typer.Option(
-        5, help="Maximum concurrent evaluations (default: 5)"
+        2, help="Maximum concurrent evaluations (default: 2)"
     ),
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Output file path (default: print to console)"
@@ -389,7 +389,7 @@ def evaluate(
         None, help="Temperature override (default: use domain config)"
     ),
     concurrency: int = typer.Option(
-        5, help="Maximum concurrent evaluations (default: 5)"
+        2, help="Maximum concurrent evaluations (default: 2)"
     ),
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Output file path (default: print to console)"
@@ -398,6 +398,11 @@ def evaluate(
         "table", "--format", "-f", help="Output format: table, json"
     ),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        help="Limit evaluation to first N queries (default: evaluate all)",
+    ),
 ):
     """Evaluate a run against reference answers (correctness evaluation).
 
@@ -464,6 +469,7 @@ def evaluate(
                     concurrency=concurrency,
                     progress_callback=progress_callback,
                     domains_dir=str(domains_path),
+                    limit=limit,
                 )
 
                 progress.update(task, completed=total_evals, total=total_evals)
@@ -487,6 +493,7 @@ def evaluate(
                 concurrency=concurrency,
                 progress_callback=None,
                 domains_dir=str(domains_path),
+                limit=limit,
             )
 
         # Display or export results based on format
