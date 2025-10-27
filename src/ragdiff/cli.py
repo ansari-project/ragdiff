@@ -4,8 +4,7 @@ RAGDiff v2.0 uses a domain-based architecture for comparing RAG providers.
 
 Commands:
 - run: Execute a query set against a provider
-- compare: Compare multiple runs using LLM evaluation
-- evaluate: Evaluate a single run against reference answers (correctness evaluation)
+- compare: Compare runs (auto-detects reference-based vs head-to-head evaluation)
 - generate-adapter: Generate OpenAPI adapter configuration
 """
 
@@ -25,9 +24,11 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from .comparison import compare_runs, evaluate_run
+from .comparison import compare_runs
+from .comparison.reference_evaluator import evaluate_run_threaded
 from .core.errors import ComparisonError, RunError
 from .core.logging import setup_logging
+from .core.storage import load_run
 from .execution import execute_run
 
 # Load environment variables from .env file
@@ -229,21 +230,38 @@ def compare(
         "table", "--format", "-f", help="Output format: table, json, markdown"
     ),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
+    limit: Optional[int] = typer.Option(
+        None,
+        "--limit",
+        help="Limit evaluation to first N queries (default: evaluate all)",
+    ),
 ):
-    """Compare multiple runs using LLM evaluation.
+    """Compare runs using LLM evaluation (auto-detects reference-based vs head-to-head).
 
-    This command:
-    1. Loads all runs from disk (or finds latest runs if --run not specified)
-    2. Validates runs are from same domain and query set
-    3. For each query, evaluates results using LLM
+    This command automatically detects the evaluation mode:
+    - If runs have reference answers → Reference-based evaluation (correctness scoring)
+    - If runs don't have references → Head-to-head LLM comparison
+
+    Workflow:
+    1. Loads run(s) from disk (or finds latest runs if --run not specified)
+    2. Detects whether runs have reference answers
+    3. Performs appropriate evaluation (reference-based or head-to-head)
     4. Saves comparison to disk
     5. Displays or exports results
 
-    Example:
-        $ ragdiff compare --domain-dir domains/tafsir --run vectara-001 --run mongodb-002
+    Examples:
+        # Reference-based evaluation (single run)
+        $ ragdiff compare -d examples/squad-demo/domains/squad -r faiss-small-001
+
+        # Reference-based comparison (multiple runs with references)
         $ ragdiff compare -d examples/squad-demo/domains/squad -r faiss-small-001 -r faiss-large-001
-        $ ragdiff compare -d domains/tafsir --run vectara-001 --run mongodb-002 --model claude-3-5-sonnet-20241022
-        $ ragdiff compare -d domains/tafsir --run vectara-001 --run mongodb-002 --format json --output comparison.json
+
+        # Head-to-head comparison (no references)
+        $ ragdiff compare -d domains/tafsir -r vectara-001 -r mongodb-002
+
+        # With options
+        $ ragdiff compare -d domains/squad -r run1 -r run2 --limit 10 --format json --output comparison.json
+        $ ragdiff compare -d domains/tafsir --model anthropic/claude-sonnet-4-5
         $ ragdiff compare -d domains/tafsir  # Uses latest run for each provider
     """
     # Extract domain name from domain_dir path
@@ -278,13 +296,65 @@ def compare(
             console.print(f"[dim]  - {r_label}[/dim]")
         console.print()
 
-    # Ensure at least 2 runs to compare
-    if len(run) < 2:
-        console.print(
-            f"[bold red]Error:[/bold red] Need at least 2 runs to compare (got {len(run)})"
-        )
-        raise typer.Exit(code=1)
+    # Load first run to detect if we have references
+    try:
+        first_run = load_run(domain, run[0], domains_dir=domains_path)
+        has_references = any(result.reference for result in first_run.results)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] Failed to load run: {e}")
+        raise typer.Exit(code=1) from e
 
+    # Route to appropriate evaluation mode
+    if has_references:
+        # Reference-based evaluation mode
+        _compare_with_references(
+            domain=domain,
+            domains_path=domains_path,
+            run_ids=run,
+            model=model,
+            temperature=temperature,
+            concurrency=concurrency,
+            output=output,
+            format=format,
+            quiet=quiet,
+            limit=limit,
+        )
+    else:
+        # Head-to-head comparison mode
+        # Ensure at least 2 runs to compare
+        if len(run) < 2:
+            console.print(
+                f"[bold red]Error:[/bold red] Need at least 2 runs for head-to-head comparison (got {len(run)})"
+            )
+            raise typer.Exit(code=1)
+
+        _compare_head_to_head(
+            domain=domain,
+            domains_path=domains_path,
+            run_ids=run,
+            label=label,
+            model=model,
+            temperature=temperature,
+            concurrency=concurrency,
+            output=output,
+            format=format,
+            quiet=quiet,
+        )
+
+
+def _compare_head_to_head(
+    domain: str,
+    domains_path: Path,
+    run_ids: list[str],
+    label: Optional[str],
+    model: Optional[str],
+    temperature: Optional[float],
+    concurrency: int,
+    output: Optional[Path],
+    format: str,
+    quiet: bool,
+):
+    """Perform head-to-head comparison (no references)."""
     try:
         # Show progress bar unless quiet mode
         if not quiet:
@@ -297,7 +367,7 @@ def compare(
                 console=console,
             ) as progress:
                 # Track progress
-                task = progress.add_task(f"Comparing {len(run)} runs", total=100)
+                task = progress.add_task(f"Comparing {len(run_ids)} runs", total=100)
 
                 completed_evals = 0
                 total_evals = 0
@@ -316,7 +386,7 @@ def compare(
                 # Execute comparison
                 result = compare_runs(
                     domain=domain,
-                    run_ids=run,
+                    run_ids=run_ids,
                     label=label,
                     model=model,
                     temperature=temperature,
@@ -330,7 +400,7 @@ def compare(
             # Quiet mode - no progress bar
             result = compare_runs(
                 domain=domain,
-                run_ids=run,
+                run_ids=run_ids,
                 label=label,
                 model=model,
                 temperature=temperature,
@@ -363,144 +433,101 @@ def compare(
         raise typer.Exit(code=1) from e
 
 
-# ============================================================================
-# Evaluate Command (Reference-Based)
-# ============================================================================
-
-
-@app.command()
-def evaluate(
-    domain_dir: Path = typer.Option(
-        ...,
-        "--domain-dir",
-        "-d",
-        help="Path to domain directory (e.g., 'examples/squad-demo/domains/squad')",
-    ),
-    run: str = typer.Option(
-        ...,
-        "--run",
-        "-r",
-        help="Run label or ID to evaluate",
-    ),
-    model: Optional[str] = typer.Option(
-        None, help="LLM model override (default: use domain config)"
-    ),
-    temperature: Optional[float] = typer.Option(
-        None, help="Temperature override (default: use domain config)"
-    ),
-    concurrency: int = typer.Option(
-        2, help="Maximum concurrent evaluations (default: 2)"
-    ),
-    output: Optional[Path] = typer.Option(
-        None, "--output", "-o", help="Output file path (default: print to console)"
-    ),
-    format: str = typer.Option(
-        "table", "--format", "-f", help="Output format: table, json"
-    ),
-    quiet: bool = typer.Option(False, "--quiet", help="Suppress progress output"),
-    limit: Optional[int] = typer.Option(
-        None,
-        "--limit",
-        help="Limit evaluation to first N queries (default: evaluate all)",
-    ),
+def _compare_with_references(
+    domain: str,
+    domains_path: Path,
+    run_ids: list[str],
+    model: Optional[str],
+    temperature: Optional[float],
+    concurrency: int,
+    output: Optional[Path],
+    format: str,
+    quiet: bool,
+    limit: Optional[int],
 ):
-    """Evaluate a run against reference answers (correctness evaluation).
-
-    This command:
-    1. Loads a run with reference answers
-    2. Evaluates each result against its reference using LLM
-    3. Scores correctness, relevance, and completeness
-    4. Outputs aggregate statistics
-
-    Example:
-        $ ragdiff evaluate --domain-dir domains/squad --run faiss-small-001
-        $ ragdiff evaluate -d examples/squad-demo/domains/squad -r faiss-small-001 --format json --output eval.json
-    """
-    # Extract domain name from domain_dir path
-    domain_dir = Path(domain_dir).resolve()
-    domain = domain_dir.name
-    domains_path = domain_dir.parent
+    """Perform reference-based evaluation for one or more runs."""
+    from .core.loaders import load_domain
 
     try:
-        # Show progress bar unless quiet mode
-        if not quiet:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeElapsedColumn(),
-                console=console,
-            ) as progress:
-                # Track progress
-                task = progress.add_task(f"Evaluating run: {run}", total=100)
+        # Load domain config
+        domain_obj = load_domain(domain, domains_dir=domains_path)
+        evaluator_config = domain_obj.evaluator
 
-                completed_evals = 0
-                total_evals = 0
+        # Apply overrides
+        if model:
+            evaluator_config.model = model
+        if temperature is not None:
+            evaluator_config.temperature = temperature
 
-                def progress_callback(current, total, successes, failures):
-                    nonlocal completed_evals, total_evals
-                    completed_evals = current
-                    total_evals = total
-                    progress.update(
-                        task,
-                        completed=current,
-                        total=total,
-                        description=f"Evaluation {current}/{total} ({successes} ok, {failures} failed)",
+        # Evaluate each run
+        evaluations = []
+        for run_id in run_ids:
+            if not quiet:
+                console.print(f"\n[cyan]Evaluating run: {run_id}[/cyan]")
+
+            # Load run
+            run_obj = load_run(domain, run_id, domains_dir=domains_path)
+
+            # Evaluate with progress
+            if not quiet:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    progress_task = progress.add_task(f"Evaluating {run_id}", total=100)
+
+                    completed_evals = 0
+                    total_evals = 0
+
+                    def progress_callback(
+                        current, total, successes, failures, _task=progress_task
+                    ):
+                        nonlocal completed_evals, total_evals
+                        completed_evals = current
+                        total_evals = total
+                        progress.update(
+                            _task,
+                            completed=current,
+                            total=total,
+                            description=f"Evaluation {current}/{total} ({successes} ok, {failures} failed)",
+                        )
+
+                    eval_result = evaluate_run_threaded(
+                        run=run_obj,
+                        evaluator_config=evaluator_config,
+                        concurrency=concurrency,
+                        progress_callback=progress_callback,
+                        limit=limit,
                     )
 
-                # Execute evaluation
-                from .core.loaders import load_domain
-
-                evaluator_config = None
-                if model or temperature is not None:
-                    # Load domain to get default config
-                    domain_obj = load_domain(domain, domains_dir=domains_path)
-                    evaluator_config = domain_obj.evaluator
-                    if model:
-                        evaluator_config.model = model
-                    if temperature is not None:
-                        evaluator_config.temperature = temperature
-
-                result = evaluate_run(
-                    run_id=run,
-                    domain_name=domain,
+                    progress.update(
+                        progress_task, completed=total_evals, total=total_evals
+                    )
+            else:
+                # Quiet mode
+                eval_result = evaluate_run_threaded(
+                    run=run_obj,
                     evaluator_config=evaluator_config,
                     concurrency=concurrency,
-                    progress_callback=progress_callback,
-                    domains_dir=str(domains_path),
+                    progress_callback=None,
                     limit=limit,
                 )
 
-                progress.update(task, completed=total_evals, total=total_evals)
+            evaluations.append(eval_result)
+
+        # If single run, output evaluation results
+        if len(evaluations) == 1:
+            if format == "json":
+                _output_eval_json(evaluations[0], output)
+            else:  # table
+                _output_eval_table(evaluations[0], output)
         else:
-            # Quiet mode - no progress bar
-            from .core.loaders import load_domain
-
-            evaluator_config = None
-            if model or temperature is not None:
-                domain_obj = load_domain(domain, domains_dir=domains_path)
-                evaluator_config = domain_obj.evaluator
-                if model:
-                    evaluator_config.model = model
-                if temperature is not None:
-                    evaluator_config.temperature = temperature
-
-            result = evaluate_run(
-                run_id=run,
-                domain_name=domain,
-                evaluator_config=evaluator_config,
-                concurrency=concurrency,
-                progress_callback=None,
-                domains_dir=str(domains_path),
-                limit=limit,
-            )
-
-        # Display or export results based on format
-        if format == "json":
-            _output_eval_json(result, output)
-        else:  # table
-            _output_eval_table(result, output)
+            # Multiple runs - show comparison table
+            _output_reference_comparison_table(evaluations, output, format)
 
     except ComparisonError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
@@ -856,6 +883,58 @@ def _output_eval_json(evaluation_result, output_path):
         console.print(f"[green]✓[/green] Evaluation exported to {output_path}")
     else:
         console.print(json_str)
+
+
+def _output_reference_comparison_table(evaluations, output_path, format):
+    """Output comparison table for multiple reference-based evaluations."""
+    import json
+
+    # Create comparison table
+    console.print()
+    console.print("[bold]Reference-Based Comparison[/bold]")
+    console.print()
+
+    # Summary table
+    table = Table(title="Provider Comparison")
+    table.add_column("Provider", style="cyan")
+    table.add_column("Correctness", style="white")
+    table.add_column("Relevance", style="white")
+    table.add_column("Completeness", style="white")
+    table.add_column("Overall Quality", style="bold white")
+
+    for eval_result in evaluations:
+        summary = eval_result["summary"]
+        table.add_row(
+            eval_result["provider"],
+            f"{summary['avg_correctness']:.1f}/100",
+            f"{summary['avg_relevance']:.1f}/100",
+            f"{summary['avg_completeness']:.1f}/100",
+            f"[bold]{summary['avg_overall_quality']:.1f}/100[/bold]",
+        )
+
+    console.print(table)
+    console.print()
+
+    # Find winner based on overall quality
+    winner = max(evaluations, key=lambda e: e["summary"]["avg_overall_quality"])
+    console.print(
+        f"[green]Winner:[/green] {winner['provider']} "
+        f"({winner['summary']['avg_overall_quality']:.1f}/100 overall quality)"
+    )
+    console.print()
+
+    # If output path specified, export to JSON
+    if output_path and format == "json":
+        comparison_data = {
+            "evaluations": evaluations,
+            "winner": {
+                "provider": winner["provider"],
+                "avg_overall_quality": winner["summary"]["avg_overall_quality"],
+            },
+        }
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(comparison_data, f, indent=2, ensure_ascii=False)
+        console.print(f"[green]✓[/green] Comparison exported to {output_path}")
 
 
 if __name__ == "__main__":
