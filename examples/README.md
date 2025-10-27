@@ -6,16 +6,19 @@ This directory contains example configurations and scripts demonstrating how to 
 
 ### squad-demo
 
-A complete example using the SQuAD v2.0 dataset to compare two FAISS-based RAG providers with different distance metrics:
+A complete example using the SQuAD v2.0 dataset to compare three RAG providers with different approaches:
 
-- **faiss-l2**: Uses L2 (Euclidean) distance
-- **faiss-ip**: Uses Inner Product (cosine similarity with normalized vectors)
+- **faiss-small**: FAISS with small embedding model (paraphrase-MiniLM-L3-v2)
+- **faiss-large**: FAISS with large embedding model (all-MiniLM-L12-v2)
+- **bm25-keyword**: BM25 keyword-based retrieval baseline
 
 This example demonstrates:
-- Setting up FAISS indices with different distance metrics
-- Creating query sets (both referenced and reference-free)
-- Running comparisons between providers
-- Analyzing performance differences
+- Setting up FAISS indices with different embedding models
+- BM25 keyword-based retrieval as a baseline
+- Creating query sets with and without reference answers
+- **Head-to-head comparison**: LLM-based evaluation between providers
+- **Reference-based evaluation**: Objective scoring against ground-truth answers
+- Three-way comparisons and performance analysis
 
 See [squad-demo/README.md](squad-demo/README.md) for detailed instructions.
 
@@ -35,22 +38,42 @@ cd examples/squad-demo
 
 To create a new example:
 
-1. Create a domain directory with the standard structure:
+1. Create a domain directory with the standard v2.0 structure:
    ```
    examples/my-example/
-   ├── domain.yaml           # Domain configuration
-   ├── providers/            # Provider configurations
-   ├── query-sets/           # Query collections
-   ├── scripts/              # Setup and utility scripts
-   └── data/                 # Data files (created by scripts)
+   ├── README.md                     # Example documentation
+   ├── pyproject.toml                # Python dependencies (if needed)
+   ├── domains/                      # Domain configurations
+   │   └── my-domain/                # Your domain
+   │       ├── domain.yaml           # Domain config (evaluator settings)
+   │       ├── providers/            # Provider configurations
+   │       │   ├── provider1.yaml
+   │       │   └── provider2.yaml
+   │       ├── query-sets/           # Query collections
+   │       │   └── test-queries.txt
+   │       ├── runs/                 # Run results (auto-created)
+   │       └── comparisons/          # Comparison results (auto-created)
+   ├── data/                         # Data files (created by scripts)
+   └── scripts/                      # Setup and utility scripts
    ```
 
-2. Add provider configurations in `providers/*.yaml`
+2. Configure your domain in `domains/my-domain/domain.yaml`:
+   ```yaml
+   name: my-domain
+   description: Description of your domain
+   evaluator:
+     model: gpt-4  # LLM model for evaluation
+     temperature: 0.0
+     prompt_template: |
+       Compare these RAG results...
+   ```
 
-3. Create query sets in `query-sets/*.txt`
+3. Add provider configurations in `domains/my-domain/providers/*.yaml`
 
-4. Add setup scripts in `scripts/` to prepare data
+4. Create query sets in `domains/my-domain/query-sets/*.txt`
 
-5. Document your example in a README.md
+5. Add setup scripts in `scripts/` to prepare data and indices
+
+6. Document your example in a README.md
 
 See the [RAGDiff documentation](../CLAUDE.md) for more details on the domain-based architecture.
