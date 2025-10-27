@@ -1,10 +1,10 @@
-# SQuAD FAISS Demo
+# SQuAD RAG Comparison Demo
 
-This example demonstrates RAGDiff v2.0 using the SQuAD v2.0 dataset with two FAISS providers that differ in their embedding models.
+This example demonstrates RAGDiff v2.0 using the SQuAD v2.0 dataset with three RAG providers, showcasing both **head-to-head comparison** and **reference-based evaluation**.
 
 ## Overview
 
-This example compares two FAISS-based RAG systems using **different embedding models** to demonstrate quality differences:
+This example compares three RAG systems to demonstrate different approaches and quality tradeoffs:
 
 1. **faiss-small**: `paraphrase-MiniLM-L3-v2`
    - 17MB model, 3 layers, 384 dimensions
@@ -16,13 +16,36 @@ This example compares two FAISS-based RAG systems using **different embedding mo
    - Slower but more accurate
    - Better semantic understanding
 
-Both use **L2 (Euclidean) distance** for fair comparison - the quality difference comes purely from the embedding model, not the distance metric.
+3. **bm25-keyword**: BM25 keyword-based retrieval
+   - Pure keyword matching baseline
+   - No embeddings required
+   - Fast, deterministic results
+   - Useful for establishing performance baselines
+
+The FAISS providers use **L2 (Euclidean) distance** for fair comparison - the quality difference comes purely from the embedding model, not the distance metric.
 
 ## Dataset
 
 - **Source**: SQuAD v2.0 (Stanford Question Answering Dataset)
 - **Documents**: ~1,200 unique context paragraphs from Wikipedia
 - **Query Sets**: 100 test queries
+- **Reference Answers**: Ground-truth answers from SQuAD for objective evaluation
+
+## Evaluation Modes
+
+This demo supports two evaluation modes:
+
+### 1. Head-to-Head Comparison
+- LLM-based evaluation comparing multiple providers
+- Qualitative assessment of which provider performed better
+- Useful when no ground truth exists
+- Example: `faiss-small` vs `faiss-large` comparison
+
+### 2. Reference-Based Evaluation
+- Objective scoring against ground-truth SQuAD answers
+- Quantitative correctness assessment (0-100 score)
+- Automatic detection when reference answers are present
+- Example: Evaluating `bm25-keyword` accuracy against SQuAD references
 
 ## Setup
 
@@ -59,6 +82,9 @@ uv run python scripts/build_faiss_large.py
 
 # Step 4: Generate query sets
 uv run python scripts/generate_queries.py
+
+# Step 5: Generate reference queries (with ground-truth answers)
+uv run python scripts/generate_reference_queries.py
 ```
 
 **What this does:**
@@ -66,7 +92,8 @@ uv run python scripts/generate_queries.py
 2. Extract unique context paragraphs as documents
 3. Generate embeddings using sentence-transformers
 4. Build two FAISS indices (small and large models, both with L2 distance)
-5. Create query sets
+5. Create query sets (standard queries)
+6. Create reference query sets with ground-truth answers for objective evaluation
 
 ## Usage
 
@@ -79,32 +106,32 @@ Execute query sets against each provider:
 cd ../..
 
 # Run against small model
-uv run ragdiff run --domain-dir examples/squad-demo/domains/squad --provider faiss-small --query-set test-queries
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries
 
 # Run against large model
-uv run ragdiff run --domain-dir examples/squad-demo/domains/squad --provider faiss-large --query-set test-queries
-
-# Short form with flags
-uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries
 uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-large -q test-queries
+
+# Run against BM25 baseline
+uv run ragdiff run -d examples/squad-demo/domains/squad -p bm25-keyword -q test-queries
+
+# With concurrency for faster execution
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries --concurrency 20
 ```
 
 ### Compare Results
 
-After running queries, compare the results:
+RAGDiff automatically detects whether to use head-to-head comparison or reference-based evaluation based on whether reference answers are present.
+
+#### Head-to-Head Comparison (No References)
+
+Compare two providers using LLM evaluation:
 
 ```bash
 # Compare two runs (replace with actual run labels/IDs from output)
-uv run ragdiff compare --domain-dir examples/squad-demo/domains/squad --run <run-label-1> --run <run-label-2>
-
-# Short form
 uv run ragdiff compare -d examples/squad-demo/domains/squad -r <run-label-1> -r <run-label-2>
 
-# Export to JSON
-uv run ragdiff compare -d examples/squad-demo/domains/squad \
-  -r <run-label-1> -r <run-label-2> \
-  --format json \
-  --output comparison.json
+# Three-way comparison
+uv run ragdiff compare -d examples/squad-demo/domains/squad -r faiss-small-001 -r faiss-large-001 -r bm25-keyword-001
 
 # Export to Markdown report
 uv run ragdiff compare -d examples/squad-demo/domains/squad \
@@ -116,19 +143,66 @@ uv run ragdiff compare -d examples/squad-demo/domains/squad \
 uv run ragdiff compare -d examples/squad-demo/domains/squad
 ```
 
+#### Reference-Based Evaluation (With Ground Truth)
+
+When runs include reference answers, RAGDiff performs objective correctness evaluation:
+
+```bash
+# Single run evaluation against references
+uv run ragdiff compare -d examples/squad-demo/domains/squad -r <run-with-references>
+
+# Compare multiple runs with references (shows which performs better on correctness)
+uv run ragdiff compare -d examples/squad-demo/domains/squad -r faiss-small-ref -r bm25-keyword-ref
+
+# Export to JSON
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r <run-label> \
+  --format json \
+  --output eval-report.json
+
+# Limit evaluation to first 10 queries (faster testing)
+uv run ragdiff compare -d examples/squad-demo/domains/squad -r <run-label> --limit 10
+```
+
 ## Expected Results
 
-The larger embedding model (12 layers) should show:
-- **Better retrieval accuracy** (higher quality scores)
-- **More wins** vs the small model
-- **Slower query times** (due to larger model inference)
+### Provider Performance Characteristics
 
-The comparison report will show:
-- Win/loss statistics
+**faiss-large** (12 layers):
+- **Better retrieval accuracy** (higher quality scores)
+- **More wins** vs faiss-small in head-to-head comparison
+- **Slower query times** (~72% slower than small model)
+- Better semantic understanding
+
+**faiss-small** (3 layers):
+- **Faster queries** (~32ms average)
+- Lower quality scores but acceptable for many use cases
+- Good for high-throughput scenarios
+
+**bm25-keyword**:
+- **Fastest queries** (pure keyword matching)
+- Baseline performance for comparison
+- No semantic understanding
+- Works well for exact keyword matches
+
+### Comparison Reports
+
+The comparison reports will show:
+
+**Head-to-Head Mode:**
+- Win/loss statistics per provider
 - Quality score differences
 - Latency comparison (avg, median, min, max)
 - Number of chunks returned per query
-- Representative examples of where each model excels
+- Representative examples of where each provider excels
+- Common themes and differentiators
+
+**Reference-Based Mode:**
+- Correctness scores (0-100) per query
+- Average correctness per provider
+- Success/failure breakdown
+- Detailed reasoning for each evaluation
+- Cost and token usage per evaluation
 
 ## Directory Structure
 
@@ -141,9 +215,11 @@ squad-demo/
 │       ├── domain.yaml                 # Domain configuration
 │       ├── providers/                  # Provider configs
 │       │   ├── faiss-small.yaml        # Small model config
-│       │   └── faiss-large.yaml        # Large model config
+│       │   ├── faiss-large.yaml        # Large model config
+│       │   └── bm25-keyword.yaml       # BM25 baseline config
 │       ├── query-sets/                 # Query files
-│       │   └── test-queries.txt        # 100 test questions
+│       │   ├── test-queries.txt        # 100 test questions
+│       │   └── reference-queries.txt   # Queries with ground-truth answers
 │       ├── runs/                       # Run results (auto-created)
 │       └── comparisons/                # Comparison results (auto-created)
 ├── data/                               # Shared data files (generated)
@@ -157,6 +233,7 @@ squad-demo/
     ├── build_faiss_small.py            # Build small model index
     ├── build_faiss_large.py            # Build large model index
     ├── generate_queries.py             # Generate query sets
+    ├── generate_reference_queries.py   # Generate queries with references
     └── test_setup.py                   # Verify setup
 ```
 
@@ -201,12 +278,29 @@ If you want to rebuild the indices with different models:
 
 ### Adjust Concurrency
 
-Speed up query execution with parallel requests:
+Speed up query execution and evaluation with parallel requests:
 
 ```bash
+# Faster query execution (default: 10)
 uv run ragdiff run -d examples/squad-demo/domains/squad \
   -p faiss-small -q test-queries \
+  --concurrency 20
+
+# Faster comparison evaluation (default: 2)
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r run1 -r run2 \
   --concurrency 10
+```
+
+### Use Different LLM Models for Evaluation
+
+Override the default evaluation model:
+
+```bash
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r run1 -r run2 \
+  --model anthropic/claude-sonnet-4-5 \
+  --temperature 0.0
 ```
 
 ### Use Different Embedding Models
@@ -235,6 +329,23 @@ EOF
 
 # Run with custom queries
 uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q custom-queries
+```
+
+### Three-Way Comparisons
+
+Compare all three providers simultaneously:
+
+```bash
+# Run all three providers
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-queries -l small-001
+uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-large -q test-queries -l large-001
+uv run ragdiff run -d examples/squad-demo/domains/squad -p bm25-keyword -q test-queries -l bm25-001
+
+# Compare all three
+uv run ragdiff compare -d examples/squad-demo/domains/squad \
+  -r small-001 -r large-001 -r bm25-001 \
+  --format markdown \
+  --output three-way-comparison.md
 ```
 
 ## Troubleshooting
@@ -273,20 +384,36 @@ This is normal for the first run:
 - [SQuAD Dataset](https://rajpurkar.github.io/SQuAD-explorer/)
 - [Sentence Transformers](https://www.sbert.net/)
 
-## Model Characteristics
+## Provider Characteristics
 
-### Small Model (paraphrase-MiniLM-L3-v2)
-- **Size**: 17MB
+### faiss-small (paraphrase-MiniLM-L3-v2)
+- **Size**: 17MB embedding model
 - **Layers**: 3
 - **Dimensions**: 384
-- **Speed**: Fast
+- **Speed**: Fast (~32ms avg query time)
 - **Quality**: Good for basic similarity
+- **Use Case**: High-throughput scenarios
 
-### Large Model (all-MiniLM-L12-v2)
-- **Size**: 120MB
+### faiss-large (all-MiniLM-L12-v2)
+- **Size**: 120MB embedding model
 - **Layers**: 12
 - **Dimensions**: 384
-- **Speed**: Slower (~72% slower on average)
+- **Speed**: Slower (~56ms avg, 72% slower than small)
 - **Quality**: Better semantic understanding
+- **Use Case**: Quality-focused applications
 
-The comparison demonstrates the classic **quality vs speed tradeoff** in embedding models!
+### bm25-keyword
+- **Algorithm**: BM25 (Best Matching 25)
+- **Approach**: Pure keyword matching, no embeddings
+- **Speed**: Very fast (deterministic, no model inference)
+- **Quality**: Good for exact keyword matches, poor for semantic similarity
+- **Use Case**: Baseline comparisons, exact-match requirements
+
+## Key Insights
+
+This demo demonstrates:
+
+1. **Quality vs Speed Tradeoff**: Larger embedding models provide better semantic understanding at the cost of latency
+2. **Semantic vs Keyword**: Embedding-based approaches (FAISS) vs keyword-based (BM25) retrieval
+3. **Evaluation Modes**: Both subjective (head-to-head LLM comparison) and objective (reference-based correctness) evaluation
+4. **Reproducibility**: All configurations, queries, and results are version-controlled and reproducible
