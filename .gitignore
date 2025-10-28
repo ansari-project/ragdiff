@@ -45,6 +45,9 @@ htmlcov/
 *.swo
 *~
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Output files
 outputs/
 results/
