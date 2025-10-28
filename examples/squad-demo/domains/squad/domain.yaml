@@ -1,4 +1,4 @@
-name: squad-demo
+name: squad
 description: Example RAG comparison using SQuAD dataset with FAISS providers
 evaluator:
   model: anthropic/claude-sonnet-4-5
