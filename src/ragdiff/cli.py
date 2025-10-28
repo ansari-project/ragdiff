@@ -803,53 +803,10 @@ def _output_json(comparison, output_path):
 
 def _output_markdown(comparison, output_path):
     """Output comparison results as Markdown."""
-    lines = [
-        f"# Comparison: {comparison.label}",
-        "",
-        f"**Domain:** {comparison.domain}",
-        f"**Comparison ID:** {str(comparison.id)[:8]}...",
-        f"**Model:** {comparison.evaluator_config.model}",
-        f"**Temperature:** {comparison.evaluator_config.temperature}",
-        "",
-        "## Summary",
-        "",
-        f"- Total Evaluations: {comparison.metadata.get('total_evaluations', 0)}",
-        f"- Successful: {comparison.metadata.get('successful_evaluations', 0)}",
-        f"- Failed: {comparison.metadata.get('failed_evaluations', 0)}",
-        "",
-        "## Evaluations",
-        "",
-    ]
+    from .display.formatting_v2 import format_comparison_markdown
 
-    for i, eval_result in enumerate(comparison.evaluations, 1):
-        lines.append(f"### {i}. {eval_result.query}")
-        lines.append("")
-
-        if eval_result.reference:
-            lines.append(f"**Reference:** {eval_result.reference}")
-            lines.append("")
-
-        if "winner" in eval_result.evaluation:
-            lines.append(
-                f"**Winner:** {eval_result.evaluation.get('winner', 'unknown')}"
-            )
-            lines.append("")
-
-        if "reasoning" in eval_result.evaluation:
-            lines.append(
-                f"**Reasoning:** {eval_result.evaluation.get('reasoning', '')}"
-            )
-            lines.append("")
-
-        if "_metadata" in eval_result.evaluation:
-            metadata = eval_result.evaluation["_metadata"]
-            lines.append(
-                f"**Cost:** ${metadata.get('cost', 0):.4f}, "
-                f"**Tokens:** {metadata.get('total_tokens', 0)}"
-            )
-            lines.append("")
-
-    markdown = "\n".join(lines)
+    # Generate markdown using the shared utility (show all evaluations in CLI)
+    markdown = format_comparison_markdown(comparison, max_evaluations=None)
 
     if output_path:
         with open(output_path, "w") as f:
