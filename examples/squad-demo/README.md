@@ -70,7 +70,30 @@ uv run python scripts/generate_queries.py
 
 ## Usage
 
-### Run Queries
+You can use RAGDiff either via the **command-line interface (CLI)** or the **Python API**.
+
+### Python API (Jupyter Notebook)
+
+For an interactive tutorial using the Python API, see **[squad_demo_api.ipynb](squad_demo_api.ipynb)**.
+
+The notebook demonstrates:
+- Loading domain, provider, and query set configurations programmatically
+- Executing query sets against providers with `execute_run()`
+- Comparing runs using LLM evaluation with `compare_runs()`
+- Analyzing results and exporting to JSON/Markdown
+- Accessing historical run data
+
+This is the recommended approach if you want to:
+- Integrate RAGDiff into your Python applications
+- Customize the evaluation workflow
+- Build custom analysis and visualization tools
+- Automate RAG system comparisons
+
+### CLI Usage
+
+The following sections show how to use RAGDiff from the command line.
+
+#### Run Queries
 
 Execute query sets against each provider:
 
@@ -89,7 +112,7 @@ uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-small -q test-q
 uv run ragdiff run -d examples/squad-demo/domains/squad -p faiss-large -q test-queries
 ```
 
-### Compare Results
+#### Compare Results
 
 After running queries, compare the results:
 
@@ -135,6 +158,7 @@ The comparison report will show:
 ```
 squad-demo/
 ├── README.md                           # This file
+├── squad_demo_api.ipynb                # Python API tutorial (Jupyter notebook)
 ├── pyproject.toml                      # Python dependencies
 ├── domains/                            # Domain configurations
 │   └── squad/                          # The "squad" domain
