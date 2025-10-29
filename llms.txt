@@ -1,0 +1,8 @@
+# llmstxt.org/1.0
+name: RAGDiff
+short-description: Domain-based framework for comparing retrieval-augmented generation systems with LLM-assisted evaluation.
+primary-language: Python
+license: MIT
+source-repository: https://github.com/ansari-project/ragdiff
+support: https://github.com/ansari-project/ragdiff/issues
+full-profile: llms-full.txt

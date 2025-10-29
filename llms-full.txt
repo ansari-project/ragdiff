@@ -1,0 +1,70 @@
+# RAGDiff llmstxt Full Profile (llmstxt.org/1.0)
+
+## Project Overview
+RAGDiff is an open-source, domain-centric framework for benchmarking and comparing Retrieval-Augmented Generation (RAG) systems. It packages a Typer-based CLI and Python library that orchestrate query execution, collects structured run artifacts, and applies LLM-powered qualitative evaluation to highlight the strongest system for a domain-specific workload.
+
+## Core Capabilities
+- **Domain workspaces**: Each domain encapsulates systems, query sets, runs, and comparison reports under `domains/<name>/`.
+- **System execution**: The `ragdiff run` command executes a query set against a configured tool (Vectara, MongoDB, Agentset, REST adapters, etc.) with configurable concurrency.
+- **Snapshotting & reproducibility**: Runs capture config snapshots and responses so comparisons can be revisited later without re-querying upstream systems.
+- **LLM evaluation**: `ragdiff compare` uses LiteLLM-compatible models (GPT, Claude, Gemini, etc.) to score competing runs and produce markdown, JSON, or rich terminal summaries.
+- **Adapter generation**: The OpenAPI-driven `generate-adapter` workflow bootstraps new REST integrations via automated schema analysis and mock validation.
+
+## Repository Layout
+- `src/ragdiff/cli.py`: Typer application entry point exposing `run`, `compare`, `generate-adapter`, and supporting utilities.
+- `src/ragdiff/core/`: Configuration, environment variable handling, path helpers, domain models (`models.py`, `models_v2.py`), serialization, storage, and logging helpers.
+- `src/ragdiff/execution/`: Executors for query sets, concurrency management, and GoodMem caching.
+- `src/ragdiff/comparison/` & `src/ragdiff/evaluation/`: Scoring pipeline, aggregation logic, and prompt templates for LLM-based judgments.
+- `src/ragdiff/adapters/` & `src/ragdiff/providers/`: Tool-specific integrations (Vectara, MongoDB, BM25S, Agentset, OpenAPI adapters, etc.).
+- `examples/`, `configs/`, and `sampledata/`: Ready-to-run demonstrations, template configs, and illustrative inputs.
+- `tests/`: Pytest suite (78 tests) covering adapters, execution flows, and evaluation logic.
+
+## Getting Started
+1. **Install prerequisites**: Python 3.9+, `uv` for dependency management, and any provider-specific services (e.g., MongoDB).
+2. **Clone & install**:
+   ```bash
+   git clone https://github.com/ansari-project/ragdiff.git
+   cd ragdiff
+   uv sync --all-extras
+   uv pip install -e .
+   cp .env.example .env
+   ```
+3. **Configure API keys**: Populate `.env` with provider credentials (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `VECTARA_*`, etc.).
+4. **Create a domain**: Scaffold `domains/<domain>/` with `systems/`, `query-sets/`, `runs/`, and `comparisons/`. Use `domain.yaml` to describe evaluators and prompts.
+
+## Typical Workflow
+1. Author system YAML files under `domains/<domain>/systems/` describing each tool and credentials.
+2. Create reusable query sets (plain text lists or JSONL) in `query-sets/`.
+3. Execute runs:
+   ```bash
+   uv run ragdiff run <domain> <system> <query-set> --concurrency 5
+   ```
+4. Compare runs once results are captured:
+   ```bash
+   uv run ragdiff compare <domain> <run-id-a> <run-id-b> --format markdown --output comparisons/report.md
+   ```
+5. Iterate on prompts, system configs, or retrieval settings based on comparison output.
+
+## Adapter Generation Highlights
+- Use `uv run ragdiff generate-adapter --openapi-url ...` to bootstrap REST integrations.
+- The workflow inspects schemas, proposes JMESPath mappings, validates sample calls, and emits ready-to-use configs under `configs/`.
+- Mock demos (`examples/mock_kalimat_generation.py`) illustrate the full flow when external API access is unavailable.
+
+## Development & Testing
+- Run linting and formatting with Ruff: `uv run ruff check` and `uv run ruff format --check`.
+- Execute the automated suite: `uv run pytest`.
+- Follow the MIT-licensed contribution model: fork, branch, add tests, and submit PRs. GitHub Issues are the preferred support and triage channel.
+
+## Additional Documentation
+- `README.md`: Full feature tour, installation guide, and CLI reference.
+- `api-refactor-guidance.md`: Notes on ongoing API modernization.
+- `TESTING_SUMMARY.md`: Sandboxed OpenAPI adapter testing notes and recommendations for real-world validation.
+
+## Maintainers & Contact
+- Maintained by **Ansari Project**.
+- For questions or bug reports, open an issue at <https://github.com/ansari-project/ragdiff/issues>.
+- Security or sensitive disclosures: request a private contact channel via GitHub issues.
+
+## License & Attribution
+- Licensed under the MIT License (see `pyproject.toml`).
+- Contributions should respect third-party service terms when integrating proprietary APIs.
