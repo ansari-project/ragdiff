@@ -189,6 +189,8 @@ uv run ragdiff compare -d examples/squad-demo/domains/squad -r <run-label> --lim
 
 ## Expected Results
 
+**See [example-comparison-report.md](example-comparison-report.md)** for a complete example comparison report showing faiss-small vs faiss-large evaluation results.
+
 ### Provider Performance Characteristics
 
 **faiss-large** (12 layers):
@@ -220,6 +222,8 @@ The comparison reports will show:
 - Representative examples of where each provider excels
 - Common themes and differentiators
 
+**Example:** See [example-comparison-report.md](example-comparison-report.md) for a complete head-to-head comparison between faiss-small and faiss-large.
+
 **Reference-Based Mode:**
 - Correctness scores (0-100) per query
 - Average correctness per provider
@@ -232,6 +236,7 @@ The comparison reports will show:
 ```
 squad-demo/
 ├── README.md                           # This file
+├── example-comparison-report.md        # Example comparison report
 ├── squad_demo_api.ipynb                # Python API tutorial (Jupyter notebook)
 ├── pyproject.toml                      # Python dependencies
 ├── domains/                            # Domain configurations
