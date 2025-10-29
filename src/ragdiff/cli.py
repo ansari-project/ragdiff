@@ -600,6 +600,279 @@ def _compare_with_references(
 
 
 @app.command()
+def init(
+    domain: str = typer.Argument(..., help="Name of the domain to initialize"),
+    domains_dir: Path = typer.Option(
+        Path("domains"),
+        "--domains-dir",
+        "-d",
+        help="Root directory for domains (default: ./domains)",
+    ),
+    template: str = typer.Option(
+        "default",
+        "--template",
+        "-t",
+        help="Template to use: default, minimal, or complete",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing domain directory",
+    ),
+):
+    """Initialize a new RAGDiff domain with directory structure and templates.
+
+    This command creates:
+    - Domain directory structure (systems/, query-sets/, runs/, comparisons/)
+    - domain.yaml with evaluator configuration
+    - Example system configurations
+    - Sample query sets
+    - .env.example if it doesn't exist
+
+    Examples:
+        # Basic initialization
+        ragdiff init my-domain
+
+        # With custom domains directory
+        ragdiff init my-domain --domains-dir ./custom-domains
+
+        # Use minimal template
+        ragdiff init my-domain --template minimal
+
+        # Overwrite existing domain
+        ragdiff init my-domain --force
+    """
+    import shutil
+    from textwrap import dedent
+
+    # Validate domain name
+    if not domain.replace("-", "").replace("_", "").isalnum():
+        console.print(
+            "[red]Error:[/red] Domain name must be alphanumeric with hyphens/underscores only"
+        )
+        raise typer.Exit(code=1)
+
+    # Check if domain already exists
+    domain_path = domains_dir / domain
+    if domain_path.exists() and not force:
+        console.print(
+            f"[red]Error:[/red] Domain '{domain}' already exists at {domain_path}"
+        )
+        console.print("Use --force to overwrite")
+        raise typer.Exit(code=1)
+
+    # Create directory structure
+    try:
+        console.print(f"[cyan]Creating domain:[/cyan] {domain}")
+
+        # Create directories
+        for subdir in ["systems", "query-sets", "runs", "comparisons"]:
+            (domain_path / subdir).mkdir(parents=True, exist_ok=True)
+            console.print(f"  ✓ Created {domain}/{subdir}/")
+
+        # Create domain.yaml
+        if template == "minimal":
+            domain_yaml = dedent(f"""\
+                name: {domain}
+                description: RAG comparison domain for {domain.replace('-', ' ').replace('_', ' ')}
+                evaluator:
+                  model: gpt-4
+                  temperature: 0.0
+                  prompt_template: |
+                    Compare these RAG results for the query: {{{{query}}}}
+
+                    Provider A ({{{{provider_a}}}}):
+                    {{{{response_a}}}}
+
+                    Provider B ({{{{provider_b}}}}):
+                    {{{{response_b}}}}
+
+                    Which provider gave a better response and why?
+                """)
+        else:  # default or complete
+            domain_yaml = dedent(f"""\
+                name: {domain}
+                description: RAG comparison domain for {domain.replace('-', ' ').replace('_', ' ')}
+                evaluator:
+                  model: gpt-4  # or anthropic/claude-3-opus, gemini/gemini-pro, etc.
+                  temperature: 0.0  # Use 0 for consistent evaluation
+                  max_tokens: 1000  # Optional: limit response length
+                  prompt_template: |
+                    You are evaluating two RAG system responses for quality and relevance.
+
+                    Query: {{{{query}}}}
+
+                    Response from {{{{provider_a}}}}:
+                    {{{{response_a}}}}
+
+                    Response from {{{{provider_b}}}}:
+                    {{{{response_b}}}}
+
+                    Evaluation Criteria:
+                    1. Relevance to the query (40 points)
+                    2. Accuracy and correctness (30 points)
+                    3. Completeness (20 points)
+                    4. Clarity and coherence (10 points)
+
+                    Score each response 0-100 and determine the winner.
+                    If scores differ by less than 5 points, call it a tie.
+
+                    Respond with ONLY a JSON object in this exact format:
+                    {{
+                      "score_{{{{provider_a}}}}": <0-100>,
+                      "score_{{{{provider_b}}}}": <0-100>,
+                      "winner": "<{{{{provider_a}}}}, {{{{provider_b}}}}, or tie>",
+                      "reasoning": "Brief explanation of your evaluation and decision"
+                    }}
+                """)
+
+        with open(domain_path / "domain.yaml", "w") as f:
+            f.write(domain_yaml)
+        console.print("  ✓ Created domain.yaml")
+
+        # Create example system configurations
+        if template != "minimal":
+            # Vectara example
+            vectara_yaml = dedent("""\
+                name: vectara-default
+                description: Vectara semantic search with default settings
+                tool: vectara
+                config:
+                  api_key: ${VECTARA_API_KEY}
+                  customer_id: ${VECTARA_CUSTOMER_ID}
+                  corpus_id: ${VECTARA_CORPUS_ID}
+                  rerank: false
+                  timeout: 30
+                """)
+            with open(domain_path / "systems" / "vectara-example.yaml", "w") as f:
+                f.write(vectara_yaml)
+
+            # MongoDB example
+            mongodb_yaml = dedent("""\
+                name: mongodb-atlas
+                description: MongoDB Atlas vector search
+                tool: mongodb
+                config:
+                  connection_string: ${MONGODB_URI}
+                  database: rag_database
+                  collection: documents
+                  vector_index: vector_index
+                  embedding_field: embedding
+                  text_field: content
+                  embedding_model: text-embedding-ada-002
+                  embedding_dimensions: 1536
+                """)
+            with open(domain_path / "systems" / "mongodb-example.yaml", "w") as f:
+                f.write(mongodb_yaml)
+
+            # OpenAPI adapter example
+            openapi_yaml = dedent("""\
+                name: custom-api
+                description: Custom RAG API via OpenAPI adapter
+                tool: openapi
+                config:
+                  base_url: ${CUSTOM_API_URL}
+                  api_key: ${CUSTOM_API_KEY}
+                  search_endpoint: /search
+                  search_method: POST
+                  query_param: q
+                  response_mapping:
+                    results_path: "data.results"
+                    text_path: "text"
+                    score_path: "score"
+                    metadata_path: "metadata"
+                """)
+            with open(domain_path / "systems" / "openapi-example.yaml", "w") as f:
+                f.write(openapi_yaml)
+
+            console.print("  ✓ Created example system configurations")
+
+        # Create sample query sets
+        basic_queries = dedent("""\
+            What is the capital of France?
+            Explain quantum computing in simple terms
+            How does photosynthesis work?
+            What are the main causes of climate change?
+            Describe the process of machine learning
+            """).strip()
+
+        with open(domain_path / "query-sets" / "basic-queries.txt", "w") as f:
+            f.write(basic_queries)
+        console.print("  ✓ Created basic-queries.txt")
+
+        if template == "complete":
+            # Add JSONL query set example
+            jsonl_queries = dedent("""\
+                {"query": "What is DNA?", "category": "biology", "difficulty": "basic"}
+                {"query": "Explain CRISPR gene editing", "category": "biology", "difficulty": "advanced"}
+                {"query": "How do vaccines work?", "category": "medicine", "difficulty": "intermediate"}
+                """).strip()
+
+            with open(
+                domain_path / "query-sets" / "categorized-queries.jsonl", "w"
+            ) as f:
+                f.write(jsonl_queries)
+            console.print("  ✓ Created categorized-queries.jsonl")
+
+        # Create .env.example if it doesn't exist
+        env_example = Path(".env.example")
+        if not env_example.exists():
+            env_content = dedent("""\
+                # RAGDiff Environment Variables
+
+                # Vectara Configuration
+                VECTARA_API_KEY=your_vectara_api_key
+                VECTARA_CUSTOMER_ID=your_customer_id
+                VECTARA_CORPUS_ID=your_corpus_id
+
+                # MongoDB Atlas
+                MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/
+
+                # OpenAI (for embeddings and evaluation)
+                OPENAI_API_KEY=sk-...
+
+                # Anthropic (for evaluation)
+                ANTHROPIC_API_KEY=sk-ant-...
+
+                # Google (for Gemini evaluation)
+                GOOGLE_API_KEY=...
+
+                # Custom API
+                CUSTOM_API_URL=https://api.example.com
+                CUSTOM_API_KEY=your_api_key
+                """)
+
+            with open(env_example, "w") as f:
+                f.write(env_content)
+            console.print("\n✓ Created .env.example (copy to .env and add your keys)")
+
+        # Success message
+        console.print(f"\n[green]✓ Successfully initialized domain:[/green] {domain}")
+        console.print("\n[bold]Next steps:[/bold]")
+        console.print(f"1. Configure your RAG systems in {domain_path}/systems/")
+        console.print(f"2. Add queries to {domain_path}/query-sets/")
+        console.print(
+            f"3. Run: [cyan]ragdiff run -d {domain_path} <system> <query-set>[/cyan]"
+        )
+        console.print(
+            f"4. Compare: [cyan]ragdiff compare -d {domain_path} <run-id-1> <run-id-2>[/cyan]"
+        )
+
+        if not Path(".env").exists():
+            console.print(
+                "\n[yellow]Note:[/yellow] Don't forget to copy .env.example to .env and add your API keys!"
+            )
+
+    except Exception as e:
+        console.print(f"[red]Error creating domain:[/red] {e}")
+        # Clean up partial creation
+        if domain_path.exists() and not force:
+            shutil.rmtree(domain_path)
+        raise typer.Exit(code=1) from e
+
+
+@app.command()
 def generate_adapter(
     openapi_url: str = typer.Option(
         ..., "--openapi-url", help="URL to OpenAPI specification"

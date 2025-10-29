@@ -110,14 +110,26 @@ cp .env.example .env
 
 ### 1. Create a Domain
 
-The easiest way to get started is using the init command (coming soon):
+The easiest way to get started is using the init command:
 
 ```bash
-# Initialize a new domain (planned feature)
-ragdiff init my-domain --template default
+# Initialize a new domain with default template
+ragdiff init my-domain
+
+# Use minimal template (fewer example files)
+ragdiff init my-domain --template minimal
+
+# Use complete template (includes JSONL examples)
+ragdiff init my-domain --template complete
+
+# Specify custom domains directory
+ragdiff init my-domain --domains-dir ./custom-domains
+
+# Overwrite existing domain
+ragdiff init my-domain --force
 ```
 
-Until the init command is available, create the structure manually:
+Alternatively, you can create the structure manually:
 
 ```bash
 # Create domain directory structure
@@ -213,7 +225,37 @@ The reports include:
 
 ## CLI Commands
 
-RAGDiff v2.0 provides two main CLI commands:
+RAGDiff v2.0 provides three main CLI commands:
+
+### `init` - Initialize a New Domain
+
+Create a new domain with directory structure and templates:
+
+```bash
+# Basic usage
+ragdiff init <domain>
+
+# Examples
+ragdiff init my-domain                          # Default template
+ragdiff init my-domain --template minimal       # Minimal template
+ragdiff init my-domain --template complete      # Complete template with examples
+ragdiff init my-domain --force                  # Overwrite existing
+
+# With custom domains directory
+ragdiff init my-domain --domains-dir ./projects
+```
+
+**What it does:**
+- Creates domain directory structure (`systems/`, `query-sets/`, `runs/`, `comparisons/`)
+- Generates `domain.yaml` with LLM evaluator configuration
+- Creates example system configurations (Vectara, MongoDB, OpenAPI)
+- Adds sample query sets (basic-queries.txt, optionally JSONL)
+- Creates `.env.example` if it doesn't exist
+
+**Templates:**
+- `minimal`: Basic structure with simple evaluation prompt
+- `default`: Includes example system configs and detailed evaluation criteria
+- `complete`: Everything in default plus JSONL query examples
 
 ### `run` - Execute Query Sets
 
