@@ -2,11 +2,17 @@
 
 A domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support.
 
-## Demo Video
+## Explanatory Video
 
-[![RAGDiff Demo](https://img.youtube.com/vi/DVtkj1BC-oY/maxresdefault.jpg)](https://youtu.be/DVtkj1BC-oY)
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=DVtkj1BC-oY">
+    <img src="https://img.youtube.com/vi/DVtkj1BC-oY/maxresdefault.jpg" alt="RAGDiff Explained" width="80%">
+  </a>
+  <br>
+  <em>📹 Click to watch: In-depth explanation of RAGDiff and how it works</em>
+</div>
 
-Watch the demo video to see RAGDiff in action!
+<br>
 
 ## What's New in v2.0
 
