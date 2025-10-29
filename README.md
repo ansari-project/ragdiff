@@ -2,6 +2,12 @@
 
 A domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support.
 
+## Demo Video
+
+[![RAGDiff Demo](https://img.youtube.com/vi/DVtkj1BC-oY/maxresdefault.jpg)](https://youtu.be/DVtkj1BC-oY)
+
+Watch the demo video to see RAGDiff in action!
+
 ## What's New in v2.0
 
 RAGDiff v2.0 introduces a **domain-based architecture** that organizes RAG system comparison around problem domains:
@@ -27,10 +33,24 @@ This replaces the v1.x adapter-based approach with a more structured, reproducib
 
 ## Installation
 
-### Prerequisites
+### From PyPI (Recommended)
+
+RAGDiff is now available on PyPI and can be installed with either pip or uv:
+
+```bash
+# Using pip
+pip install ragdiff
+
+# Using uv (faster)
+uv pip install ragdiff
+```
+
+### From Source (Development)
+
+#### Prerequisites
 
 - Python 3.9+
-- [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
+- [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver (optional but recommended)
 
 To install uv:
 ```bash
@@ -44,18 +64,19 @@ brew install uv
 pip install uv
 ```
 
-### Setup
+#### Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/ansari-project/ragdiff.git
 cd ragdiff
 
-# Install dependencies with uv
+# Option 1: Install with uv (recommended)
 uv sync --all-extras  # Install all dependencies including dev tools
+uv pip install -e .   # Install in editable mode
 
-# Install the package in editable mode
-uv pip install -e .
+# Option 2: Install with pip
+pip install -e .      # Install in editable mode
 
 # Copy environment template
 cp .env.example .env
@@ -140,6 +161,23 @@ uv run ragdiff compare my-domain <run-id-1> <run-id-2>
 uv run ragdiff compare my-domain <run-id-1> <run-id-2> --format markdown --output report.md
 uv run ragdiff compare my-domain <run-id-1> <run-id-2> --format json --output comparison.json
 ```
+
+## Example Output
+
+RAGDiff generates comprehensive comparison reports in multiple formats. Here's what the output looks like:
+
+- **Table Format**: Beautiful terminal output with colored statistics
+- **JSON Format**: Machine-readable results for programmatic analysis
+- **Markdown Format**: Human-readable reports with detailed evaluations
+
+[View Example Markdown Output](examples/squad-demo/comparison_results.md) - See a real comparison between FAISS providers with different embedding models.
+
+The reports include:
+- Provider win/loss/tie statistics
+- Average quality scores
+- Query-by-query evaluation details
+- LLM reasoning for each comparison
+- Performance metrics (latency, tokens used)
 
 ## CLI Commands
 
