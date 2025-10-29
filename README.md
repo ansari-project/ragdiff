@@ -14,6 +14,23 @@ A domain-based framework for comparing Retrieval-Augmented Generation (RAG) syst
 
 <br>
 
+## AI Assistant Integration
+
+RAGDiff includes structured documentation for both humans and AI assistants:
+
+### For AI Assistants
+
+We provide [llmstxt](https://llmstxt.org/) files to help AI assistants understand the codebase:
+
+- **[llms.txt](llms.txt)** - Quick project overview for AI assistants
+- **[llms-full.txt](llms-full.txt)** - Comprehensive documentation including architecture, workflow, and implementation details
+
+These files follow the llmstxt.org specification and enable AI assistants (like Claude, ChatGPT, or Cursor) to quickly understand how to use and contribute to RAGDiff. If you're using an AI assistant to work with this codebase, point it to these files first!
+
+### For Developers
+
+- **[GUIDE.md](GUIDE.md)** - Complete configuration guide explaining directory structure, YAML formats, and best practices
+
 ## What's New in v2.0
 
 RAGDiff v2.0 introduces a **domain-based architecture** that organizes RAG system comparison around problem domains:
@@ -92,6 +109,15 @@ cp .env.example .env
 ## Quick Start
 
 ### 1. Create a Domain
+
+The easiest way to get started is using the init command (coming soon):
+
+```bash
+# Initialize a new domain (planned feature)
+ragdiff init my-domain --template default
+```
+
+Until the init command is available, create the structure manually:
 
 ```bash
 # Create domain directory structure
