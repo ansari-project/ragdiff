@@ -30,7 +30,7 @@ from uuid import UUID, uuid4
 from ..core.errors import ComparisonError
 from ..core.loaders import load_domain
 from ..core.logging import get_logger
-from ..core.models_v2 import Comparison, EvaluationResult, EvaluatorConfig
+from ..core.models import Comparison, EvaluationResult, EvaluatorConfig
 from ..core.storage import load_run, save_comparison
 
 logger = get_logger(__name__)
@@ -170,8 +170,8 @@ def compare_runs(
 
         logger.info(f"Loaded {len(runs)} runs")
 
-        # Validate runs are from same domain (use domain name from domain.yaml, not CLI parameter)
-        if not all(r.domain == domain_obj.name for r in runs):
+        # Validate runs are from same domain
+        if not all(r.domain == domain for r in runs):
             domains = {r.domain for r in runs}
             raise ComparisonError(
                 f"Cannot compare runs from different domains: {domains}"
