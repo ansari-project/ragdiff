@@ -46,7 +46,7 @@ dependencies = [
     "rich>=13.0.0",
     "anthropic>=0.25.0",
     "requests>=2.31.0",
-    "goodmem-client>=1.5.5",
+    "goodmem-client>=1.5.7",
     "markdown>=3.9",
     "agentset>=0.4.0",
     "jmespath>=1.0.1",
@@ -59,7 +59,7 @@ dependencies = [
 
 [project.optional-dependencies]
 goodmem = [
-    "goodmem-client>=0.1.0",
+    "goodmem-client>=1.5.7",
 ]
 mongodb = [
     "pymongo>=4.0.0",
