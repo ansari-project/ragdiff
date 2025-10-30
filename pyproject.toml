@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ragdiff"
-version = "2.0.0"
+version = "2.1.0"
 description = "Compare and evaluate RAG systems side-by-side with LLM evaluation. Use as a library or CLI tool."
 readme = "README.md"
 requires-python = ">=3.9.2"
@@ -53,6 +53,8 @@ dependencies = [
     "litellm>=1.0.0",
     "bm25s>=0.2.14",
     "jupyter>=1.1.1",
+    "pymongo>=4.0.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 [project.optional-dependencies]
