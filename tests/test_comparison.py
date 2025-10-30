@@ -236,7 +236,7 @@ class TestCompareRuns:
         # Check that the validation logic is present
         source = open(evaluator.__file__).read()
         assert "Cannot compare runs from different domains" in source
-        assert "all(r.domain == domain for r in runs)" in source
+        assert "all(r.domain == domain_name for r in runs)" in source
 
     def test_compare_runs_different_query_sets_error(self, test_domain_with_runs):
         """Test error when comparing runs with different query sets."""

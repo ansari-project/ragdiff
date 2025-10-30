@@ -24,13 +24,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Union
 from uuid import UUID, uuid4
 
 from ..core.errors import ComparisonError
 from ..core.loaders import load_domain
 from ..core.logging import get_logger
-from ..core.models import Comparison, EvaluationResult, EvaluatorConfig
+from ..core.models import Comparison, Domain, EvaluationResult, EvaluatorConfig
 from ..core.storage import load_run, save_comparison
 
 logger = get_logger(__name__)
@@ -89,7 +89,7 @@ def _validate_api_key(model: str) -> None:
 
 
 def compare_runs(
-    domain: str,
+    domain: Union[str, Domain],
     run_ids: list[str | UUID],
     label: str | None = None,
     model: str | None = None,
@@ -101,23 +101,24 @@ def compare_runs(
 ) -> Comparison:
     """Compare multiple runs using LLM evaluation.
 
-    This function:
+    This function supports both file-based and object-based domain configuration:
     1. Loads all runs from disk
     2. Validates runs are from the same domain and query set
-    3. Loads domain evaluator config (or uses provided model/temperature)
+    3. Loads or uses provided domain evaluator config
     4. For each query, evaluates results from all runs using LLM
     5. Tracks costs per evaluation
     6. Saves comparison to file
 
     Args:
-        domain: Domain name (e.g., "tafsir")
+        domain: Domain name (str) to load from files, or Domain object
         run_ids: List of run IDs (full UUID or short prefix)
+        label: Optional comparison label
         model: Optional LLM model override (default: use domain evaluator config)
         temperature: Optional temperature override (default: use domain evaluator config)
         max_retries: Maximum retries for LLM calls (default: 3)
         concurrency: Maximum number of concurrent evaluations (default: 1 for sequential)
         progress_callback: Optional callback for progress updates (current, total, successes, failures)
-        domains_dir: Root directory containing all domains
+        domains_dir: Root directory containing all domains (only used for string parameters)
 
     Returns:
         Comparison object with evaluation results
@@ -126,15 +127,16 @@ def compare_runs(
         ComparisonError: If runs are from different domains, query sets don't match,
                         or LiteLLM is not available
 
-    Example:
+    Examples:
+        File-based (existing usage):
         >>> comparison = compare_runs(
         ...     domain="tafsir",
-        ...     run_ids=["550e", "660e"],  # Short prefixes work
-        ...     model="claude-3-5-sonnet-20241022"
+        ...     run_ids=["550e", "660e"]
         ... )
-        >>> for eval in comparison.evaluations:
-        ...     print(f"Query: {eval.query}")
-        ...     print(f"Winner: {eval.evaluation.get('winner')}")
+
+        Object-based (new usage for web apps):
+        >>> domain_obj = Domain(name="tafsir", evaluator={...})
+        >>> comparison = compare_runs(domain_obj, [run1.id, run2.id])
     """
     if not LITELLM_AVAILABLE:
         raise ComparisonError(
@@ -148,30 +150,38 @@ def compare_runs(
     comparison_id = uuid4()
     created_at = datetime.now(timezone.utc)
 
+    # Extract domain name for use throughout function
+    domain_name = domain if isinstance(domain, str) else domain.name
+
     # Generate label if not provided
     if label is None:
         from ..core.storage import generate_comparison_label
 
         date_str = created_at.strftime("%Y-%m-%d")
-        label = generate_comparison_label(domain, date_str, domains_dir)
+        label = generate_comparison_label(domain_name, date_str, domains_dir)
         logger.info(f"Auto-generated label: {label}")
 
     try:
-        # Load domain
-        domain_obj = load_domain(domain, domains_dir)
+        # Load or use provided domain configuration
+        if isinstance(domain, str):
+            domain_obj = load_domain(domain, domains_dir)
+            logger.debug(f"Loaded domain from file: {domain_name}")
+        else:
+            domain_obj = domain
+            logger.debug(f"Using provided Domain object: {domain_name}")
 
         # Load all runs
         runs = []
         run_uuids = []
         for run_id in run_ids:
-            run = load_run(domain, run_id, domains_dir)
+            run = load_run(domain_name, run_id, domains_dir)
             runs.append(run)
             run_uuids.append(run.id)
 
         logger.info(f"Loaded {len(runs)} runs")
 
         # Validate runs are from same domain
-        if not all(r.domain == domain for r in runs):
+        if not all(r.domain == domain_name for r in runs):
             domains = {r.domain for r in runs}
             raise ComparisonError(
                 f"Cannot compare runs from different domains: {domains}"
@@ -224,7 +234,7 @@ def compare_runs(
     comparison = Comparison(
         id=comparison_id,
         label=label,
-        domain=domain,
+        domain=domain_name,
         runs=run_uuids,
         evaluations=evaluations,
         evaluator_config=evaluator_config,

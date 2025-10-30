@@ -24,13 +24,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Union
 from uuid import uuid4
 
 from ..core.errors import RunError
 from ..core.loaders import load_domain, load_provider_for_snapshot, load_query_set
 from ..core.logging import get_logger
-from ..core.models import QueryResult, Run, RunStatus
+from ..core.models import Domain, ProviderConfig, QueryResult, QuerySet, Run, RunStatus
 from ..core.storage import save_run
 from ..providers import create_provider
 
@@ -42,9 +42,9 @@ ProgressCallback = Callable[[int, int, int, int], None]
 
 
 def execute_run(
-    domain: str,
-    provider: str,
-    query_set: str,
+    domain: Union[str, Domain],
+    provider: Union[str, ProviderConfig],
+    query_set: Union[str, QuerySet],
     label: str | None = None,
     concurrency: int = 10,
     per_query_timeout: float = 30.0,
@@ -53,23 +53,24 @@ def execute_run(
 ) -> Run:
     """Execute a query set against a system and save the run.
 
-    This function:
-    1. Loads domain, system config, and query set from files
-    2. Creates config snapshots (preserving ${VAR_NAME} placeholders)
-    3. Creates System instance (resolving secrets)
-    4. Executes queries in parallel with error handling
-    5. Tracks run state (pending → running → completed/failed/partial)
-    6. Saves run to file
+    This function supports both file-based and object-based configuration:
+    1. File-based: Loads domain, system config, and query set from files
+    2. Object-based: Uses provided configuration objects directly
+    3. Creates config snapshots (preserving ${VAR_NAME} placeholders)
+    4. Creates System instance (resolving secrets)
+    5. Executes queries in parallel with error handling
+    6. Tracks run state (pending → running → completed/failed/partial)
+    7. Saves run to file
 
     Args:
-        domain: Domain name (e.g., "tafsir")
-        provider: Provider name (e.g., "vectara-default")
-        query_set: Query set name (e.g., "test-queries")
+        domain: Domain name (str) to load from files, or Domain object
+        provider: Provider name (str) to load from files, or ProviderConfig object
+        query_set: Query set name (str) to load from files, or QuerySet object
         label: Optional label for the run (auto-generated if not provided)
         concurrency: Maximum number of concurrent queries (default: 10)
         per_query_timeout: Timeout per query in seconds (default: 30.0)
         progress_callback: Optional callback for progress updates
-        domains_dir: Root directory containing all domains
+        domains_dir: Root directory containing all domains (only used for string parameters)
 
     Returns:
         Completed Run object with all results
@@ -77,19 +78,22 @@ def execute_run(
     Raises:
         RunError: If provider initialization fails or run cannot be saved
 
-    Example:
-        >>> def progress(current, total, successes, failures):
-        ...     print(f"Progress: {current}/{total} ({successes} ok, {failures} failed)")
-        >>>
+    Examples:
+        File-based (existing usage):
         >>> run = execute_run(
         ...     domain="tafsir",
         ...     provider="vectara-default",
-        ...     query_set="test-queries",
-        ...     concurrency=10,
-        ...     progress_callback=progress
+        ...     query_set="test-queries"
         ... )
-        >>> print(run.status)
-        'completed'
+
+        Object-based (new usage for web apps):
+        >>> domain_obj = Domain(name="tafsir", evaluator={...})
+        >>> provider_obj = ProviderConfig(name="vectara", tool="vectara", config={...})
+        >>> query_set_obj = QuerySet(name="queries", domain="tafsir", queries=[...])
+        >>> run = execute_run(domain_obj, provider_obj, query_set_obj)
+
+        Hybrid (mix strings and objects):
+        >>> run = execute_run(domain_obj, "vectara-backup", query_set_obj)
     """
     logger.info(
         f"Starting run: domain={domain}, provider={provider}, query_set={query_set}, "
@@ -99,33 +103,69 @@ def execute_run(
     run_id = uuid4()
     started_at = datetime.now(timezone.utc)
 
+    # Extract names for use throughout function
+    domain_name = domain if isinstance(domain, str) else domain.name
+    provider_name = provider if isinstance(provider, str) else provider.name
+    query_set_name = query_set if isinstance(query_set, str) else query_set.name
+
     # Generate label if not provided
     if label is None:
         from ..core.storage import generate_run_label
 
         date_str = started_at.strftime("%Y-%m-%d")
-        label = generate_run_label(domain, provider, date_str, domains_dir)
+        label = generate_run_label(domain_name, provider_name, date_str, domains_dir)
         logger.info(f"Auto-generated label: {label}")
 
     try:
-        # Load domain (for validation)
-        load_domain(domain, domains_dir)
+        # Load or use provided domain configuration
+        if isinstance(domain, str):
+            # Validate domain exists (we only need the name)
+            load_domain(domain, domains_dir)
+            domain_name = domain
+        else:
+            domain_name = domain.name
+            logger.debug(f"Using provided Domain object: {domain_name}")
 
-        # Load provider config for snapshot (preserves ${VAR_NAME})
-        provider_config_snapshot = load_provider_for_snapshot(
-            domain, provider, domains_dir
-        )
-        logger.debug("Loaded provider config snapshot (secrets preserved)")
+        # Load or use provided provider configuration
+        if isinstance(provider, str):
+            # Load provider config for snapshot (preserves ${VAR_NAME})
+            provider_config_snapshot = load_provider_for_snapshot(
+                domain_name, provider, domains_dir
+            )
+            provider_name = provider
+            logger.debug("Loaded provider config snapshot (secrets preserved)")
 
-        # Load query set
-        query_set_obj = load_query_set(domain, query_set, domains_dir)
-        logger.info(f"Loaded query set with {len(query_set_obj.queries)} queries")
+            # Load provider config WITH resolved secrets for creating instance
+            from ..core.loaders import load_provider
+
+            provider_config_resolved = load_provider(domain_name, provider, domains_dir)
+        else:
+            # Use provided ProviderConfig object
+            provider_config_snapshot = provider
+            provider_config_resolved = provider
+            provider_name = provider.name
+            logger.debug(f"Using provided ProviderConfig object: {provider_name}")
+
+        # Load or use provided query set
+        if isinstance(query_set, str):
+            query_set_obj = load_query_set(domain_name, query_set, domains_dir)
+            query_set_name = query_set
+            logger.info(f"Loaded query set with {len(query_set_obj.queries)} queries")
+        else:
+            query_set_obj = query_set
+            query_set_name = query_set.name
+            logger.info(
+                f"Using provided QuerySet object with {len(query_set_obj.queries)} queries"
+            )
+
+        # Validate query set domain matches execution domain
+        if query_set_obj.domain != domain_name:
+            raise RunError(
+                f"Query set domain '{query_set_obj.domain}' does not match "
+                f"execution domain '{domain_name}'"
+            )
 
         # Create Provider instance (resolves ${VAR_NAME})
-        # Note: We need to load the provider config WITH resolved secrets
-        from ..core.loaders import load_provider
-
-        provider_config_resolved = load_provider(domain, provider, domains_dir)
         provider_instance = create_provider(provider_config_resolved)
         logger.info(f"Created provider instance: {provider_instance}")
 
@@ -137,9 +177,9 @@ def execute_run(
     run = Run(
         id=run_id,
         label=label,
-        domain=domain,
-        provider=provider,
-        query_set=query_set,
+        domain=domain_name,
+        provider=provider_name,
+        query_set=query_set_name,
         status=RunStatus.PENDING,
         results=[],
         provider_config=provider_config_snapshot,  # Snapshot with ${VAR_NAME}

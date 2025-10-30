@@ -4,7 +4,14 @@ This file contains project-specific instructions for Claude Code when working on
 
 ## Project Overview
 
-RAGDiff v2.0 is a domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support. It provides a CLI tool and Python library API for systematic RAG provider comparison.
+RAGDiff v2.0 is a domain-based framework for comparing Retrieval-Augmented Generation (RAG) systems with LLM evaluation support. It provides both a CLI tool and a Python library API for systematic RAG provider comparison.
+
+**Key Features:**
+- **Dual API**: File-based (CLI) and object-based (Python library)
+- **Domain-based architecture**: Organize comparisons by problem domain
+- **LLM evaluation**: Automated quality assessment via LiteLLM
+- **Parallel execution**: Configurable concurrency for runs and evaluations
+- **Immutable snapshots**: Reproducible results with config preservation
 
 ## What's New in v2.0
 
@@ -105,6 +112,98 @@ uv run ragdiff compare tafsir abc123 def456 \
 - Default concurrency is 5 (balanced for most cases)
 - Higher concurrency may hit API rate limits - adjust based on your LLM provider
 - Use `--quiet` to suppress progress output for automation
+
+## Python Library API (Object-Based)
+
+In addition to the CLI, RAGDiff can be used as a Python library with configuration objects instead of files. This is useful for web applications, automated workflows, or any scenario where configurations are stored in databases rather than files.
+
+### Object-Based API
+
+```python
+from ragdiff import execute_run, compare_runs
+from ragdiff.core.models import Domain, ProviderConfig, QuerySet, Query, EvaluatorConfig
+
+# Create configuration objects
+domain = Domain(
+    name="my-domain",
+    description="Domain description",
+    evaluator=EvaluatorConfig(
+        model="gpt-4",
+        temperature=0.0,
+        prompt_template="Compare these results..."
+    )
+)
+
+provider = ProviderConfig(
+    name="vectara-prod",
+    tool="vectara",
+    config={
+        "api_key": "${VECTARA_API_KEY}",
+        "corpus_id": "${VECTARA_CORPUS_ID}"
+    }
+)
+
+query_set = QuerySet(
+    name="test-queries",
+    domain="my-domain",
+    queries=[
+        Query(text="What is Python?", reference=None),
+        Query(text="What is RAG?", reference=None)
+    ]
+)
+
+# Execute run with objects (NO FILES NEEDED!)
+run = execute_run(
+    domain=domain,        # Object, not string
+    provider=provider,    # Object, not string
+    query_set=query_set,  # Object, not string
+    concurrency=10
+)
+
+# Compare runs
+comparison = compare_runs(
+    domain=domain,  # Object, not string
+    run_ids=[run1.id, run2.id],
+    concurrency=5
+)
+```
+
+### Hybrid Usage
+
+You can mix strings (file-based) and objects:
+
+```python
+# Use domain from file, but objects for provider and queries
+run = execute_run(
+    domain="my-domain",      # String - loads from domains/my-domain/domain.yaml
+    provider=provider_obj,   # Object
+    query_set=query_set_obj, # Object
+    domains_dir="/path/to/domains"  # Only used for string parameters
+)
+```
+
+### Benefits of Object-Based API
+
+- **No filesystem operations**: Perfect for web applications
+- **Database-friendly**: Store configurations in PostgreSQL, MongoDB, etc.
+- **Thread-safe**: No shared filesystem state
+- **Faster**: No file I/O overhead
+- **Easier debugging**: Direct Python stack traces
+- **Backward compatible**: File-based API still works exactly the same
+
+### When to Use Each API
+
+**File-Based (CLI)**:
+- Quick experiments and manual testing
+- Configuration files are convenient
+- Working with version-controlled configs
+- One-off comparisons
+
+**Object-Based (Library)**:
+- Web applications (like ragdiff-ui)
+- Automated workflows and CI/CD
+- Configurations in databases
+- Programmatic usage from Python code
 
 ### Domain Directory Structure
 
