@@ -17,16 +17,16 @@ import pytest
 import yaml
 
 from ragdiff.core.errors import RunError
-from ragdiff.core.models_v2 import RetrievedChunk, RunStatus
+from ragdiff.core.models import RetrievedChunk, RunStatus
 from ragdiff.execution import execute_run
-from ragdiff.providers import System, register_tool
+from ragdiff.providers import Provider, register_tool
 
 # ============================================================================
 # Test Fixtures
 # ============================================================================
 
 
-class MockSuccessSystem(System):
+class MockSuccessProvider(Provider):
     """Mock system that always succeeds."""
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
@@ -44,7 +44,7 @@ class MockSuccessSystem(System):
         ]
 
 
-class MockFailureSystem(System):
+class MockFailureProvider(Provider):
     """Mock system that always fails."""
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
@@ -53,7 +53,7 @@ class MockFailureSystem(System):
         raise RuntimeError("Mock system error")
 
 
-class MockPartialSystem(System):
+class MockPartialProvider(Provider):
     """Mock system that fails on specific queries."""
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
@@ -74,7 +74,7 @@ def test_domain(tmp_path):
 
     # Create domain structure
     domain_dir.mkdir()
-    (domain_dir / "systems").mkdir()
+    (domain_dir / "providers").mkdir()
     (domain_dir / "query-sets").mkdir()
     (domain_dir / "runs").mkdir()
 
@@ -91,8 +91,8 @@ def test_domain(tmp_path):
     with open(domain_dir / "domain.yaml", "w") as f:
         yaml.dump(domain_config, f)
 
-    # Create system config
-    system_config = {
+    # Create provider config
+    provider_config = {
         "name": "mock-system",
         "tool": "mock-success",
         "config": {
@@ -100,8 +100,8 @@ def test_domain(tmp_path):
             "setting": "value",
         },
     }
-    with open(domain_dir / "systems" / "mock-system.yaml", "w") as f:
-        yaml.dump(system_config, f)
+    with open(domain_dir / "providers" / "mock-system.yaml", "w") as f:
+        yaml.dump(provider_config, f)
 
     # Create query set (.txt format)
     with open(domain_dir / "query-sets" / "test-queries.txt", "w") as f:
@@ -134,9 +134,9 @@ def register_mock_tools():
     original_registry = TOOL_REGISTRY.copy()
 
     # Register mock tools
-    register_tool("mock-success", MockSuccessSystem)
-    register_tool("mock-failure", MockFailureSystem)
-    register_tool("mock-partial", MockPartialSystem)
+    register_tool("mock-success", MockSuccessProvider)
+    register_tool("mock-failure", MockFailureProvider)
+    register_tool("mock-partial", MockPartialProvider)
 
     yield
 
@@ -159,7 +159,7 @@ class TestExecuteRun:
 
         run = execute_run(
             domain=domain_name,
-            system="mock-system",
+            provider="mock-system",
             query_set="test-queries",
             concurrency=2,
             domains_dir=domains_dir,
@@ -167,7 +167,7 @@ class TestExecuteRun:
 
         # Check run metadata
         assert run.domain == domain_name
-        assert run.system == "mock-system"
+        assert run.provider == "mock-system"
         assert run.query_set == "test-queries"
         assert run.status == RunStatus.COMPLETED
 
@@ -192,7 +192,7 @@ class TestExecuteRun:
 
         run = execute_run(
             domain=domain_name,
-            system="mock-system",
+            provider="mock-system",
             query_set="test-with-refs",
             domains_dir=domains_dir,
         )
@@ -212,13 +212,13 @@ class TestExecuteRun:
             "tool": "mock-failure",
             "config": {},
         }
-        system_path = domains_dir / domain_name / "systems" / "failure-system.yaml"
-        with open(system_path, "w") as f:
+        provider_path = domains_dir / domain_name / "providers" / "failure-system.yaml"
+        with open(provider_path, "w") as f:
             yaml.dump(failure_system_config, f)
 
         run = execute_run(
             domain=domain_name,
-            system="failure-system",
+            provider="failure-system",
             query_set="test-queries",
             domains_dir=domains_dir,
         )
@@ -240,8 +240,8 @@ class TestExecuteRun:
             "tool": "mock-partial",
             "config": {},
         }
-        system_path = domains_dir / domain_name / "systems" / "partial-system.yaml"
-        with open(system_path, "w") as f:
+        provider_path = domains_dir / domain_name / "providers" / "partial-system.yaml"
+        with open(provider_path, "w") as f:
             yaml.dump(partial_system_config, f)
 
         # Create query set with some "fail" queries
@@ -256,7 +256,7 @@ class TestExecuteRun:
 
         run = execute_run(
             domain=domain_name,
-            system="partial-system",
+            provider="partial-system",
             query_set="partial-queries",
             domains_dir=domains_dir,
         )
@@ -283,14 +283,14 @@ class TestConfigSnapshotting:
 
         run = execute_run(
             domain=domain_name,
-            system="mock-system",
+            provider="mock-system",
             query_set="test-queries",
             domains_dir=domains_dir,
         )
 
-        # Check that system config snapshot preserves ${MOCK_API_KEY}
-        assert run.system_config.config["api_key"] == "${MOCK_API_KEY}"
-        assert run.system_config.config["setting"] == "value"
+        # Check that provider config snapshot preserves ${MOCK_API_KEY}
+        assert run.provider_config.config["api_key"] == "${MOCK_API_KEY}"
+        assert run.provider_config.config["setting"] == "value"
 
         # Check that query set snapshot is preserved
         assert run.query_set_snapshot.name == "test-queries"
@@ -323,7 +323,7 @@ class TestProgressCallback:
 
         _run = execute_run(
             domain=domain_name,
-            provider="mock-provider",
+            provider="mock-system",
             query_set="test-queries",
             progress_callback=progress_callback,
             domains_dir=domains_dir,
@@ -365,7 +365,7 @@ class TestParallelExecution:
         start_time = time.time()
         run = execute_run(
             domain=domain_name,
-            system="mock-system",
+            provider="mock-system",
             query_set="many-queries",
             concurrency=10,  # High concurrency
             domains_dir=domains_dir,
@@ -392,7 +392,7 @@ class TestParallelExecution:
         for concurrency in [1, 2, 5]:
             run = execute_run(
                 domain=domain_name,
-                system="mock-system",
+                provider="mock-system",
                 query_set="test-queries",
                 concurrency=concurrency,
                 domains_dir=domains_dir,
@@ -415,7 +415,7 @@ class TestFileStorage:
 
         run = execute_run(
             domain=domain_name,
-            system="mock-system",
+            provider="mock-system",
             query_set="test-queries",
             domains_dir=domains_dir,
         )
@@ -451,7 +451,7 @@ class TestErrorHandling:
         with pytest.raises(RunError, match="Failed to initialize run"):
             execute_run(
                 domain="missing-domain",
-                system="mock-system",
+                provider="mock-system",
                 query_set="test-queries",
                 domains_dir=domains_dir,
             )
@@ -463,7 +463,7 @@ class TestErrorHandling:
         with pytest.raises(RunError, match="Failed to initialize run"):
             execute_run(
                 domain=domain_name,
-                system="missing-system",
+                provider="missing-system",
                 query_set="test-queries",
                 domains_dir=domains_dir,
             )
@@ -475,7 +475,7 @@ class TestErrorHandling:
         with pytest.raises(RunError, match="Failed to initialize run"):
             execute_run(
                 domain=domain_name,
-                system="mock-system",
+                provider="mock-system",
                 query_set="missing-queries",
                 domains_dir=domains_dir,
             )

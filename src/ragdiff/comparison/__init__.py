@@ -1,11 +1,9 @@
-"""Comparison module for RAG tool evaluation.
+"""Comparison module for RAG provider evaluation.
 
-v1.x: ComparisonEngine (deprecated)
-v2.0: compare_runs function, evaluate_run function (reference-based)
+v2.0: Domain-based comparison with LLM evaluation.
 """
 
-from .engine import ComparisonEngine  # v1.x
-from .evaluator import compare_runs  # v2.0
-from .reference_evaluator import evaluate_run  # v2.0 reference-based
+from .evaluator import compare_runs
+from .reference_evaluator import evaluate_run
 
-__all__ = ["ComparisonEngine", "compare_runs", "evaluate_run"]
+__all__ = ["compare_runs", "evaluate_run"]

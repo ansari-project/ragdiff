@@ -15,7 +15,7 @@ except ImportError:
 
 from ..core.errors import ComparisonError
 from ..core.logging import get_logger
-from ..core.models_v2 import EvaluatorConfig, QueryResult, Run
+from ..core.models import EvaluatorConfig, QueryResult, Run
 from ..core.storage import load_run
 
 logger = get_logger(__name__)

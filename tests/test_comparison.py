@@ -11,9 +11,7 @@ Tests cover:
 
 import json
 import os
-import time
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -21,7 +19,7 @@ import yaml
 
 from ragdiff.comparison import compare_runs
 from ragdiff.core.errors import ComparisonError
-from ragdiff.core.models_v2 import (
+from ragdiff.core.models import (
     ProviderConfig,
     Query,
     QueryResult,
@@ -31,7 +29,6 @@ from ragdiff.core.models_v2 import (
     RunStatus,
 )
 from ragdiff.core.storage import save_run
-
 
 # ============================================================================
 # Test Fixtures
@@ -46,7 +43,7 @@ def test_domain_with_runs(tmp_path):
 
     # Create domain structure
     domain_dir.mkdir()
-    (domain_dir / "systems").mkdir()
+    (domain_dir / "providers").mkdir()
     (domain_dir / "query-sets").mkdir()
     (domain_dir / "runs").mkdir()
     (domain_dir / "comparisons").mkdir()
@@ -328,7 +325,7 @@ class TestFileStorage:
         assert comparison_path.exists()
 
         # Check that file contains valid JSON
-        with open(comparison_path, "r") as f:
+        with open(comparison_path) as f:
             comparison_data = json.load(f)
 
         assert comparison_data["id"] == str(comparison.id)
@@ -353,7 +350,7 @@ class TestMockLLM:
 
         # We can't easily mock LiteLLM, so this test just verifies
         # that our data structures are correct
-        from ragdiff.core.models_v2 import EvaluationResult
+        from ragdiff.core.models import EvaluationResult
 
         eval_result = EvaluationResult(
             query="Test query",
@@ -454,14 +451,16 @@ class TestParallelEvaluation:
         callback_invocations = []
 
         def progress_callback(current, total, successes, failures):
-            callback_invocations.append({
-                "current": current,
-                "total": total,
-                "successes": successes,
-                "failures": failures,
-            })
+            callback_invocations.append(
+                {
+                    "current": current,
+                    "total": total,
+                    "successes": successes,
+                    "failures": failures,
+                }
+            )
 
-        comparison = compare_runs(
+        _ = compare_runs(
             domain=domain_name,
             run_ids=[str(run1_id), str(run2_id)],
             model="gpt-3.5-turbo",
@@ -474,7 +473,7 @@ class TestParallelEvaluation:
         assert len(callback_invocations) == 2
 
         # Verify progress is monotonically increasing
-        for i, invocation in enumerate(callback_invocations):
+        for _i, invocation in enumerate(callback_invocations):
             assert invocation["total"] == 2
             assert invocation["current"] >= 1
             assert invocation["current"] <= 2

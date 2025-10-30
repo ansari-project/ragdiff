@@ -1,175 +1,221 @@
-"""Data models for RAG comparison harness."""
+"""Data models for RAGDiff v2.0.
 
-from dataclasses import dataclass, field
+This module defines all Pydantic models for the domain-based architecture.
+All models include validation and are designed for JSON serialization.
+"""
+
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field, field_validator
+
+# ============================================================================
+# Core Models
+# ============================================================================
 
 
-@dataclass
-class RagResult:
-    """Normalized result from any RAG system."""
+class RunStatus(str, Enum):
+    """Run execution states."""
 
-    id: str
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PARTIAL = "partial"  # Some queries succeeded, some failed
+
+
+class RetrievedChunk(BaseModel):
+    """A single retrieved text chunk with metadata."""
+
+    content: str
+    score: float | None = None
+    metadata: dict[str, Any] = Field(
+        default_factory=dict
+    )  # source_id, doc_id, chunk_id, etc.
+
+
+class Query(BaseModel):
+    """A single query with optional reference answer."""
+
     text: str
-    score: float
-    source: Optional[str] = None
-    metadata: Optional[dict[str, Any]] = None
-    latency_ms: Optional[float] = None
+    reference: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def __post_init__(self):
-        """Validate result data."""
-        if not self.id:
-            raise ValueError("Result ID cannot be empty")
-        if not self.text:
-            raise ValueError("Result text cannot be empty")
-        if not 0 <= self.score <= 1:
-            # Normalize scores to 0-1 range if needed
-            if self.score > 100:
-                self.score = min(self.score / 1000, 1.0)  # Assume out of 1000
-            elif self.score > 1:
-                self.score = min(self.score / 100, 1.0)  # Assume percentage
-            else:
-                self.score = max(0, self.score)
+    @field_validator("text")
+    @classmethod
+    def validate_text_not_empty(cls, v: str) -> str:
+        """Ensure query text is not empty."""
+        if not v or not v.strip():
+            raise ValueError("Query text cannot be empty")
+        return v.strip()
 
 
-class ComparisonOutcome(Enum):
-    """Possible outcomes of LLM comparison."""
-
-    GOODMEM_BETTER = "goodmem"
-    MAWSUAH_BETTER = "mawsuah"
-    TIE = "tie"
-    UNCLEAR = "unclear"
+# ============================================================================
+# Configuration Models
+# ============================================================================
 
 
-@dataclass
-class LLMEvaluation:
-    """Results from LLM evaluation."""
+class EvaluatorConfig(BaseModel):
+    """LLM evaluator configuration for comparisons."""
 
-    llm_model: str  # e.g., "claude-opus-4-1"
-    winner: Optional[str] = None  # Tool name that won, or None for tie
-    analysis: str = ""  # Analysis text
-    quality_scores: dict[str, int] = field(default_factory=dict)  # Tool -> score (0-10)
-    metadata: dict[str, Any] = field(default_factory=dict)  # Additional metadata
-
-    # Legacy fields for backward compatibility
-    summary: Optional[str] = None
-    confidence: Optional[str] = None  # high, medium, low
-    key_differences: list[str] = field(default_factory=list)
-    recommendations: Optional[str] = None
-    raw_response: Optional[str] = None
-    evaluation_time_ms: Optional[float] = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "llm_model": self.llm_model,
-            "winner": self.winner,
-            "analysis": self.analysis,
-            "quality_scores": self.quality_scores,
-            "metadata": self.metadata,
-            "evaluation_time_ms": self.evaluation_time_ms,
-        }
+    model: str = "claude-3-5-sonnet-20241022"
+    temperature: float = 0.0
+    prompt_template: str
 
 
-@dataclass
-class ComparisonResult:
-    """Complete comparison result for a query."""
-
-    query: str
-    tool_results: dict[str, list[RagResult]]
-    errors: dict[str, str]
-    timestamp: datetime = field(default_factory=datetime.now)
-    llm_evaluation: Optional[LLMEvaluation] = None
-
-    # Legacy properties for backward compatibility
-    @property
-    def goodmem_results(self) -> list[RagResult]:
-        """Get Goodmem results for backward compatibility."""
-        return self.tool_results.get("goodmem", [])
-
-    @property
-    def mawsuah_results(self) -> list[RagResult]:
-        """Get Mawsuah results for backward compatibility."""
-        return self.tool_results.get("mawsuah", [])
-
-    @property
-    def goodmem_error(self) -> Optional[str]:
-        """Get Goodmem error for backward compatibility."""
-        return self.errors.get("goodmem")
-
-    @property
-    def mawsuah_error(self) -> Optional[str]:
-        """Get Mawsuah error for backward compatibility."""
-        return self.errors.get("mawsuah")
-
-    @property
-    def goodmem_latency_ms(self) -> Optional[float]:
-        """Get Goodmem latency for backward compatibility."""
-        results = self.tool_results.get("goodmem", [])
-        return results[0].latency_ms if results else None
-
-    @property
-    def mawsuah_latency_ms(self) -> Optional[float]:
-        """Get Mawsuah latency for backward compatibility."""
-        results = self.tool_results.get("mawsuah", [])
-        return results[0].latency_ms if results else None
-
-    def has_errors(self) -> bool:
-        """Check if any system had errors."""
-        return bool(self.errors)
-
-    def get_result_counts(self) -> dict[str, int]:
-        """Get count of results from each system."""
-        return {
-            tool_name: len(results) for tool_name, results in self.tool_results.items()
-        }
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "query": self.query,
-            "timestamp": self.timestamp.isoformat(),
-            "tool_results": {
-                tool_name: [
-                    {
-                        "id": r.id,
-                        "text": r.text,
-                        "score": r.score,
-                        "source": r.source,
-                        "metadata": r.metadata,
-                    }
-                    for r in results
-                ]
-                for tool_name, results in self.tool_results.items()
-            },
-            "errors": self.errors,
-            "llm_evaluation": (
-                self.llm_evaluation.to_dict() if self.llm_evaluation else None
-            ),
-        }
-
-
-@dataclass
-class ToolConfig:
-    """Configuration for a RAG tool."""
+class Domain(BaseModel):
+    """Domain configuration (loaded from domains/<domain>/domain.yaml)."""
 
     name: str
-    api_key_env: str
-    adapter: Optional[str] = None  # Which adapter class to use (defaults to name)
-    options: Optional[dict[str, Any]] = None  # Custom adapter-specific options
-    base_url: Optional[str] = None
-    corpus_id: Optional[str] = None
-    customer_id: Optional[str] = None
-    namespace_id_env: Optional[str] = None  # For Agentset
-    timeout: int = 30
-    max_retries: int = 3
-    default_top_k: int = 5
-    space_ids: Optional[list[str]] = None
+    description: str = ""
+    variables: dict[str, Any] = Field(default_factory=dict)
+    secrets: dict[str, str] = Field(default_factory=dict)  # env var names
+    evaluator: EvaluatorConfig
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def validate(self) -> None:
-        """Validate configuration."""
-        if not self.name:
-            raise ValueError("Tool name is required")
-        if not self.api_key_env:
-            raise ValueError("API key environment variable name is required")
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate domain name format."""
+        if not v:
+            raise ValueError("Domain name cannot be empty")
+        if not all(c.isalnum() or c in "-_" for c in v):
+            raise ValueError(
+                f"Domain name '{v}' must be alphanumeric with hyphens/underscores only"
+            )
+        return v
+
+
+class ProviderConfig(BaseModel):
+    """System configuration (loaded from domains/<domain>/systems/<name>.yaml)."""
+
+    name: str
+    tool: str  # "vectara", "mongodb", "agentset", etc.
+    config: dict[str, Any]  # includes top_k, timeout, and tool-specific config
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate provider name format."""
+        if not v:
+            raise ValueError("Provider name cannot be empty")
+        if not all(c.isalnum() or c in "-_" for c in v):
+            raise ValueError(
+                f"Provider name '{v}' must be alphanumeric with hyphens/underscores only"
+            )
+        return v
+
+
+class QuerySet(BaseModel):
+    """Query set (loaded from domains/<domain>/query-sets/<name>.{txt,jsonl})."""
+
+    name: str
+    domain: str
+    queries: list[Query]
+
+    @field_validator("queries")
+    @classmethod
+    def validate_max_queries(cls, v: list[Query]) -> list[Query]:
+        """Enforce maximum query limit."""
+        if len(v) > 1000:
+            raise ValueError(f"Query set cannot exceed 1000 queries (got {len(v)})")
+        if not v:
+            raise ValueError("Query set cannot be empty")
+        return v
+
+    @field_validator("name", "domain")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate name format."""
+        if not v:
+            raise ValueError("Name cannot be empty")
+        if not all(c.isalnum() or c in "-_" for c in v):
+            raise ValueError(
+                f"Name '{v}' must be alphanumeric with hyphens/underscores only"
+            )
+        return v
+
+
+# ============================================================================
+# Run and Result Models
+# ============================================================================
+
+
+class QueryResult(BaseModel):
+    """Result for a single query within a run."""
+
+    query: str
+    retrieved: list[RetrievedChunk]
+    reference: str | None = None
+    duration_ms: float
+    error: str | None = None
+
+
+class Run(BaseModel):
+    """Run execution result (stored as domains/<domain>/runs/YYYY-MM-DD/<id>.json)."""
+
+    id: UUID = Field(default_factory=uuid4)
+    label: str | None = (
+        None  # Human-readable label (e.g., "vectara-20251026-001") - optional for backward compatibility
+    )
+    domain: str
+    provider: str  # system name
+    query_set: str  # query set name
+    status: RunStatus
+    results: list[QueryResult]
+
+    # Snapshots for reproducibility (CRITICAL: keep ${VAR_NAME} placeholders, do NOT resolve secrets)
+    provider_config: ProviderConfig
+    query_set_snapshot: QuerySet
+
+    # Timing
+    started_at: datetime
+    completed_at: datetime | None = None
+
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("started_at", "completed_at")
+    @classmethod
+    def validate_utc(cls, v: datetime | None) -> datetime | None:
+        """Ensure all timestamps are UTC."""
+        if v and v.tzinfo is None:
+            raise ValueError("Timestamp must be timezone-aware (UTC)")
+        return v
+
+
+# ============================================================================
+# Comparison Models
+# ============================================================================
+
+
+class EvaluationResult(BaseModel):
+    """Evaluation result for comparing multiple runs on a single query."""
+
+    query: str
+    reference: str | None
+    run_results: dict[str, list[RetrievedChunk]]  # system name -> retrieved chunks
+    evaluation: dict[str, Any]  # winner, reasoning, scores
+
+
+class Comparison(BaseModel):
+    """Comparison of multiple runs (stored as domains/<domain>/comparisons/YYYY-MM-DD/<id>.json)."""
+
+    id: UUID = Field(default_factory=uuid4)
+    label: str  # Human-readable label (e.g., "comparison-20251026-001")
+    domain: str
+    runs: list[UUID]  # run IDs being compared
+    evaluations: list[EvaluationResult]
+    evaluator_config: EvaluatorConfig  # Snapshot of evaluator used
+    created_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("created_at")
+    @classmethod
+    def validate_utc(cls, v: datetime) -> datetime:
+        """Ensure timestamp is UTC."""
+        if v.tzinfo is None:
+            raise ValueError("Timestamp must be timezone-aware (UTC)")
+        return v

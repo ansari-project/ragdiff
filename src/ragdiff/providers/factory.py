@@ -15,7 +15,7 @@ Example:
 
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
-from ..core.models_v2 import ProviderConfig
+from ..core.models import ProviderConfig
 from .abc import Provider
 from .registry import get_tool
 

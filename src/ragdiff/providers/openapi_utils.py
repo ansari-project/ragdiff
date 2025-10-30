@@ -1,4 +1,4 @@
-"""Response mapping engine for OpenAPI adapter using JMESPath."""
+"""Response mapping engine for OpenAPI provider using JMESPath."""
 
 import logging
 import re
@@ -6,8 +6,8 @@ from typing import Any
 
 import jmespath
 
-from ..core.errors import ConfigurationError
-from ..core.models import RagResult
+from ..core.errors import ConfigError
+from ..core.models import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,7 @@ class TemplateEngine:
             if var_name in variables:
                 return variables[var_name]
             else:
-                raise ConfigurationError(
-                    f"Template variable '${{{var_name}}}' not provided"
-                )
+                raise ConfigError(f"Template variable '${{{var_name}}}' not provided")
 
         # Otherwise, do string substitution
         result = template
@@ -86,15 +84,13 @@ class TemplateEngine:
                 # Convert to string for substitution
                 result = result.replace(match.group(0), str(variables[var_name]))
             else:
-                raise ConfigurationError(
-                    f"Template variable '${{{var_name}}}' not provided"
-                )
+                raise ConfigError(f"Template variable '${{{var_name}}}' not provided")
 
         return result
 
 
 class ResponseMapper:
-    """Map API responses to RagResult using JMESPath expressions.
+    """Map API responses to RetrievedChunk using JMESPath expressions.
 
     Extracts fields from arbitrary JSON responses using JMESPath,
     a powerful query language for JSON (used by AWS CLI, Azure CLI).
@@ -121,15 +117,15 @@ class ResponseMapper:
                 - fields: Dict of field mappings (id, text, score, etc.)
 
         Raises:
-            ConfigurationError: If mapping config is invalid
+            ConfigError: If mapping config is invalid
         """
         self.mapping_config = mapping_config
 
         # Validate required fields
         if "results_array" not in mapping_config:
-            raise ConfigurationError("Missing 'results_array' in response_mapping")
+            raise ConfigError("Missing 'results_array' in response_mapping")
         if "fields" not in mapping_config:
-            raise ConfigurationError("Missing 'fields' in response_mapping")
+            raise ConfigError("Missing 'fields' in response_mapping")
 
         # Compile JMESPath expressions for efficiency
         self.results_array_expr = jmespath.compile(mapping_config["results_array"])
@@ -139,27 +135,27 @@ class ResponseMapper:
             try:
                 self.field_exprs[field_name] = jmespath.compile(jmespath_str)
             except Exception as e:
-                raise ConfigurationError(
+                raise ConfigError(
                     f"Invalid JMESPath for field '{field_name}': {jmespath_str}. Error: {e}"
                 ) from e
 
-    def map_results(self, response: dict) -> list[RagResult]:
-        """Extract RagResult objects from API response.
+    def map_results(self, response: dict) -> list[RetrievedChunk]:
+        """Extract RetrievedChunk objects from API response.
 
         Args:
             response: Raw JSON response from API
 
         Returns:
-            List of RagResult objects
+            List of RetrievedChunk objects
 
         Raises:
-            ConfigurationError: If mapping fails
+            ConfigError: If mapping fails
         """
         # Extract results array
         try:
             results_array = self.results_array_expr.search(response)
         except Exception as e:
-            raise ConfigurationError(
+            raise ConfigError(
                 f"Failed to extract results array using JMESPath '{self.mapping_config['results_array']}': {e}"
             ) from e
 
@@ -170,7 +166,7 @@ class ResponseMapper:
             return []
 
         if not isinstance(results_array, list):
-            raise ConfigurationError(
+            raise ConfigError(
                 f"Results array is not a list: got {type(results_array).__name__}"
             )
 
@@ -186,25 +182,25 @@ class ResponseMapper:
 
         return rag_results
 
-    def _map_item(self, item: dict, index: int) -> RagResult:
-        """Map a single result item to RagResult.
+    def _map_item(self, item: dict, index: int) -> RetrievedChunk:
+        """Map a single result item to RetrievedChunk.
 
         Args:
             item: Single result item from API response
             index: Index of item (for error messages)
 
         Returns:
-            RagResult object
+            RetrievedChunk object
 
         Raises:
-            ConfigurationError: If required fields are missing
+            ConfigError: If required fields are missing
         """
-        # Extract required fields
-        id_value = self._extract_field(item, "id", required=True, index=index)
+        # Extract required fields (note: 'text' field in API becomes 'content' in RetrievedChunk)
         text_value = self._extract_field(item, "text", required=True, index=index)
         score_value = self._extract_field(item, "score", required=True, index=index)
 
         # Extract optional fields
+        id_value = self._extract_field(item, "id", required=False, index=index)
         source_value = self._extract_field(item, "source", required=False, index=index)
         metadata_value = self._extract_field(
             item, "metadata", required=False, index=index
@@ -213,12 +209,19 @@ class ResponseMapper:
         # Normalize score to 0-1 range
         score_normalized = self._normalize_score(score_value)
 
-        return RagResult(
-            id=str(id_value),
-            text=str(text_value),
+        # Build metadata including id and source if present
+        metadata = {}
+        if id_value is not None:
+            metadata["id"] = str(id_value)
+        if source_value is not None:
+            metadata["source"] = str(source_value)
+        if isinstance(metadata_value, dict):
+            metadata.update(metadata_value)
+
+        return RetrievedChunk(
+            content=str(text_value),
             score=score_normalized,
-            source=str(source_value) if source_value is not None else None,
-            metadata=metadata_value if isinstance(metadata_value, dict) else None,
+            metadata=metadata if metadata else None,
         )
 
     def _extract_field(
@@ -236,11 +239,11 @@ class ResponseMapper:
             Extracted value or None
 
         Raises:
-            ConfigurationError: If required field is missing or extraction fails
+            ConfigError: If required field is missing or extraction fails
         """
         if field_name not in self.field_exprs:
             if required:
-                raise ConfigurationError(
+                raise ConfigError(
                     f"Required field '{field_name}' not in mapping configuration"
                 )
             return None
@@ -248,12 +251,12 @@ class ResponseMapper:
         try:
             value = self.field_exprs[field_name].search(item)
         except Exception as e:
-            raise ConfigurationError(
+            raise ConfigError(
                 f"Failed to extract field '{field_name}' from item {index}: {e}"
             ) from e
 
         if value is None and required:
-            raise ConfigurationError(
+            raise ConfigError(
                 f"Required field '{field_name}' is None in item {index}. "
                 f"JMESPath: {self.mapping_config['fields'][field_name]}"
             )
@@ -276,12 +279,12 @@ class ResponseMapper:
             Normalized score (0-1)
 
         Raises:
-            ConfigurationError: If score is not numeric
+            ConfigError: If score is not numeric
         """
         try:
             score_float = float(score)
         except (TypeError, ValueError) as e:
-            raise ConfigurationError(f"Score is not numeric: {score}") from e
+            raise ConfigError(f"Score is not numeric: {score}") from e
 
         # Normalize based on range
         if 0 <= score_float <= 1:

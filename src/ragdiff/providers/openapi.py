@@ -41,11 +41,11 @@ from typing import Any
 import requests
 from requests.auth import HTTPBasicAuth
 
-from ..adapters.openapi_mapping import ResponseMapper, TemplateEngine
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
-from ..core.models_v2 import RetrievedChunk
+from ..core.models import RetrievedChunk
 from .abc import Provider
+from .openapi_utils import ResponseMapper, TemplateEngine
 
 logger = get_logger(__name__)
 
@@ -144,6 +144,15 @@ class OpenAPIProvider(Provider):
                     retrieved_chunks.append(
                         RetrievedChunk(
                             content=chunk.content,
+                            score=chunk.score,
+                            metadata=chunk.metadata or {},
+                        )
+                    )
+                elif hasattr(chunk, "text"):
+                    # RagResult object from legacy v1.x compatibility
+                    retrieved_chunks.append(
+                        RetrievedChunk(
+                            content=chunk.text,
                             score=chunk.score,
                             metadata=chunk.metadata or {},
                         )

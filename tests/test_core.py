@@ -1,7 +1,7 @@
 """Tests for RAGDiff v2.0 core components.
 
 Tests cover:
-- Data models (models_v2.py)
+- Data models (models.py)
 - Environment variable substitution (env_vars.py)
 - File loaders (loaders.py)
 - Path utilities (paths.py)
@@ -10,9 +10,7 @@ Tests cover:
 
 import json
 import os
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -23,33 +21,32 @@ from ragdiff.core.env_vars import (
     substitute_env_vars,
     validate_env_vars,
 )
-from ragdiff.core.errors import ConfigError, RunError, ValidationError
+from ragdiff.core.errors import ConfigError, RunError
 from ragdiff.core.loaders import (
     load_domain,
+    load_provider,
+    load_provider_for_snapshot,
     load_query_set,
-    load_system,
-    load_system_for_snapshot,
 )
-from ragdiff.core.models_v2 import (
+from ragdiff.core.models import (
     Comparison,
     Domain,
     EvaluationResult,
     EvaluatorConfig,
+    ProviderConfig,
     Query,
     QueryResult,
     QuerySet,
     RetrievedChunk,
     Run,
     RunStatus,
-    SystemConfig,
 )
 from ragdiff.core.paths import (
     ensure_domain_structure,
     find_run_by_prefix,
-    get_comparison_path,
     get_run_path,
+    list_providers,
     list_query_sets,
-    list_systems,
 )
 from ragdiff.core.storage import (
     list_comparisons,
@@ -59,7 +56,6 @@ from ragdiff.core.storage import (
     save_comparison,
     save_run,
 )
-
 
 # ============================================================================
 # Model Tests
@@ -161,18 +157,18 @@ class TestModels:
                 ),
             )
 
-    def test_system_config_name_validation(self):
-        """Test SystemConfig name validation."""
+    def test_provider_config_name_validation(self):
+        """Test ProviderConfig name validation."""
         # Valid names
-        SystemConfig(name="vectara-default", tool="vectara", config={})
-        SystemConfig(name="agentset_v2", tool="agentset", config={})
+        ProviderConfig(name="vectara-default", tool="vectara", config={})
+        ProviderConfig(name="agentset_v2", tool="agentset", config={})
 
         # Invalid names
-        with pytest.raises(ValueError, match="System name cannot be empty"):
-            SystemConfig(name="", tool="vectara", config={})
+        with pytest.raises(ValueError, match="Provider name cannot be empty"):
+            ProviderConfig(name="", tool="vectara", config={})
 
         with pytest.raises(ValueError, match="must be alphanumeric"):
-            SystemConfig(name="my system", tool="vectara", config={})
+            ProviderConfig(name="my system", tool="vectara", config={})
 
     def test_query_set_max_queries(self):
         """Test QuerySet enforces 1000 query limit."""
@@ -198,20 +194,18 @@ class TestModels:
     def test_run_timestamp_validation(self):
         """Test Run timestamp validation (must be UTC)."""
         run_id = uuid4()
-        system_config = SystemConfig(name="test", tool="vectara", config={})
-        query_set = QuerySet(
-            name="test", domain="tafsir", queries=[Query(text="Test")]
-        )
+        provider_config = ProviderConfig(name="test", tool="vectara", config={})
+        query_set = QuerySet(name="test", domain="tafsir", queries=[Query(text="Test")])
 
         # Valid: timezone-aware (UTC)
         run = Run(
             id=run_id,
             domain="tafsir",
-            system="test",
+            provider="test",
             query_set="test",
             status=RunStatus.COMPLETED,
             results=[],
-            system_config=system_config,
+            provider_config=provider_config,
             query_set_snapshot=query_set,
             started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
@@ -223,11 +217,11 @@ class TestModels:
             Run(
                 id=run_id,
                 domain="tafsir",
-                system="test",
+                provider="test",
                 query_set="test",
                 status=RunStatus.COMPLETED,
                 results=[],
-                system_config=system_config,
+                provider_config=provider_config,
                 query_set_snapshot=query_set,
                 started_at=datetime.now(),  # Naive!
                 completed_at=None,
@@ -238,7 +232,7 @@ class TestModels:
         run = Run(
             id=UUID("550e8400-e29b-41d4-a716-446655440000"),
             domain="tafsir",
-            system="vectara-default",
+            provider="vectara-default",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -254,7 +248,7 @@ class TestModels:
                     error=None,
                 )
             ],
-            system_config=SystemConfig(
+            provider_config=ProviderConfig(
                 name="vectara-default",
                 tool="vectara",
                 config={"api_key": "${VECTARA_API_KEY}", "top_k": 5},
@@ -275,7 +269,7 @@ class TestModels:
 
         assert run2.id == run.id
         assert run2.domain == run.domain
-        assert run2.system == run.system
+        assert run2.provider == run.provider
         assert run2.status == run.status
         assert len(run2.results) == 1
         assert run2.results[0].query == "Test query"
@@ -341,7 +335,9 @@ class TestEnvVars:
         """Test error when environment variable is missing."""
         config = {"api_key": "${MISSING_KEY}"}
 
-        with pytest.raises(ConfigError, match="Environment variable 'MISSING_KEY' not set"):
+        with pytest.raises(
+            ConfigError, match="Environment variable 'MISSING_KEY' not set"
+        ):
             substitute_env_vars(config, resolve_secrets=True)
 
     def test_check_required_vars(self):
@@ -355,7 +351,9 @@ class TestEnvVars:
 
             # Missing variable
             config = {"key": "${MISSING_KEY}"}
-            with pytest.raises(ConfigError, match="Missing required environment variables"):
+            with pytest.raises(
+                ConfigError, match="Missing required environment variables"
+            ):
                 check_required_vars(config)
 
         finally:
@@ -410,12 +408,12 @@ class TestLoaders:
         os.environ["TEST_VECTARA_KEY"] = "test_key_123"
 
         try:
-            # Create domain and systems directory
-            systems_dir = tmp_path / "domains" / "test-domain" / "systems"
-            systems_dir.mkdir(parents=True)
+            # Create domain and providers directory
+            providers_dir = tmp_path / "domains" / "test-domain" / "providers"
+            providers_dir.mkdir(parents=True)
 
-            # Write system.yaml
-            system_config = {
+            # Write provider.yaml
+            provider_config = {
                 "name": "vectara-test",
                 "tool": "vectara",
                 "config": {
@@ -425,30 +423,30 @@ class TestLoaders:
                 },
             }
 
-            with open(systems_dir / "vectara-test.yaml", "w") as f:
-                yaml.dump(system_config, f)
+            with open(providers_dir / "vectara-test.yaml", "w") as f:
+                yaml.dump(provider_config, f)
 
-            # Load system (secrets resolved)
-            system = load_system(
+            # Load provider (secrets resolved)
+            provider = load_provider(
                 "test-domain", "vectara-test", domains_dir=tmp_path / "domains"
             )
 
-            assert system.name == "vectara-test"
-            assert system.tool == "vectara"
-            assert system.config["api_key"] == "test_key_123"  # Resolved!
-            assert system.config["corpus_id"] == 123
+            assert provider.name == "vectara-test"
+            assert provider.tool == "vectara"
+            assert provider.config["api_key"] == "test_key_123"  # Resolved!
+            assert provider.config["corpus_id"] == 123
 
         finally:
             del os.environ["TEST_VECTARA_KEY"]
 
-    def test_load_system_for_snapshot(self, tmp_path):
-        """Test loading system configuration without resolving secrets."""
-        # Create domain and systems directory
-        systems_dir = tmp_path / "domains" / "test-domain" / "systems"
-        systems_dir.mkdir(parents=True)
+    def test_load_provider_for_snapshot(self, tmp_path):
+        """Test loading provider configuration without resolving secrets."""
+        # Create domain and providers directory
+        providers_dir = tmp_path / "domains" / "test-domain" / "providers"
+        providers_dir.mkdir(parents=True)
 
-        # Write system.yaml
-        system_config = {
+        # Write provider.yaml
+        provider_config = {
             "name": "vectara-test",
             "tool": "vectara",
             "config": {
@@ -458,16 +456,16 @@ class TestLoaders:
             },
         }
 
-        with open(systems_dir / "vectara-test.yaml", "w") as f:
-            yaml.dump(system_config, f)
+        with open(providers_dir / "vectara-test.yaml", "w") as f:
+            yaml.dump(provider_config, f)
 
-        # Load system for snapshot (secrets NOT resolved)
-        system = load_system_for_snapshot(
+        # Load provider for snapshot (secrets NOT resolved)
+        provider = load_provider_for_snapshot(
             "test-domain", "vectara-test", domains_dir=tmp_path / "domains"
         )
 
-        assert system.name == "vectara-test"
-        assert system.config["api_key"] == "${VECTARA_API_KEY}"  # Preserved!
+        assert provider.name == "vectara-test"
+        assert provider.config["api_key"] == "${VECTARA_API_KEY}"  # Preserved!
 
     def test_load_query_set_txt(self, tmp_path):
         """Test loading query set from .txt file."""
@@ -535,7 +533,7 @@ class TestPaths:
 
         # Check all directories exist
         assert (tmp_path / "test-domain").is_dir()
-        assert (tmp_path / "test-domain" / "systems").is_dir()
+        assert (tmp_path / "test-domain" / "providers").is_dir()
         assert (tmp_path / "test-domain" / "query-sets").is_dir()
         assert (tmp_path / "test-domain" / "runs").is_dir()
         assert (tmp_path / "test-domain" / "comparisons").is_dir()
@@ -588,18 +586,18 @@ class TestPaths:
         with pytest.raises(RunError, match="No run found"):
             find_run_by_prefix("test-domain", "999", domains_dir=tmp_path)
 
-    def test_list_systems(self, tmp_path):
-        """Test listing systems in a domain."""
-        systems_dir = tmp_path / "test-domain" / "systems"
-        systems_dir.mkdir(parents=True)
+    def test_list_providers(self, tmp_path):
+        """Test listing providers in a domain."""
+        providers_dir = tmp_path / "test-domain" / "providers"
+        providers_dir.mkdir(parents=True)
 
-        # Create system files
-        (systems_dir / "vectara-default.yaml").write_text("name: vectara-default")
-        (systems_dir / "agentset.yaml").write_text("name: agentset")
+        # Create provider files
+        (providers_dir / "vectara-default.yaml").write_text("name: vectara-default")
+        (providers_dir / "agentset.yaml").write_text("name: agentset")
 
-        systems = list_systems("test-domain", domains_dir=tmp_path)
+        providers = list_providers("test-domain", domains_dir=tmp_path)
 
-        assert systems == ["agentset", "vectara-default"]
+        assert providers == ["agentset", "vectara-default"]
 
     def test_list_query_sets(self, tmp_path):
         """Test listing query sets in a domain."""
@@ -628,7 +626,7 @@ class TestStorage:
         run = Run(
             id=UUID("550e8400-e29b-41d4-a716-446655440000"),
             domain="test-domain",
-            system="vectara-test",
+            provider="vectara-test",
             query_set="test-queries",
             status=RunStatus.COMPLETED,
             results=[
@@ -640,7 +638,7 @@ class TestStorage:
                     error=None,
                 )
             ],
-            system_config=SystemConfig(
+            provider_config=ProviderConfig(
                 name="vectara-test",
                 tool="vectara",
                 config={"api_key": "${VECTARA_API_KEY}", "top_k": 5},
@@ -665,7 +663,7 @@ class TestStorage:
             domains_dir=tmp_path,
         )
         assert loaded.id == run.id
-        assert loaded.system == run.system
+        assert loaded.provider == run.provider
 
         # Load run by prefix
         loaded = load_run("test-domain", "550e", domains_dir=tmp_path)
@@ -678,12 +676,12 @@ class TestStorage:
             run = Run(
                 id=uuid4(),
                 domain="test-domain",
-                system=f"system-{i}",
+                provider=f"provider-{i}",
                 query_set="test-queries",
                 status=RunStatus.COMPLETED,
                 results=[],
-                system_config=SystemConfig(
-                    name=f"system-{i}", tool="vectara", config={}
+                provider_config=ProviderConfig(
+                    name=f"provider-{i}", tool="vectara", config={}
                 ),
                 query_set_snapshot=QuerySet(
                     name="test-queries",
@@ -704,14 +702,15 @@ class TestStorage:
         assert len(runs) == 2
 
         # Filter by system
-        runs = list_runs("test-domain", system="system-0", domains_dir=tmp_path)
+        runs = list_runs("test-domain", provider="provider-0", domains_dir=tmp_path)
         assert len(runs) == 1
-        assert runs[0].system == "system-0"
+        assert runs[0].provider == "provider-0"
 
     def test_save_and_load_comparison(self, tmp_path):
         """Test saving and loading a comparison."""
         comparison = Comparison(
             id=UUID("660e8400-e29b-41d4-a716-446655440000"),
+            label="test-comparison",
             domain="test-domain",
             runs=[UUID("550e8400-e29b-41d4-a716-446655440000")],
             evaluations=[
@@ -735,7 +734,9 @@ class TestStorage:
         assert saved_path.exists()
 
         # Load comparison
-        loaded = load_comparison("test-domain", str(comparison.id), domains_dir=tmp_path)
+        loaded = load_comparison(
+            "test-domain", str(comparison.id), domains_dir=tmp_path
+        )
         assert loaded.id == comparison.id
         assert len(loaded.evaluations) == 1
 
@@ -745,6 +746,7 @@ class TestStorage:
         for i in range(3):
             comparison = Comparison(
                 id=uuid4(),
+                label=f"comparison-{i}",
                 domain="test-domain",
                 runs=[uuid4()],
                 evaluations=[],

@@ -17,7 +17,7 @@ import yaml
 from typer.testing import CliRunner
 
 from ragdiff.cli import app
-from ragdiff.core.models_v2 import (
+from ragdiff.core.models import (
     ProviderConfig,
     Query,
     QueryResult,
@@ -200,7 +200,7 @@ class TestCLICompareCommand:
         """Test that compare command help is displayed."""
         result = runner.invoke(app, ["compare", "--help"])
         assert result.exit_code == 0
-        assert "Compare multiple runs using LLM evaluation" in result.stdout
+        assert "Compare runs using LLM evaluation" in result.stdout
         assert "--domain-dir" in result.stdout
         assert "--run" in result.stdout
 

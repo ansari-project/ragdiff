@@ -24,19 +24,15 @@ import subprocess
 from typing import Any
 
 import requests
-import urllib3
-
-# Disable SSL warnings for self-signed certificate
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
-from ..core.models_v2 import RetrievedChunk
+from ..core.models import RetrievedChunk
 from .abc import Provider
 
 logger = get_logger(__name__)
 
-# Import goodmem_client if available
+# Optional Goodmem client import
 try:
     from goodmem_client import ApiClient, Configuration
     from goodmem_client.streaming import MemoryStreamClient
@@ -44,7 +40,10 @@ try:
     GOODMEM_AVAILABLE = True
 except ImportError:
     GOODMEM_AVAILABLE = False
-    logger.warning("goodmem-client not installed. Using CLI-based implementation.")
+    logger.warning("goodmem-client not installed. Using CLI fallback only.")
+    ApiClient = None  # type: ignore
+    Configuration = None  # type: ignore
+    MemoryStreamClient = None  # type: ignore
 
 # Space ID to human-readable name mapping
 _SPACE_NAMES = {

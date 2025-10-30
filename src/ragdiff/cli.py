@@ -596,7 +596,7 @@ def _compare_with_references(
 
 
 # ============================================================================
-# Generate Adapter Command
+# Initialize Provider Command
 # ============================================================================
 
 
@@ -625,9 +625,9 @@ def init(
     """Initialize a new RAGDiff domain with directory structure and templates.
 
     This command creates:
-    - Domain directory structure (systems/, query-sets/, runs/, comparisons/)
+    - Domain directory structure (providers/, query-sets/, runs/, comparisons/)
     - domain.yaml with evaluator configuration
-    - Example system configurations
+    - Example provider configurations
     - Sample query sets
     - .env.example if it doesn't exist
 
@@ -668,7 +668,7 @@ def init(
         console.print(f"[cyan]Creating domain:[/cyan] {domain}")
 
         # Create directories
-        for subdir in ["systems", "query-sets", "runs", "comparisons"]:
+        for subdir in ["providers", "query-sets", "runs", "comparisons"]:
             (domain_path / subdir).mkdir(parents=True, exist_ok=True)
             console.print(f"  ✓ Created {domain}/{subdir}/")
 
@@ -732,7 +732,7 @@ def init(
             f.write(domain_yaml)
         console.print("  ✓ Created domain.yaml")
 
-        # Create example system configurations
+        # Create example provider configurations
         if template != "minimal":
             # Vectara example
             vectara_yaml = dedent("""\
@@ -746,7 +746,7 @@ def init(
                   rerank: false
                   timeout: 30
                 """)
-            with open(domain_path / "systems" / "vectara-example.yaml", "w") as f:
+            with open(domain_path / "providers" / "vectara-example.yaml", "w") as f:
                 f.write(vectara_yaml)
 
             # MongoDB example
@@ -764,13 +764,13 @@ def init(
                   embedding_model: text-embedding-ada-002
                   embedding_dimensions: 1536
                 """)
-            with open(domain_path / "systems" / "mongodb-example.yaml", "w") as f:
+            with open(domain_path / "providers" / "mongodb-example.yaml", "w") as f:
                 f.write(mongodb_yaml)
 
-            # OpenAPI adapter example
+            # OpenAPI provider example
             openapi_yaml = dedent("""\
                 name: custom-api
-                description: Custom RAG API via OpenAPI adapter
+                description: Custom RAG API via OpenAPI provider
                 tool: openapi
                 config:
                   base_url: ${CUSTOM_API_URL}
@@ -784,10 +784,10 @@ def init(
                     score_path: "score"
                     metadata_path: "metadata"
                 """)
-            with open(domain_path / "systems" / "openapi-example.yaml", "w") as f:
+            with open(domain_path / "providers" / "openapi-example.yaml", "w") as f:
                 f.write(openapi_yaml)
 
-            console.print("  ✓ Created example system configurations")
+            console.print("  ✓ Created example provider configurations")
 
         # Create sample query sets
         basic_queries = dedent("""\
@@ -851,7 +851,7 @@ def init(
         # Success message
         console.print(f"\n[green]✓ Successfully initialized domain:[/green] {domain}")
         console.print("\n[bold]Next steps:[/bold]")
-        console.print(f"1. Configure your RAG systems in {domain_path}/systems/")
+        console.print(f"1. Configure your RAG providers in {domain_path}/providers/")
         console.print(f"2. Add queries to {domain_path}/query-sets/")
         console.print(
             f"3. Run: [cyan]ragdiff run -d {domain_path} <system> <query-set>[/cyan]"
@@ -951,7 +951,7 @@ def generate_provider(
             openapi_url=openapi_url,
             api_key=api_key,
             test_query=test_query,
-            adapter_name=provider_name,
+            provider_name=provider_name,
             endpoint=endpoint,
             method=method,
         )
@@ -1077,7 +1077,7 @@ def _output_json(comparison, output_path):
 
 def _output_markdown(comparison, output_path):
     """Output comparison results as Markdown."""
-    from .display.formatting_v2 import format_comparison_markdown
+    from .display.formatting import format_comparison_markdown
 
     # Generate markdown using the shared utility (show all evaluations in CLI)
     markdown = format_comparison_markdown(comparison, max_evaluations=None)

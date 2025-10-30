@@ -32,18 +32,18 @@ def get_domain_dir(domain_name: str, domains_dir: Path = Path("domains")) -> Pat
 
 
 def get_providers_dir(domain_name: str, domains_dir: Path = Path("domains")) -> Path:
-    """Get the systems directory for a domain.
+    """Get the providers directory for a domain.
 
     Args:
         domain_name: Name of the domain
         domains_dir: Root directory containing all domains
 
     Returns:
-        Path to systems directory
+        Path to providers directory
 
     Example:
         >>> get_providers_dir("tafsir")
-        PosixPath('domains/tafsir/systems')
+        PosixPath('domains/tafsir/providers')
     """
     return domains_dir / domain_name / "providers"
 
@@ -176,7 +176,7 @@ def ensure_domain_structure(
 
     Creates:
     - domains/<domain>/
-    - domains/<domain>/systems/
+    - domains/<domain>/providers/
     - domains/<domain>/query-sets/
     - domains/<domain>/runs/
     - domains/<domain>/comparisons/
@@ -194,14 +194,14 @@ def ensure_domain_structure(
     """
     try:
         domain_dir = get_domain_dir(domain_name, domains_dir)
-        systems_dir = get_providers_dir(domain_name, domains_dir)
+        providers_dir = get_providers_dir(domain_name, domains_dir)
         query_sets_dir = get_query_sets_dir(domain_name, domains_dir)
         runs_dir = domain_dir / "runs"
         comparisons_dir = domain_dir / "comparisons"
 
         for directory in [
             domain_dir,
-            systems_dir,
+            providers_dir,
             query_sets_dir,
             runs_dir,
             comparisons_dir,
@@ -320,26 +320,26 @@ def find_run_by_prefix(
     return matches[0]
 
 
-def list_systems(domain_name: str, domains_dir: Path = Path("domains")) -> list[str]:
-    """List all systems in a domain.
+def list_providers(domain_name: str, domains_dir: Path = Path("domains")) -> list[str]:
+    """List all providers in a domain.
 
     Args:
         domain_name: Name of the domain
         domains_dir: Root directory containing all domains
 
     Returns:
-        List of system names (without .yaml extension)
+        List of provider names (without .yaml extension)
 
     Example:
-        >>> list_systems("tafsir")
+        >>> list_providers("tafsir")
         ['vectara-default', 'vectara-mmr', 'agentset']
     """
-    systems_dir = get_providers_dir(domain_name, domains_dir)
+    providers_dir = get_providers_dir(domain_name, domains_dir)
 
-    if not systems_dir.exists():
+    if not providers_dir.exists():
         return []
 
-    return sorted([f.stem for f in systems_dir.glob("*.yaml") if f.is_file()])
+    return sorted([f.stem for f in providers_dir.glob("*.yaml") if f.is_file()])
 
 
 def list_query_sets(domain_name: str, domains_dir: Path = Path("domains")) -> list[str]:

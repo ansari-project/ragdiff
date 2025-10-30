@@ -1,93 +1,86 @@
-"""RAGDiff - Compare and evaluate RAG systems.
+"""RAGDiff v2.0 - Domain-based RAG system comparison framework.
 
-RAGDiff is a library and CLI tool for comparing Retrieval-Augmented Generation (RAG)
-systems. It provides adapters for multiple RAG platforms and tools for evaluating
-and comparing their performance.
+RAGDiff is a framework for comparing Retrieval-Augmented Generation (RAG) systems
+using a domain-based architecture with LLM evaluation support.
 
 Basic Usage:
-    >>> from ragdiff import query, compare
+    >>> from ragdiff import execute_run, compare_runs
     >>>
-    >>> # Run a single query against one tool
-    >>> results = query("config.yaml", "What is RAG?", tool="vectara")
+    >>> # Execute a query set against a provider
+    >>> run = execute_run(
+    ...     domain="legal",
+    ...     provider="vectara-default",
+    ...     query_set="basic-questions"
+    ... )
     >>>
-    >>> # Compare multiple tools on the same query
-    >>> comparison = compare("config.yaml", "What is RAG?", tools=["vectara", "goodmem"])
-    >>> print(f"Winner: {comparison.llm_evaluation.winner}")
+    >>> # Compare multiple runs using LLM evaluation
+    >>> comparison = compare_runs(
+    ...     domain="legal",
+    ...     run_ids=[run1.id, run2.id]
+    ... )
 
 Public API:
-    Core Functions:
-        - query: Run a single query against one RAG system
-        - run_batch: Run multiple queries against multiple systems
-        - compare: Compare multiple systems on a single query
-        - evaluate_with_llm: Evaluate results using Claude LLM
+    Execution:
+        - execute_run: Execute a query set against a provider
 
-    Configuration:
-        - load_config: Load and validate a configuration file
-        - validate_config: Validate a configuration file
-        - get_available_adapters: Get metadata for all available adapters
+    Comparison:
+        - compare_runs: Compare multiple runs using LLM evaluation
+        - evaluate_run: Evaluate runs against reference answers
 
     Models:
-        - RagResult: Single search result
-        - ComparisonResult: Comparison of multiple tools
-        - LLMEvaluation: LLM evaluation results
-        - Config: Configuration object
+        - Run: Execution result
+        - Comparison: Comparison result
+        - RetrievedChunk: Single retrieval result
+        - QueryResult: Result for a single query
+        - Provider: Base provider class
 
     Errors:
-        - RagDiffError: Base exception class
-        - ConfigurationError: Configuration errors
-        - AdapterError: Adapter execution errors
-        - AdapterRegistryError: Adapter registry errors
-        - ValidationError: Data validation errors
-        - EvaluationError: LLM evaluation errors
+        - ConfigError: Configuration errors
+        - RunError: Execution errors
 
 Version:
-    1.0.0
+    2.0.0
 """
 
-from .api import (
-    compare,
-    evaluate_with_llm,
-    get_available_adapters,
-    load_config,  # Already exported
-    query,
-    run_batch,
-    validate_config,
+from .comparison.evaluator import compare_runs
+from .comparison.reference_evaluator import evaluate_run
+from .core.errors import ConfigError, RunError
+from .core.models import (
+    Comparison,
+    Domain,
+    ProviderConfig,
+    QueryResult,
+    QuerySet,
+    RetrievedChunk,
+    Run,
+    RunStatus,
 )
-from .core.config import Config
-from .core.errors import (
-    AdapterError,
-    AdapterRegistryError,
-    ConfigurationError,
-    EvaluationError,
-    RagDiffError,
-    ValidationError,
-)
-from .core.models import ComparisonResult, LLMEvaluation, RagResult
-from .version import ADAPTER_API_VERSION, __version__
+from .execution import execute_run
+from .providers import Provider, create_provider, register_tool
+from .version import __version__
 
 __all__ = [
     # Version
     "__version__",
-    "ADAPTER_API_VERSION",
-    # Core API functions
-    "query",
-    "run_batch",
-    "compare",
-    "evaluate_with_llm",
-    # Configuration
-    "load_config",
-    "validate_config",
-    "get_available_adapters",
-    "Config",
+    # Execution
+    "execute_run",
+    # Comparison
+    "compare_runs",
+    "evaluate_run",
     # Models
-    "RagResult",
-    "ComparisonResult",
-    "LLMEvaluation",
+    "Run",
+    "Comparison",
+    "RetrievedChunk",
+    "QueryResult",
+    "Domain",
+    "ProviderConfig",
+    "QuerySet",
+    "RunStatus",
+    # Providers
+    "Provider",
+    "create_provider",
+    "register_tool",
     # Errors
-    "RagDiffError",
-    "ConfigurationError",
-    "AdapterError",
-    "AdapterRegistryError",
-    "ValidationError",
-    "EvaluationError",
+    "ConfigError",
+    "RunError",
 ]

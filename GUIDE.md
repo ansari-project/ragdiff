@@ -22,7 +22,7 @@ ragdiff-project/
 ├── domains/                      # All domain workspaces
 │   ├── tafsir/                   # Example domain: Islamic tafsir
 │   │   ├── domain.yaml           # Domain configuration
-│   │   ├── systems/              # RAG system configurations
+│   │   ├── providers/            # RAG provider configurations
 │   │   │   ├── vectara-default.yaml
 │   │   │   ├── mongodb-atlas.yaml
 │   │   │   └── bm25-local.yaml
@@ -39,7 +39,7 @@ ragdiff-project/
 │   │           └── <comparison-id>.json
 │   └── legal/                    # Another domain example
 │       ├── domain.yaml
-│       ├── systems/
+│       ├── providers/
 │       └── query-sets/
 ├── .env                          # API keys and secrets
 └── .env.example                  # Template for environment variables
@@ -49,7 +49,7 @@ ragdiff-project/
 
 - **`domains/`**: Root directory for all domain workspaces
 - **`<domain>/domain.yaml`**: Defines the domain and its LLM evaluator settings
-- **`<domain>/systems/`**: Contains RAG system configurations (one YAML file per system)
+- **`<domain>/providers/`**: Contains RAG provider configurations (one YAML file per provider)
 - **`<domain>/query-sets/`**: Stores reusable test query collections
 - **`<domain>/runs/`**: Auto-created directory storing execution results
 - **`<domain>/comparisons/`**: Auto-created directory storing comparison results
@@ -124,7 +124,7 @@ evaluator:
 
 ## System Configuration
 
-System YAML files in `systems/` directory define RAG system connections.
+Provider YAML files in `providers/` directory define RAG provider connections.
 
 ### Common Structure
 
@@ -383,7 +383,7 @@ Let's create a complete legal document search comparison:
 
 1. **Create domain structure**:
 ```bash
-mkdir -p domains/legal/{systems,query-sets}
+mkdir -p domains/legal/{providers,query-sets}
 ```
 
 2. **Create domain.yaml**:
@@ -416,7 +416,7 @@ evaluator:
 
 3. **Create system configs**:
 ```yaml
-# domains/legal/systems/pinecone-semantic.yaml
+# domains/legal/providers/pinecone-semantic.yaml
 name: pinecone-semantic
 tool: openapi
 config:
@@ -426,7 +426,7 @@ config:
 ```
 
 ```yaml
-# domains/legal/systems/elasticsearch-hybrid.yaml
+# domains/legal/providers/elasticsearch-hybrid.yaml
 name: elasticsearch-hybrid
 tool: openapi
 config:
@@ -474,7 +474,7 @@ ragdiff compare legal <run-id-1> <run-id-2> --format markdown --output legal-com
 
 1. **Start small**: Begin with 10-20 queries for quick iteration
 2. **Add progressively**: Expand to 100+ queries for thorough evaluation
-3. **Include failure cases**: Test how systems handle impossible queries
+3. **Include failure cases**: Test how providers handle impossible queries
 4. **Track sources**: Note where queries came from (user logs, synthetic, etc.)
 
 ### Running Comparisons
@@ -493,7 +493,7 @@ ragdiff compare legal <run-id-1> <run-id-2> --format markdown --output legal-com
 - Verify the domain name matches the directory name
 
 **"System configuration not found"**
-- Ensure system YAML exists in `domains/<domain>/systems/`
+- Ensure provider YAML exists in `domains/<domain>/providers/`
 - Check for typos in the system name
 
 **"Environment variable not set"**
@@ -515,7 +515,7 @@ ragdiff compare legal <run-id-1> <run-id-2> --format markdown --output legal-com
 
 ### Custom Providers
 
-Implement the provider interface to add new RAG systems:
+Implement the provider interface to add new RAG providers:
 
 ```python
 from ragdiff.providers.base import Provider

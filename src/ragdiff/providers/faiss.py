@@ -27,7 +27,7 @@ from typing import Any
 
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
-from ..core.models_v2 import RetrievedChunk
+from ..core.models import RetrievedChunk
 from .abc import Provider
 
 logger = get_logger(__name__)

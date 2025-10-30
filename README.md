@@ -133,7 +133,7 @@ Alternatively, you can create the structure manually:
 
 ```bash
 # Create domain directory structure
-mkdir -p domains/my-domain/{systems,query-sets,runs,comparisons}
+mkdir -p domains/my-domain/{providers,query-sets,runs,comparisons}
 
 # Create domain config
 cat > domains/my-domain/domain.yaml <<EOF
@@ -157,7 +157,7 @@ EOF
 
 ```bash
 # Create Vectara system config
-cat > domains/my-domain/systems/vectara-default.yaml <<EOF
+cat > domains/my-domain/providers/vectara-default.yaml <<EOF
 name: vectara-default
 tool: vectara
 config:
@@ -167,7 +167,7 @@ config:
 EOF
 
 # Create MongoDB system config
-cat > domains/my-domain/systems/mongodb-local.yaml <<EOF
+cat > domains/my-domain/providers/mongodb-local.yaml <<EOF
 name: mongodb-local
 tool: mongodb
 config:
@@ -194,7 +194,7 @@ EOF
 ### 4. Run Comparisons
 
 ```bash
-# Execute query sets against different systems
+# Execute query sets against different providers
 uv run ragdiff run my-domain vectara-default test-queries
 uv run ragdiff run my-domain mongodb-local test-queries
 
@@ -246,7 +246,7 @@ ragdiff init my-domain --domains-dir ./projects
 ```
 
 **What it does:**
-- Creates domain directory structure (`systems/`, `query-sets/`, `runs/`, `comparisons/`)
+- Creates domain directory structure (`providers/`, `query-sets/`, `runs/`, `comparisons/`)
 - Generates `domain.yaml` with LLM evaluator configuration
 - Creates example system configurations (Vectara, MongoDB, OpenAPI)
 - Adds sample query sets (basic-queries.txt, optionally JSONL)
@@ -278,7 +278,7 @@ uv run ragdiff run tafsir vectara-default test-queries \
 ```
 
 **What it does:**
-- Loads system config from `domains/<domain>/systems/<system>.yaml`
+- Loads provider config from `domains/<domain>/providers/<provider>.yaml`
 - Loads queries from `domains/<domain>/query-sets/<query-set>.txt`
 - Executes all queries with progress bar
 - Saves results to `domains/<domain>/runs/<run-id>.json`
@@ -335,7 +335,7 @@ uv run ragdiff compare tafsir abc123 def456 \
 domains/
 ├── tafsir/                    # Domain: Islamic tafsir
 │   ├── domain.yaml            # Domain config (evaluator settings)
-│   ├── systems/               # System configurations
+│   ├── providers/             # Provider configurations
 │   │   ├── vectara-default.yaml
 │   │   ├── mongodb-local.yaml
 │   │   └── agentset-prod.yaml
@@ -349,7 +349,7 @@ domains/
 │       └── <comparison-id>.json
 └── legal/                     # Domain: Legal documents
     ├── domain.yaml
-    ├── systems/
+    ├── providers/
     └── query-sets/
 ```
 
@@ -361,7 +361,7 @@ domains/
 
 ```yaml
 name: tafsir
-description: Islamic tafsir RAG systems
+description: Islamic tafsir RAG providers
 evaluator:
   model: gpt-4                    # LLM model for evaluation
   temperature: 0.0                # Temperature for evaluation
@@ -376,7 +376,7 @@ evaluator:
 
 ### System Configuration
 
-`domains/<domain>/systems/<system>.yaml`:
+`domains/<domain>/providers/<provider>.yaml`:
 
 **Vectara:**
 ```yaml
@@ -448,7 +448,7 @@ GEMINI_API_KEY=your_key          # For Gemini models
 
 ## Supported RAG Systems
 
-RAGDiff v2.0 supports the following RAG systems:
+RAGDiff v2.0 supports the following RAG providers:
 
 - **Vectara**: Enterprise RAG platform with built-in neural search
 - **MongoDB Atlas**: Vector search with MongoDB Atlas and sentence-transformers
@@ -456,7 +456,7 @@ RAGDiff v2.0 supports the following RAG systems:
 
 ### Adding New Systems
 
-1. Create system implementation in `src/ragdiff/systems/`:
+1. Create provider implementation in `src/ragdiff/providers/`:
 
 ```python
 from ..core.models_v2 import RetrievedChunk
@@ -487,7 +487,7 @@ from .registry import register_tool
 register_tool("mysystem", MySystem)
 ```
 
-2. Import in `src/ragdiff/systems/__init__.py`:
+2. Import in `src/ragdiff/providers/__init__.py`:
 ```python
 from . import mysystem  # noqa: F401
 ```
@@ -500,7 +500,7 @@ from . import mysystem  # noqa: F401
 
 ```bash
 # Create two MongoDB variants with different embedding models
-cat > domains/ml/systems/mongodb-minilm.yaml <<EOF
+cat > domains/ml/providers/mongodb-minilm.yaml <<EOF
 name: mongodb-minilm
 tool: mongodb
 config:
@@ -511,7 +511,7 @@ config:
   embedding_model: all-MiniLM-L6-v2
 EOF
 
-cat > domains/ml/systems/mongodb-mpnet.yaml <<EOF
+cat > domains/ml/providers/mongodb-mpnet.yaml <<EOF
 name: mongodb-mpnet
 tool: mongodb
 config:
@@ -522,7 +522,7 @@ config:
   embedding_model: all-mpnet-base-v2
 EOF
 
-# Run both systems
+# Run both providers
 uv run ragdiff run ml mongodb-minilm test-queries
 uv run ragdiff run ml mongodb-mpnet test-queries
 
@@ -546,13 +546,13 @@ uv run ragdiff run legal vectara-improved prod-queries
 uv run ragdiff compare legal <baseline-id> <improved-id> --format markdown --output improvements.md
 
 # 5. If improved system is better, make it the new baseline
-cp domains/legal/systems/vectara-improved.yaml domains/legal/systems/vectara-baseline.yaml
+cp domains/legal/providers/vectara-improved.yaml domains/legal/providers/vectara-baseline.yaml
 ```
 
 ### Multi-System Comparison
 
 ```bash
-# Run same query set across all systems
+# Run same query set across all providers
 uv run ragdiff run tafsir vectara-default test-queries
 uv run ragdiff run tafsir mongodb-local test-queries
 uv run ragdiff run tafsir agentset-prod test-queries
@@ -608,7 +608,7 @@ ragdiff/
 │   │   ├── loaders.py        # File loading utilities
 │   │   ├── storage.py        # Persistence utilities
 │   │   └── errors.py         # Custom exceptions
-│   ├── systems/              # System implementations
+│   ├── providers/            # Provider implementations
 │   │   ├── abc.py            # System abstract base class
 │   │   ├── registry.py       # System registration
 │   │   ├── vectara.py        # Vectara system

@@ -1,17 +1,15 @@
-"""Configuration generator for OpenAPI adapters.
+"""Configuration generator for OpenAPI providers.
 
-Orchestrates the process of generating adapter configurations from OpenAPI specs.
+Orchestrates the process of generating provider configurations from OpenAPI specs.
 """
 
-import json
 import logging
 from typing import Any, Optional
 
 import requests
 
-from ..adapters.openapi import OpenAPIAdapter
-from ..core.errors import AdapterError, ConfigurationError
-from ..core.models import ToolConfig
+from ..core.errors import ConfigError, RunError
+from ..providers.openapi import OpenAPIProvider
 from .ai_analyzer import AIAnalyzer
 from .parser import OpenAPISpec
 
@@ -19,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigGenerator:
-    """Generates adapter configurations from OpenAPI specifications.
+    """Generates provider configurations from OpenAPI specifications.
 
     Orchestrates the complete workflow:
     1. Fetch and parse OpenAPI spec
@@ -44,44 +42,44 @@ class ConfigGenerator:
         openapi_url: str,
         api_key: str,
         test_query: str,
-        adapter_name: str,
+        provider_name: str,
         endpoint: Optional[str] = None,
         method: Optional[str] = None,
         timeout: int = 30,
     ) -> dict[str, Any]:
-        """Generate complete adapter configuration.
+        """Generate complete provider configuration.
 
         Args:
             openapi_url: URL to OpenAPI specification
             api_key: API key for authentication
             test_query: Test query to execute
-            adapter_name: Name for the adapter
+            provider_name: Name for the provider
             endpoint: Optional endpoint override (else AI identifies)
             method: Optional HTTP method override (else AI identifies)
             timeout: Request timeout in seconds
 
         Returns:
-            Complete adapter configuration dict ready for YAML
+            Complete provider configuration dict ready for YAML
 
         Raises:
-            ConfigurationError: If generation fails at any step
-            AdapterError: If test query fails
+            ConfigError: If generation fails at any step
+            RunError: If test query fails
         """
-        logger.info(f"Starting config generation for adapter '{adapter_name}'")
+        logger.info(f"Starting config generation for provider '{provider_name}'")
 
         # Step 1: Fetch and parse OpenAPI spec
         logger.info(f"Fetching OpenAPI spec from {openapi_url}")
         try:
             spec = OpenAPISpec.from_url(openapi_url, timeout=timeout)
         except Exception as e:
-            raise ConfigurationError(f"Failed to fetch OpenAPI spec: {e}") from e
+            raise ConfigError(f"Failed to fetch OpenAPI spec: {e}") from e
 
         # Get API info
         api_info = spec.get_info()
         base_url = api_info.get_base_url()
 
         if not base_url:
-            raise ConfigurationError(
+            raise ConfigError(
                 "No server URL found in OpenAPI spec. Cannot determine base_url."
             )
 
@@ -101,13 +99,15 @@ class ConfigGenerator:
                 search_method,
                 reasoning,
             ) = self.ai_analyzer.identify_search_endpoint(endpoints)
-            logger.info(f"AI identified endpoint: {search_method} {search_endpoint_path}")
+            logger.info(
+                f"AI identified endpoint: {search_method} {search_endpoint_path}"
+            )
             logger.info(f"AI reasoning: {reasoning}")
 
         # Get endpoint details
         endpoint_info = spec.get_endpoint(search_endpoint_path, search_method)
         if not endpoint_info:
-            raise ConfigurationError(
+            raise ConfigError(
                 f"Endpoint {search_method} {search_endpoint_path} not found in spec"
             )
 
@@ -133,7 +133,7 @@ class ConfigGenerator:
 
         # Step 6: Construct complete config
         config = self._build_config(
-            adapter_name=adapter_name,
+            provider_name=provider_name,
             base_url=base_url,
             endpoint=search_endpoint_path,
             method=search_method,
@@ -141,11 +141,11 @@ class ConfigGenerator:
             response_mapping=response_mapping,
         )
 
-        # Step 7: Validate config by creating adapter and testing
+        # Step 7: Validate config by creating provider and testing
         logger.info("Validating generated config")
         self._validate_config(config, api_key, test_query)
 
-        logger.info(f"Successfully generated config for '{adapter_name}'")
+        logger.info(f"Successfully generated config for '{provider_name}'")
         return config
 
     def _determine_auth_config(self, spec: OpenAPISpec) -> dict[str, Any]:
@@ -158,7 +158,7 @@ class ConfigGenerator:
             Auth configuration dict
 
         Raises:
-            ConfigurationError: If no supported auth scheme found
+            ConfigError: If no supported auth scheme found
         """
         auth_schemes = spec.get_auth_schemes()
 
@@ -222,7 +222,7 @@ class ConfigGenerator:
             Parsed JSON response
 
         Raises:
-            AdapterError: If request fails
+            RunError: If request fails
         """
         url = f"{base_url}{endpoint}"
 
@@ -250,30 +250,33 @@ class ConfigGenerator:
                 )
             elif method == "GET":
                 response = requests.get(
-                    url, params={"query": query, "limit": 5}, headers=headers, timeout=timeout
+                    url,
+                    params={"query": query, "limit": 5},
+                    headers=headers,
+                    timeout=timeout,
                 )
             else:
-                raise AdapterError(f"Unsupported HTTP method: {method}")
+                raise RunError(f"Unsupported HTTP method: {method}")
 
             response.raise_for_status()
             return response.json()
 
         except requests.exceptions.RequestException as e:
-            raise AdapterError(f"Test query failed: {e}") from e
+            raise RunError(f"Test query failed: {e}") from e
 
     def _build_config(
         self,
-        adapter_name: str,
+        provider_name: str,
         base_url: str,
         endpoint: str,
         method: str,
         auth_config: dict,
         response_mapping: dict,
     ) -> dict[str, Any]:
-        """Build complete adapter configuration.
+        """Build complete provider configuration.
 
         Args:
-            adapter_name: Name for the adapter
+            provider_name: Name for the provider
             base_url: API base URL
             endpoint: Endpoint path
             method: HTTP method
@@ -284,9 +287,9 @@ class ConfigGenerator:
             Complete config dict
         """
         return {
-            adapter_name: {
-                "adapter": "openapi",
-                "api_key_env": f"{adapter_name.upper()}_API_KEY",
+            provider_name: {
+                "tool": "openapi",
+                "api_key_env": f"{provider_name.upper()}_API_KEY",
                 "timeout": 30,
                 "max_retries": 3,
                 "options": {
@@ -303,10 +306,8 @@ class ConfigGenerator:
             }
         }
 
-    def _validate_config(
-        self, config: dict, api_key: str, test_query: str
-    ) -> None:
-        """Validate configuration by creating adapter and testing.
+    def _validate_config(self, config: dict, api_key: str, test_query: str) -> None:
+        """Validate configuration by creating provider and testing.
 
         Args:
             config: Generated configuration
@@ -314,37 +315,30 @@ class ConfigGenerator:
             test_query: Test query string
 
         Raises:
-            ConfigurationError: If config is invalid
-            AdapterError: If test query fails
+            ConfigError: If config is invalid
+            RunError: If test query fails
         """
-        # Extract adapter name and config
-        adapter_name = list(config.keys())[0]
-        adapter_config = config[adapter_name]
+        # Extract provider name and config
+        provider_name = list(config.keys())[0]
+        provider_config = config[provider_name]
 
-        # Create ToolConfig
-        tool_config = ToolConfig(
-            name=adapter_name,
-            api_key_env=adapter_config["api_key_env"],
-            options=adapter_config["options"],
-            timeout=adapter_config.get("timeout", 30),
-            max_retries=adapter_config.get("max_retries", 3),
-        )
-
-        # Create adapter with test credentials
-        credentials = {adapter_config["api_key_env"]: api_key}
+        # Create provider with test credentials
+        # Update config with actual API key for testing
+        test_config = provider_config.copy()
+        test_config["options"]["api_key"] = api_key
 
         try:
-            adapter = OpenAPIAdapter(tool_config, credentials=credentials)
+            provider = OpenAPIProvider(test_config["options"])
         except Exception as e:
-            raise ConfigurationError(f"Invalid configuration: {e}") from e
+            raise ConfigError(f"Invalid configuration: {e}") from e
 
         # Execute test query
         try:
-            results = adapter.search(test_query, top_k=5)
+            results = provider.search(test_query, top_k=5)
             logger.info(f"Validation successful: got {len(results)} results")
 
             if not results:
                 logger.warning("Test query returned no results")
 
         except Exception as e:
-            raise AdapterError(f"Test query failed: {e}") from e
+            raise RunError(f"Test query failed: {e}") from e

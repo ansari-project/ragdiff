@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from .env_vars import check_required_vars, substitute_env_vars
 from .errors import ConfigError
 from .logging import get_logger
-from .models_v2 import Domain, ProviderConfig, Query, QuerySet
+from .models import Domain, ProviderConfig, Query, QuerySet
 
 logger = get_logger(__name__)
 
@@ -100,11 +100,11 @@ def load_domain(domain_name: str, domains_dir: Path = Path("domains")) -> Domain
 def load_provider(
     domain_name: str, provider_name: str, domains_dir: Path = Path("domains")
 ) -> ProviderConfig:
-    """Load system configuration from domains/<domain>/systems/<name>.yaml.
+    """Load provider configuration from domains/<domain>/providers/<name>.yaml.
 
     Args:
         domain_name: Name of the domain
-        provider_name: Name of the system (e.g., "vectara-default")
+        provider_name: Name of the provider (e.g., "vectara-default")
         domains_dir: Root directory containing all domains
 
     Returns:
@@ -114,26 +114,26 @@ def load_provider(
         ConfigError: If provider file not found, invalid, or missing required fields
 
     Example:
-        >>> system = load_provider("tafsir", "vectara-default")
-        >>> print(system.tool)
+        >>> provider = load_provider("tafsir", "vectara-default")
+        >>> print(provider.tool)
         'vectara'
-        >>> print(system.config['top_k'])
+        >>> print(provider.config['top_k'])
         5
     """
-    system_path = domains_dir / domain_name / "providers" / f"{provider_name}.yaml"
+    provider_path = domains_dir / domain_name / "providers" / f"{provider_name}.yaml"
 
-    if not system_path.exists():
+    if not provider_path.exists():
         raise ConfigError(
-            f"System '{provider_name}' not found at {system_path}. "
-            f"Create the system configuration file."
+            f"Provider '{provider_name}' not found at {provider_path}. "
+            f"Create the provider configuration file."
         )
 
-    logger.debug(f"Loading system from {system_path}")
+    logger.debug(f"Loading provider from {provider_path}")
 
     try:
-        raw_data = load_yaml(system_path)
+        raw_data = load_yaml(provider_path)
 
-        # Add system name if not present
+        # Add provider name if not present
         if "name" not in raw_data:
             raw_data["name"] = provider_name
 
@@ -147,7 +147,9 @@ def load_provider(
         return ProviderConfig(**resolved_data)
 
     except ValidationError as e:
-        raise ConfigError(f"Invalid system configuration in {system_path}: {e}") from e
+        raise ConfigError(
+            f"Invalid provider configuration in {provider_path}: {e}"
+        ) from e
 
 
 def load_provider_for_snapshot(
@@ -174,17 +176,17 @@ def load_provider_for_snapshot(
         >>> print(provider.config['api_key'])
         '${VECTARA_API_KEY}'  # Placeholder preserved!
     """
-    system_path = domains_dir / domain_name / "providers" / f"{provider_name}.yaml"
+    provider_path = domains_dir / domain_name / "providers" / f"{provider_name}.yaml"
 
-    if not system_path.exists():
-        raise ConfigError(f"System '{provider_name}' not found at {system_path}")
+    if not provider_path.exists():
+        raise ConfigError(f"Provider '{provider_name}' not found at {provider_path}")
 
-    logger.debug(f"Loading system (snapshot mode) from {system_path}")
+    logger.debug(f"Loading provider (snapshot mode) from {provider_path}")
 
     try:
-        raw_data = load_yaml(system_path)
+        raw_data = load_yaml(provider_path)
 
-        # Add system name if not present
+        # Add provider name if not present
         if "name" not in raw_data:
             raw_data["name"] = provider_name
 
@@ -195,7 +197,9 @@ def load_provider_for_snapshot(
         return ProviderConfig(**unresolved_data)
 
     except ValidationError as e:
-        raise ConfigError(f"Invalid system configuration in {system_path}: {e}") from e
+        raise ConfigError(
+            f"Invalid provider configuration in {provider_path}: {e}"
+        ) from e
 
 
 def load_query_set(

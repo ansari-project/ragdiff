@@ -10,7 +10,7 @@ Tests cover:
 import pytest
 
 from ragdiff.core.errors import ConfigError, RunError
-from ragdiff.core.models_v2 import ProviderConfig, RetrievedChunk
+from ragdiff.core.models import ProviderConfig, RetrievedChunk
 from ragdiff.providers import (
     Provider,
     create_provider,
@@ -199,14 +199,14 @@ class TestToolFactory:
         assert system.config == {"api_key": "test123"}
 
     def test_create_provider_tool_not_found(self, clean_registry):
-        """Test creating system with unknown tool."""
+        """Test creating provider with unknown tool."""
         config = ProviderConfig(name="test-system", tool="missing", config={})
 
-        with pytest.raises(ConfigError, match="Failed to create system"):
+        with pytest.raises(ConfigError, match="Failed to create provider"):
             create_provider(config)
 
     def test_create_provider_initialization_error(self, clean_registry):
-        """Test handling system initialization errors."""
+        """Test handling provider initialization errors."""
 
         class BadSystem(Provider):
             def __init__(self, config: dict):
@@ -219,7 +219,7 @@ class TestToolFactory:
 
         config = ProviderConfig(name="bad-system", tool="bad", config={})
 
-        with pytest.raises(RunError, match="Failed to initialize system"):
+        with pytest.raises(RunError, match="Failed to initialize provider"):
             create_provider(config)
 
 

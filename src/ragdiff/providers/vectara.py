@@ -18,11 +18,11 @@ Example:
     >>> chunks = provider.search("What is Islamic law?", top_k=5)
 """
 
-import requests
+from typing import Any, Optional
 
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
-from ..core.models_v2 import RetrievedChunk
+from ..core.models import RetrievedChunk
 from .abc import Provider
 
 logger = get_logger(__name__)
@@ -62,6 +62,9 @@ class VectaraProvider(Provider):
         self.base_url = config.get("base_url", "https://api.vectara.io")
         self.timeout = config.get("timeout", 60)
 
+        # Lazy load requests
+        self.requests: Optional[Any] = None
+
         logger.debug(f"Initialized VectaraProvider with corpus_id={self.corpus_id}")
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
@@ -77,6 +80,18 @@ class VectaraProvider(Provider):
         Raises:
             RunError: If API request fails
         """
+        # Lazy load requests on first use
+        if self.requests is None:
+            try:
+                import requests
+
+                self.requests = requests
+            except ImportError as e:
+                raise RunError(
+                    f"requests library is required for Vectara provider. "
+                    f"Install with: pip install requests. Error: {e}"
+                ) from e
+
         try:
             # Prepare Vectara v2 API request
             headers = {
@@ -93,7 +108,7 @@ class VectaraProvider(Provider):
             logger.debug(f"Vectara API request: query='{query[:50]}...', top_k={top_k}")
 
             # Make API request
-            response = requests.post(
+            response = self.requests.post(
                 f"{self.base_url}/v2/query",
                 headers=headers,
                 json=request_body,
@@ -130,11 +145,11 @@ class VectaraProvider(Provider):
             )
             return chunks
 
-        except requests.exceptions.Timeout as e:
+        except self.requests.exceptions.Timeout as e:
             logger.error(f"Vectara API timeout: {e}")
             raise RunError(f"Vectara API timeout after {self.timeout}s: {e}") from e
 
-        except requests.exceptions.HTTPError as e:
+        except self.requests.exceptions.HTTPError as e:
             logger.error(f"Vectara API HTTP error: {e}")
             if e.response.status_code == 401:
                 raise RunError(
@@ -147,7 +162,7 @@ class VectaraProvider(Provider):
                     f"Vectara API error ({e.response.status_code}): {e}"
                 ) from e
 
-        except requests.exceptions.RequestException as e:
+        except self.requests.exceptions.RequestException as e:
             logger.error(f"Vectara API request failed: {e}")
             raise RunError(f"Vectara API request failed: {e}") from e
 

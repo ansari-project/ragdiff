@@ -30,7 +30,7 @@ from uuid import uuid4
 from ..core.errors import RunError
 from ..core.loaders import load_domain, load_provider_for_snapshot, load_query_set
 from ..core.logging import get_logger
-from ..core.models_v2 import QueryResult, Run, RunStatus
+from ..core.models import QueryResult, Run, RunStatus
 from ..core.storage import save_run
 from ..providers import create_provider
 

@@ -1,4 +1,4 @@
-"""AI-powered analysis for OpenAPI adapter generation.
+"""AI-powered analysis for OpenAPI provider generation.
 
 Uses LiteLLM to analyze OpenAPI specifications and API responses,
 automatically identifying search endpoints and generating JMESPath mappings.
@@ -6,7 +6,7 @@ automatically identifying search endpoints and generating JMESPath mappings.
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from litellm import completion
 
@@ -65,7 +65,11 @@ class AIAnalyzer:
             if ep.summary:
                 desc += f": {ep.summary}"
             if ep.description:
-                desc += f" ({ep.description[:100]}...)" if len(ep.description) > 100 else f" ({ep.description})"
+                desc += (
+                    f" ({ep.description[:100]}...)"
+                    if len(ep.description) > 100
+                    else f" ({ep.description})"
+                )
             endpoint_descriptions.append(desc)
 
         prompt = self._build_endpoint_identification_prompt(endpoint_descriptions)

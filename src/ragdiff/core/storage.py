@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from .errors import ComparisonError, RunError
 from .logging import get_logger
-from .models_v2 import Comparison, Run
+from .models import Comparison, Run
 from .paths import (
     ensure_comparisons_dir,
     ensure_runs_dir,

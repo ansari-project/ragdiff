@@ -15,7 +15,7 @@ Example:
 
 from abc import ABC, abstractmethod
 
-from ..core.models_v2 import RetrievedChunk
+from ..core.models import RetrievedChunk
 
 
 class Provider(ABC):

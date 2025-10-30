@@ -30,27 +30,10 @@ from typing import Any
 
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
-from ..core.models_v2 import RetrievedChunk
+from ..core.models import RetrievedChunk
 from .abc import Provider
 
 logger = get_logger(__name__)
-
-# Check for optional dependencies
-try:
-    import numpy as np
-    from pymongo import MongoClient
-    from pymongo.errors import PyMongoError
-
-    PYMONGO_AVAILABLE = True
-except ImportError:
-    PYMONGO_AVAILABLE = False
-
-try:
-    from sentence_transformers import SentenceTransformer
-
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 
 class MongoDBProvider(Provider):
@@ -83,16 +66,29 @@ class MongoDBProvider(Provider):
         """
         super().__init__(config)
 
-        # Check dependencies
-        if not PYMONGO_AVAILABLE:
+        # Lazy load dependencies
+        try:
+            import numpy as np
+            from pymongo import MongoClient
+            from pymongo.errors import PyMongoError
+
+            self.np = np
+            self.MongoClient = MongoClient
+            self.PyMongoError = PyMongoError
+        except ImportError as e:
             raise ConfigError(
-                "pymongo is required for MongoDB system. Install with: pip install pymongo"
-            )
-        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+                f"pymongo is required for MongoDB provider. Install with: pip install pymongo. Error: {e}"
+            ) from e
+
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            self.SentenceTransformer = SentenceTransformer
+        except ImportError as e:
             raise ConfigError(
-                "sentence-transformers is required for MongoDB system. "
-                "Install with: pip install sentence-transformers"
-            )
+                f"sentence-transformers is required for MongoDB provider. "
+                f"Install with: pip install sentence-transformers. Error: {e}"
+            ) from e
 
         # Validate required fields
         if "connection_uri" not in config:
@@ -118,7 +114,7 @@ class MongoDBProvider(Provider):
         # Initialize embedding model
         logger.info(f"Loading embedding model: {self.embedding_model_name}")
         try:
-            self.embedding_model = SentenceTransformer(self.embedding_model_name)
+            self.embedding_model = self.SentenceTransformer(self.embedding_model_name)
             logger.info("Embedding model loaded successfully")
         except Exception as e:
             raise ConfigError(
@@ -127,7 +123,7 @@ class MongoDBProvider(Provider):
 
         # Initialize MongoDB client
         try:
-            self.mongo_client = MongoClient(
+            self.mongo_client = self.MongoClient(
                 config["connection_uri"], serverSelectionTimeoutMS=self.timeout * 1000
             )
             self.database = self.mongo_client[self.database_name]
@@ -178,14 +174,17 @@ class MongoDBProvider(Provider):
             # Compute cosine similarity for each document
             results_with_scores = []
             for doc in all_docs:
-                doc_vector = np.array(doc.get(self.vector_field, []))
+                doc_vector = self.np.array(doc.get(self.vector_field, []))
                 if len(doc_vector) == 0:
                     continue
 
                 # Cosine similarity
                 similarity = float(
-                    np.dot(query_vector, doc_vector)
-                    / (np.linalg.norm(query_vector) * np.linalg.norm(doc_vector))
+                    self.np.dot(query_vector, doc_vector)
+                    / (
+                        self.np.linalg.norm(query_vector)
+                        * self.np.linalg.norm(doc_vector)
+                    )
                 )
 
                 results_with_scores.append((doc, similarity))
@@ -223,7 +222,7 @@ class MongoDBProvider(Provider):
             )
             return chunks
 
-        except PyMongoError as e:
+        except self.PyMongoError as e:
             logger.error(f"MongoDB query failed: {e}")
             raise RunError(f"MongoDB query failed: {e}") from e
 

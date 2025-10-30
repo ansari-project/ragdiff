@@ -1,7 +1,7 @@
 """OpenAPI specification parsing and analysis.
 
 This package provides tools for fetching, parsing, and analyzing OpenAPI
-specifications to automatically generate adapter configurations.
+specifications to automatically generate provider configurations.
 """
 
 from .ai_analyzer import AIAnalyzer
