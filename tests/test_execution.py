@@ -422,7 +422,8 @@ class TestFileStorage:
 
         # Check that run file exists
         date_str = run.started_at.strftime("%Y-%m-%d")
-        run_path = domains_dir / domain_name / "runs" / date_str / f"{run.id}.json"
+        filename = f"{run.label}.json" if run.label else f"{run.id}.json"
+        run_path = domains_dir / domain_name / "runs" / date_str / filename
         assert run_path.exists()
 
         # Check that file contains valid JSON

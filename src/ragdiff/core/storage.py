@@ -16,8 +16,6 @@ from .paths import (
     ensure_comparisons_dir,
     ensure_runs_dir,
     find_run_by_prefix,
-    get_comparison_path,
-    get_run_path,
 )
 
 logger = get_logger(__name__)
@@ -40,14 +38,21 @@ def save_run(run: Run, domains_dir: Path = Path("domains")) -> Path:
         >>> run = Run(...)
         >>> path = save_run(run)
         >>> print(path)
-        domains/tafsir/runs/2025-10-25/550e8400-....json
+        domains/tafsir/runs/2025-10-25/vectara-default-20251026-001.json
     """
     try:
+        from .paths import get_domain_dir
+
         # Ensure directory exists
         ensure_runs_dir(run.domain, run.started_at, domains_dir)
 
-        # Get file path
-        run_path = get_run_path(run.domain, run.id, run.started_at, domains_dir)
+        # Get directory path
+        date_str = run.started_at.strftime("%Y-%m-%d")
+        runs_dir = get_domain_dir(run.domain, domains_dir) / "runs" / date_str
+
+        # Use label as filename if available, otherwise fallback to UUID
+        filename = f"{run.label}.json" if run.label else f"{run.id}.json"
+        run_path = runs_dir / filename
 
         # Serialize to JSON
         run_json = run.model_dump_json(indent=2, exclude_none=False)
@@ -129,14 +134,29 @@ def _find_run_by_full_uuid(domain_name: str, run_id: UUID, domains_dir: Path) ->
     if not runs_base_dir.exists():
         raise RunError(f"No runs found for domain '{domain_name}'")
 
+    target_id_str = str(run_id)
+
     # Search all date directories
     for date_dir in sorted(runs_base_dir.iterdir(), reverse=True):
         if not date_dir.is_dir():
             continue
 
-        run_path = date_dir / f"{run_id}.json"
-        if run_path.exists():
-            return run_path
+        # Optimization: check if file exists with UUID name (legacy support)
+        legacy_path = date_dir / f"{run_id}.json"
+        if legacy_path.exists():
+            return legacy_path
+
+        # Iterate through all JSON files to find matching ID
+        for run_file in date_dir.glob("*.json"):
+            try:
+                with open(run_file, encoding="utf-8") as f:
+                    # Quick check - read first few bytes or load full json
+                    # Loading full json is safer
+                    data = json.load(f)
+                    if data.get("id") == target_id_str:
+                        return run_file
+            except Exception:
+                continue
 
     raise RunError(f"Run {run_id} not found in domain '{domain_name}'")
 
@@ -160,16 +180,25 @@ def save_comparison(
         >>> comparison = Comparison(...)
         >>> path = save_comparison(comparison)
         >>> print(path)
-        domains/tafsir/comparisons/2025-10-25/660e8400-....json
+        domains/tafsir/comparisons/2025-10-25/comparison-20251026-001.json
     """
     try:
+        from .paths import get_domain_dir
+
         # Ensure directory exists
         ensure_comparisons_dir(comparison.domain, comparison.created_at, domains_dir)
 
-        # Get file path
-        comparison_path = get_comparison_path(
-            comparison.domain, comparison.id, comparison.created_at, domains_dir
+        # Get directory path
+        date_str = comparison.created_at.strftime("%Y-%m-%d")
+        comparisons_dir = (
+            get_domain_dir(comparison.domain, domains_dir) / "comparisons" / date_str
         )
+
+        # Use label as filename if available, otherwise fallback to UUID
+        filename = (
+            f"{comparison.label}.json" if comparison.label else f"{comparison.id}.json"
+        )
+        comparison_path = comparisons_dir / filename
 
         # Serialize to JSON
         comparison_json = comparison.model_dump_json(indent=2, exclude_none=False)
@@ -283,14 +312,29 @@ def _find_comparison_by_full_uuid(
     if not comparisons_base_dir.exists():
         raise ComparisonError(f"No comparisons found for domain '{domain_name}'")
 
+    target_id_str = str(comparison_id)
+
     # Search all date directories
     for date_dir in sorted(comparisons_base_dir.iterdir(), reverse=True):
         if not date_dir.is_dir():
             continue
 
-        comparison_path = date_dir / f"{comparison_id}.json"
-        if comparison_path.exists():
-            return comparison_path
+        # Optimization: check for legacy UUID filename
+        legacy_path = date_dir / f"{comparison_id}.json"
+        if legacy_path.exists():
+            return legacy_path
+
+        # Iterate through all JSON files to find matching ID
+        for comparison_file in date_dir.glob("*.json"):
+            try:
+                with open(comparison_file, encoding="utf-8") as f:
+                    # Quick check - read first few bytes or load full json
+                    # Loading full json is safer
+                    data = json.load(f)
+                    if data.get("id") == target_id_str:
+                        return comparison_file
+            except Exception:
+                continue
 
     raise ComparisonError(
         f"Comparison {comparison_id} not found in domain '{domain_name}'"

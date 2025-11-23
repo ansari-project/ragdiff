@@ -340,10 +340,13 @@ def _evaluate_queries_sequential(
         # Gather results from all runs for this query
         run_results = {}
         for run in runs:
+            # Use label or ID as key to ensure uniqueness
+            key = run.label or str(run.id)
+
             # Find matching result for this query
             matching_results = [r for r in run.results if r.query == query.text]
             if matching_results:
-                run_results[run.provider] = matching_results[0].retrieved
+                run_results[key] = matching_results[0].retrieved
 
         # Evaluate this query
         evaluation_result = _evaluate_single_query(
@@ -406,10 +409,13 @@ def _evaluate_queries_parallel(
             # Gather results from all runs for this query
             run_results = {}
             for run in runs:
+                # Use label or ID as key to ensure uniqueness
+                key = run.label or str(run.id)
+
                 # Find matching result for this query
                 matching_results = [r for r in run.results if r.query == query.text]
                 if matching_results:
-                    run_results[run.provider] = matching_results[0].retrieved
+                    run_results[key] = matching_results[0].retrieved
 
             future = executor.submit(
                 _evaluate_single_query,
@@ -604,7 +610,17 @@ def _call_llm_with_retry(
                 import json
                 import re
 
-                raw_json = json.loads(content)
+                # Clean up markdown code blocks if present
+                clean_content = content.strip()
+                if clean_content.startswith("```json"):
+                    clean_content = clean_content[7:]
+                elif clean_content.startswith("```"):
+                    clean_content = clean_content[3:]
+                if clean_content.endswith("```"):
+                    clean_content = clean_content[:-3]
+                clean_content = clean_content.strip()
+
+                raw_json = json.loads(clean_content)
 
                 # Normalize provider-specific keys to generic a/b keys
                 evaluation = {}

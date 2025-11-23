@@ -14,8 +14,9 @@ Example:
 """
 
 from abc import ABC, abstractmethod
+from typing import Union
 
-from ..core.models import RetrievedChunk
+from ..core.models import RetrievedChunk, SearchResult
 
 
 class Provider(ABC):
@@ -65,7 +66,9 @@ class Provider(ABC):
         self.config = config
 
     @abstractmethod
-    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+    def search(
+        self, query: str, top_k: int = 5
+    ) -> Union[list[RetrievedChunk], SearchResult]:
         """Execute search and return ranked chunks with metadata.
 
         Args:
@@ -73,11 +76,16 @@ class Provider(ABC):
             top_k: Maximum number of results to return (default: 5)
 
         Returns:
-            List of RetrievedChunk objects, ordered by relevance (highest first).
-            Each chunk contains:
+            Either a list of RetrievedChunk objects OR a SearchResult object.
+
+            RetrievedChunk contains:
             - content: The actual text content
             - score: Relevance score (if available, otherwise None)
             - metadata: Tool-specific metadata (doc_id, chunk_id, source, etc.)
+
+            SearchResult wraps chunks and adds:
+            - cost: Execution cost (if available)
+            - metadata: Additional execution metadata
 
         Raises:
             RunError: If search fails (API error, timeout, network issue, etc.)

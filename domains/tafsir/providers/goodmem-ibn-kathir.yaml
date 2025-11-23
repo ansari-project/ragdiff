@@ -1,0 +1,8 @@
+name: goodmem-ibn-kathir
+tool: goodmem
+config:
+  api_key: ${GOODMEM_API_KEY}
+  space_ids:
+    - d2352bfe-e6d3-43c8-8b8e-2ea280068743
+  reranker_id: 78b792f9-6d6f-4d18-b657-75fbfba1a9e1
+  top_k: 5

@@ -211,8 +211,8 @@ class TestCompareRuns:
         for eval in comparison.evaluations:
             assert eval.query in ["Query 1", "Query 2"]
             assert eval.reference in ["Answer 1", "Answer 2"]
-            assert "system-a" in eval.run_results
-            assert "system-b" in eval.run_results
+            assert str(run1_id) in eval.run_results
+            assert str(run2_id) in eval.run_results
             assert isinstance(eval.evaluation, dict)
 
         # Check metadata
@@ -315,12 +315,11 @@ class TestFileStorage:
 
         # Check that comparison file exists
         date_str = comparison.created_at.strftime("%Y-%m-%d")
+        filename = (
+            f"{comparison.label}.json" if comparison.label else f"{comparison.id}.json"
+        )
         comparison_path = (
-            domains_dir
-            / domain_name
-            / "comparisons"
-            / date_str
-            / f"{comparison.id}.json"
+            domains_dir / domain_name / "comparisons" / date_str / filename
         )
         assert comparison_path.exists()
 

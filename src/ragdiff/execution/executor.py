@@ -30,7 +30,15 @@ from uuid import uuid4
 from ..core.errors import RunError
 from ..core.loaders import load_domain, load_provider_for_snapshot, load_query_set
 from ..core.logging import get_logger
-from ..core.models import Domain, ProviderConfig, QueryResult, QuerySet, Run, RunStatus
+from ..core.models import (
+    Domain,
+    ProviderConfig,
+    QueryResult,
+    QuerySet,
+    Run,
+    RunStatus,
+    SearchResult,
+)
 from ..core.storage import save_run
 from ..providers import create_provider
 
@@ -174,6 +182,15 @@ def execute_run(
         raise RunError(f"Failed to initialize run: {e}") from e
 
     # Initialize run with pending status
+    # specific model name extraction
+    model_name = None
+    if provider_config_resolved and provider_config_resolved.config:
+        # Try common keys for model name
+        for key in ["model", "model_name", "embedding_model", "llm_model"]:
+            if key in provider_config_resolved.config:
+                model_name = provider_config_resolved.config[key]
+                break
+
     run = Run(
         id=run_id,
         label=label,
@@ -182,6 +199,7 @@ def execute_run(
         query_set=query_set_name,
         status=RunStatus.PENDING,
         results=[],
+        model_name=model_name,
         provider_config=provider_config_snapshot,  # Snapshot with ${VAR_NAME}
         query_set_snapshot=query_set_obj,
         started_at=started_at,
@@ -223,12 +241,17 @@ def execute_run(
     )
 
     # Calculate metadata
+    total_cost = sum((r.cost or 0.0) for r in results)
+    avg_latency = sum(r.duration_ms for r in results) / len(results) if results else 0.0
+
     run.metadata.update(
         {
             "total_queries": len(results),
             "successes": successes,
             "failures": failures,
             "duration_seconds": (run.completed_at - run.started_at).total_seconds(),
+            "total_cost": total_cost,
+            "avg_latency_ms": avg_latency,
         }
     )
 
@@ -330,15 +353,30 @@ def _execute_single_query(
         # Execute search with timeout
         # Note: ThreadPoolExecutor doesn't have built-in timeout for individual tasks,
         # so we rely on the system's internal timeout or HTTP client timeout
-        retrieved = provider_instance.search(query_text, top_k=5)
+        result = provider_instance.search(query_text, top_k=5)
 
         duration_ms = (time.time() - start_time) * 1000
+
+        # Handle both list (legacy) and SearchResult (new) return types
+        if isinstance(result, SearchResult):
+            retrieved = result.chunks
+            cost = result.cost
+            total_tokens_returned = result.total_tokens_returned
+        else:
+            # Legacy behavior: provider returns list of RetrievedChunk
+            retrieved = result
+            cost = None
+            total_tokens_returned = sum(
+                c.token_count for c in retrieved if c.token_count is not None
+            )
 
         return QueryResult(
             query=query_text,
             retrieved=retrieved,
             reference=reference,
             duration_ms=duration_ms,
+            cost=cost,
+            total_tokens_returned=total_tokens_returned,
             error=None,
         )
 

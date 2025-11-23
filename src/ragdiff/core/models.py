@@ -31,9 +31,22 @@ class RetrievedChunk(BaseModel):
 
     content: str
     score: float | None = None
+    token_count: int | None = None
     metadata: dict[str, Any] = Field(
         default_factory=dict
     )  # source_id, doc_id, chunk_id, etc.
+
+
+class SearchResult(BaseModel):
+    """Result of a search operation from a provider.
+
+    Wraps chunks with additional execution metadata like cost.
+    """
+
+    chunks: list[RetrievedChunk]
+    cost: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    total_tokens_returned: int | None = None
 
 
 class Query(BaseModel):
@@ -151,6 +164,8 @@ class QueryResult(BaseModel):
     retrieved: list[RetrievedChunk]
     reference: str | None = None
     duration_ms: float
+    cost: float | None = None
+    total_tokens_returned: int | None = None
     error: str | None = None
 
 
@@ -163,6 +178,7 @@ class Run(BaseModel):
     )
     domain: str
     provider: str  # system name
+    model_name: str | None = None
     query_set: str  # query set name
     status: RunStatus
     results: list[QueryResult]

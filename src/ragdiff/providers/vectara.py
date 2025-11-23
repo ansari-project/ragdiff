@@ -22,7 +22,8 @@ from typing import Any, Optional
 
 from ..core.errors import ConfigError, RunError
 from ..core.logging import get_logger
-from ..core.models import RetrievedChunk
+from ..core.models import RetrievedChunk, SearchResult
+from ..core.pricing import count_tokens  # Import count_tokens
 from .abc import Provider
 
 logger = get_logger(__name__)
@@ -67,7 +68,7 @@ class VectaraProvider(Provider):
 
         logger.debug(f"Initialized VectaraProvider with corpus_id={self.corpus_id}")
 
-    def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
+    def search(self, query: str, top_k: int = 5) -> SearchResult:
         """Search Vectara corpus for relevant documents.
 
         Args:
@@ -75,7 +76,7 @@ class VectaraProvider(Provider):
             top_k: Maximum number of results to return
 
         Returns:
-            List of RetrievedChunk objects with content, score, and metadata
+            SearchResult object with chunks, cost (None for Vectara), and metadata (total_tokens_returned)
 
         Raises:
             RunError: If API request fails
@@ -120,10 +121,17 @@ class VectaraProvider(Provider):
 
             # Parse response into RetrievedChunk objects
             chunks = []
+            total_tokens_returned = 0
             for doc in data.get("search_results", [])[:top_k]:
                 # Extract text and score
                 text = doc.get("text", "")
                 score = doc.get("score", 0.0)
+
+                # Calculate token count for the chunk
+                chunk_token_count = count_tokens(
+                    "gpt-4o-mini", text
+                )  # Using gpt-4o-mini as a proxy tokenizer
+                total_tokens_returned += chunk_token_count
 
                 # Combine part and document metadata
                 metadata = {}
@@ -137,13 +145,23 @@ class VectaraProvider(Provider):
                     metadata["document_id"] = doc["document_id"]
 
                 # Create chunk
-                chunk = RetrievedChunk(content=text, score=score, metadata=metadata)
+                chunk = RetrievedChunk(
+                    content=text,
+                    score=score,
+                    token_count=chunk_token_count,
+                    metadata=metadata,
+                )
                 chunks.append(chunk)
 
             logger.info(
                 f"Vectara returned {len(chunks)} chunks for query: '{query[:50]}...'"
             )
-            return chunks
+            return SearchResult(
+                chunks=chunks,
+                total_tokens_returned=total_tokens_returned,
+                cost=None,
+                metadata={},
+            )
 
         except self.requests.exceptions.Timeout as e:
             logger.error(f"Vectara API timeout: {e}")

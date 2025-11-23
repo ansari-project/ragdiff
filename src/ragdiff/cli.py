@@ -29,7 +29,7 @@ from .comparison import compare_runs
 from .comparison.reference_evaluator import evaluate_run_threaded
 from .core.errors import ComparisonError, RunError
 from .core.logging import setup_logging
-from .core.storage import load_run
+from .core.storage import load_comparison, load_run
 from .execution import execute_run
 
 # Load environment variables from .env file
@@ -170,10 +170,21 @@ def run(
             "Successes", f"[green]{result.metadata.get('successes', 0)}[/green]"
         )
         table.add_row("Failures", f"[red]{result.metadata.get('failures', 0)}[/red]")
-        table.add_row(
-            "Duration",
-            f"{result.metadata.get('duration_seconds', 0):.2f}s",
-        )
+
+        duration = result.metadata.get("duration_seconds", 0)
+        table.add_row("Duration", f"{duration:.2f}s")
+
+        avg_latency = result.metadata.get("avg_latency_ms", 0)
+        if avg_latency > 0:
+            table.add_row("Avg Latency", f"{avg_latency:.1f}ms")
+
+        total_cost = result.metadata.get("total_cost", 0)
+        if total_cost > 0:
+            table.add_row("Total Cost", f"${total_cost:.4f}")
+
+        avg_tokens_returned = result.metadata.get("avg_tokens_returned", 0)
+        if avg_tokens_returned > 0:
+            table.add_row("Avg Tokens Returned", f"{avg_tokens_returned:.0f}")
 
         console.print(table)
         console.print()
@@ -193,6 +204,54 @@ def run(
 # ============================================================================
 # Compare Command
 # ============================================================================
+
+
+@app.command()
+def show(
+    comparison_id: str = typer.Argument(..., help="Comparison ID or label"),
+    domain: str = typer.Option(..., "--domain", "-d", help="Domain name"),
+    domains_dir: Path = typer.Option(
+        Path("domains"), "--domains-dir", help="Root directory for domains"
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format: table, json, markdown"
+    ),
+):
+    """Show details of a previous comparison."""
+    from .display.formatting import calculate_provider_stats_from_runs
+
+    try:
+        # Load comparison
+        comparison = load_comparison(domain, comparison_id, domains_dir)
+
+        # Load runs to get stats (latency, cost)
+        runs = {}
+        for run_id in comparison.runs:
+            try:
+                run = load_run(domain, str(run_id), domains_dir)
+                runs[run.provider] = run
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning: Could not load run {run_id}: {e}[/yellow]"
+                )
+
+        # Calculate stats
+        provider_stats = calculate_provider_stats_from_runs(runs, comparison)
+
+        # Output results
+        if format == "json":
+            _output_json(comparison, output)
+        elif format == "markdown":
+            _output_markdown(comparison, output, provider_stats)
+        else:  # table
+            _output_table(comparison, output, provider_stats)
+
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
 
 
 @app.command()
@@ -237,7 +296,7 @@ def compare(
         help="Limit evaluation to first N queries (default: evaluate all)",
     ),
 ):
-    """Compare runs using LLM evaluation (auto-detects reference-based vs head-to-head).
+    """Compare runs using LLM evaluation (auto-detects reference-based vs head-to-head.
 
     This command automatically detects the evaluation mode:
     - If runs have reference answers → Reference-based evaluation (correctness scoring)
@@ -356,6 +415,8 @@ def _compare_head_to_head(
     quiet: bool,
 ):
     """Perform head-to-head comparison (no references)."""
+    from .display.formatting import calculate_provider_stats_from_runs
+
     try:
         # Show progress bar unless quiet mode
         if not quiet:
@@ -410,13 +471,27 @@ def _compare_head_to_head(
                 domains_dir=domains_path,
             )
 
+        # Calculate statistics
+        # Load runs to get stats (latency, cost)
+        runs = {}
+        for run_id in result.runs:
+            try:
+                run = load_run(domain, str(run_id), domains_path)
+                runs[run.provider] = run
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning: Could not load run {run_id}: {e}[/yellow]"
+                )
+
+        provider_stats = calculate_provider_stats_from_runs(runs, result)
+
         # Display or export results based on format
         if format == "json":
             _output_json(result, output)
         elif format == "markdown":
-            _output_markdown(result, output)
+            _output_markdown(result, output, provider_stats)
         else:  # table
-            _output_table(result, output)
+            _output_table(result, output, provider_stats)
 
         # Show completion message
         if not output:
@@ -674,7 +749,7 @@ def init(
 
         # Create domain.yaml
         if template == "minimal":
-            domain_yaml = dedent(f"""\
+            domain_yaml = dedent(f"""
                 name: {domain}
                 description: RAG comparison domain for {domain.replace('-', ' ').replace('_', ' ')}
                 evaluator:
@@ -692,7 +767,7 @@ def init(
                     Which provider gave a better response and why?
                 """)
         else:  # default or complete
-            domain_yaml = dedent(f"""\
+            domain_yaml = dedent(f"""
                 name: {domain}
                 description: RAG comparison domain for {domain.replace('-', ' ').replace('_', ' ')}
                 evaluator:
@@ -735,7 +810,7 @@ def init(
         # Create example provider configurations
         if template != "minimal":
             # Vectara example
-            vectara_yaml = dedent("""\
+            vectara_yaml = dedent("""
                 name: vectara-default
                 description: Vectara semantic search with default settings
                 tool: vectara
@@ -750,7 +825,7 @@ def init(
                 f.write(vectara_yaml)
 
             # MongoDB example
-            mongodb_yaml = dedent("""\
+            mongodb_yaml = dedent("""
                 name: mongodb-atlas
                 description: MongoDB Atlas vector search
                 tool: mongodb
@@ -768,7 +843,7 @@ def init(
                 f.write(mongodb_yaml)
 
             # OpenAPI provider example
-            openapi_yaml = dedent("""\
+            openapi_yaml = dedent("""
                 name: custom-api
                 description: Custom RAG API via OpenAPI provider
                 tool: openapi
@@ -790,7 +865,7 @@ def init(
             console.print("  ✓ Created example provider configurations")
 
         # Create sample query sets
-        basic_queries = dedent("""\
+        basic_queries = dedent("""
             What is the capital of France?
             Explain quantum computing in simple terms
             How does photosynthesis work?
@@ -804,7 +879,7 @@ def init(
 
         if template == "complete":
             # Add JSONL query set example
-            jsonl_queries = dedent("""\
+            jsonl_queries = dedent("""
                 {"query": "What is DNA?", "category": "biology", "difficulty": "basic"}
                 {"query": "Explain CRISPR gene editing", "category": "biology", "difficulty": "advanced"}
                 {"query": "How do vaccines work?", "category": "medicine", "difficulty": "intermediate"}
@@ -819,7 +894,7 @@ def init(
         # Create .env.example if it doesn't exist
         env_example = Path(".env.example")
         if not env_example.exists():
-            env_content = dedent("""\
+            env_content = dedent("""
                 # RAGDiff Environment Variables
 
                 # Vectara Configuration
@@ -907,11 +982,11 @@ def generate_provider(
     5. Creating a complete YAML configuration file
 
     Example:
-        ragdiff generate-provider \\
-            --openapi-url https://api.example.com/openapi.json \\
-            --api-key $MY_API_KEY \\
-            --test-query "test search" \\
-            --provider-name my-api \\
+        ragdiff generate-provider \
+            --openapi-url https://api.example.com/openapi.json \
+            --api-key $MY_API_KEY \
+            --test-query "test search" \
+            --provider-name my-api \
             --output configs/my-api.yaml
 
     Requirements:
@@ -957,15 +1032,7 @@ def generate_provider(
         )
 
         # Format as YAML with comments
-        yaml_content = f"""# Generated by: ragdiff generate-provider
-# OpenAPI Spec: {openapi_url}
-# Generated: {__import__('datetime').datetime.now().isoformat()}
-#
-# Usage:
-#   export {config[provider_name]['api_key_env']}=your_api_key_here
-#   ragdiff query "your query" --tool {provider_name} --config path/to/this/file.yaml
-
-"""
+        yaml_content = f"# Generated by: ragdiff generate-provider\n# OpenAPI Spec: {openapi_url}\n# Generated: {__import__('datetime').datetime.now().isoformat()}\n#\n# Usage:\n#   export {config[provider_name]['api_key_env']}=your_api_key_here\n#   ragdiff query \"your query\" --tool {provider_name} --config path/to/this/file.yaml\n\n"
         yaml_content += yaml.dump(config, default_flow_style=False, sort_keys=False)
 
         # Output configuration
@@ -1005,7 +1072,7 @@ def generate_provider(
 # ============================================================================
 
 
-def _output_table(comparison, output_path):
+def _output_table(comparison, output_path, provider_stats=None):
     """Output comparison results as a table."""
     if output_path:
         console.print(
@@ -1042,12 +1109,71 @@ def _output_table(comparison, output_path):
     console.print(table)
     console.print()
 
+    # Provider Statistics
+    if provider_stats:
+        stats_table = Table(title="Provider Statistics", show_header=True)
+        stats_table.add_column("Provider", style="cyan")
+        stats_table.add_column("Model", style="white")
+        stats_table.add_column("Wins", style="green", justify="right")
+        stats_table.add_column("Losses", style="red", justify="right")
+        stats_table.add_column("Ties", style="white", justify="right")
+        stats_table.add_column("Avg Score", style="yellow", justify="right")
+        stats_table.add_column("Avg Latency", style="magenta", justify="right")
+        stats_table.add_column("Avg Tokens Returned", style="cyan", justify="right")
+
+        for provider, stats in provider_stats.items():
+            avg_score = (
+                sum(stats.get("scores", [])) / len(stats.get("scores", []))
+                if stats.get("scores")
+                else 0.0
+            )
+            avg_latency = (
+                sum(stats.get("latencies", [])) / len(stats.get("latencies", []))
+                if stats.get("latencies")
+                else 0.0
+            )
+            costs = [c for c in stats.get("costs", []) if c is not None]
+            avg_cost = sum(costs) / len(costs) if costs else 0.0
+            cost_str = f"${avg_cost:.4f}" if costs else "N/A"
+
+            model_name = stats.get("model_name", "N/A")
+
+            tokens_returned = [
+                t for t in stats.get("tokens_returned", []) if t is not None
+            ]
+            avg_tokens_returned = (
+                sum(tokens_returned) / len(tokens_returned) if tokens_returned else 0
+            )
+            tokens_returned_str = (
+                f"{avg_tokens_returned:.0f}" if tokens_returned else "N/A"
+            )
+
+            stats_table.add_row(
+                provider,
+                model_name,
+                str(stats.get("wins", 0)),
+                str(stats.get("losses", 0)),
+                str(stats.get("ties", 0)),
+                f"{avg_score:.1f}",
+                f"{avg_latency:.1f}ms",
+                cost_str,
+                tokens_returned_str,
+            )
+        console.print(stats_table)
+        console.print()
+
     # Show sample evaluations
     console.print("[bold]Sample Evaluations:[/bold]")
     for i, eval_result in enumerate(comparison.evaluations[:5], 1):
         console.print(f"\n[cyan]{i}. Query:[/cyan] {eval_result.query[:80]}...")
         if "winner" in eval_result.evaluation:
             winner = eval_result.evaluation.get("winner", "unknown")
+            # Map back to provider name if possible
+            if winner == "a" and provider_stats and len(provider_stats) >= 1:
+                winner = list(provider_stats.keys())[0]
+            elif winner == "b" and provider_stats and len(provider_stats) >= 2:
+                winner = list(provider_stats.keys())[1]
+
             console.print(f"   [green]Winner:[/green] {winner}")
         if "reasoning" in eval_result.evaluation:
             reasoning = eval_result.evaluation.get("reasoning", "")[:150]
@@ -1056,7 +1182,7 @@ def _output_table(comparison, output_path):
             metadata = eval_result.evaluation["_metadata"]
             cost = metadata.get("cost", 0)
             tokens = metadata.get("total_tokens", 0)
-            console.print(f"   [dim]Cost: ${cost:.4f}, Tokens: {tokens}[/dim]")
+            console.print(f"   [dim]Eval Cost: ${cost:.4f}, Tokens: {tokens}[/dim]")
 
     if len(comparison.evaluations) > 5:
         console.print(f"\n[dim]... and {len(comparison.evaluations) - 5} more[/dim]")
@@ -1075,12 +1201,14 @@ def _output_json(comparison, output_path):
         console.print(json_str)
 
 
-def _output_markdown(comparison, output_path):
+def _output_markdown(comparison, output_path, provider_stats=None):
     """Output comparison results as Markdown."""
     from .display.formatting import format_comparison_markdown
 
     # Generate markdown using the shared utility (show all evaluations in CLI)
-    markdown = format_comparison_markdown(comparison, max_evaluations=None)
+    markdown = format_comparison_markdown(
+        comparison, provider_stats=provider_stats, max_evaluations=None
+    )
 
     if output_path:
         with open(output_path, "w") as f:

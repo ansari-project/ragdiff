@@ -1,4 +1,4 @@
-"""Formatting utilities for v2.0 comparison results."""
+"Formatting utilities for v2.0 comparison results."
 
 from pathlib import Path
 from typing import Optional
@@ -21,6 +21,7 @@ def format_comparison_markdown(
             - ties: Number of ties
             - scores: List of scores
             - latencies: List of latencies in ms
+            - costs: List of costs in USD (optional)
         max_evaluations: Maximum number of evaluations to include (default: 20, None for all)
 
     Returns:
@@ -31,7 +32,7 @@ def format_comparison_markdown(
         "",
         f"**Domain:** {comparison.domain}",
         f"**Comparison ID:** {str(comparison.id)[:8]}...",
-        f"**Model:** {comparison.evaluator_config.model}",
+        f"**Evaluator Model:** {comparison.evaluator_config.model}",
         f"**Temperature:** {comparison.evaluator_config.temperature}",
         "",
         "## Summary",
@@ -48,8 +49,8 @@ def format_comparison_markdown(
             [
                 "## Provider Statistics",
                 "",
-                "| Provider | Wins | Losses | Ties | Avg Score | Avg Latency |",
-                "|----------|------|--------|------|-----------|-------------|",
+                "| Provider | Model | Wins | Losses | Ties | Avg Score | Avg Latency | Avg Cost | Avg Tokens Returned |",
+                "|----------|-------|------|--------|------|-----------|-------------|----------|---------------------|",
             ]
         )
 
@@ -65,9 +66,26 @@ def format_comparison_markdown(
                 else 0
             )
 
+            # Handle cost (might be empty or None)
+            costs = [c for c in stats.get("costs", []) if c is not None]
+            avg_cost = sum(costs) / len(costs) if costs else 0.0
+            cost_str = f"${avg_cost:.4f}" if costs else "N/A"
+
+            model_name = stats.get("model_name", "N/A")
+
+            tokens_returned = [
+                t for t in stats.get("tokens_returned", []) if t is not None
+            ]
+            avg_tokens_returned = (
+                sum(tokens_returned) / len(tokens_returned) if tokens_returned else 0
+            )
+            tokens_returned_str = (
+                f"{avg_tokens_returned:.0f}" if tokens_returned else "N/A"
+            )
+
             lines.append(
-                f"| {provider} | {stats.get('wins', 0)} | {stats.get('losses', 0)} | "
-                f"{stats.get('ties', 0)} | {avg_score:.1f} | {avg_latency:.1f}ms |"
+                f"| {provider} | {model_name} | {stats.get('wins', 0)} | {stats.get('losses', 0)} | "
+                f"{stats.get('ties', 0)} | {avg_score:.1f} | {avg_latency:.1f}ms | {cost_str} | {tokens_returned_str} |"
             )
 
         lines.append("")
@@ -94,7 +112,15 @@ def format_comparison_markdown(
         evaluation = eval_result.evaluation
 
         if "winner" in evaluation:
-            lines.append(f"**Winner:** {evaluation.get('winner', 'unknown')}")
+            winner_key = evaluation.get("winner", "unknown")
+            # Map 'a', 'b' back to provider names if possible
+            winner_display = winner_key
+            if winner_key == "a" and len(provider_stats) >= 1:
+                winner_display = list(provider_stats.keys())[0]
+            elif winner_key == "b" and len(provider_stats) >= 2:
+                winner_display = list(provider_stats.keys())[1]
+
+            lines.append(f"**Winner:** {winner_display}")
             lines.append("")
 
         if "reasoning" in evaluation:
@@ -106,17 +132,25 @@ def format_comparison_markdown(
         score_keys = [k for k in evaluation.keys() if k.startswith("score_")]
         for key in sorted(score_keys):
             if evaluation[key] is not None:
-                # Extract provider name from key (e.g., "score_faiss-small" -> "faiss-small")
-                provider_name = key.replace("score_", "")
+                # Extract provider name from key
+                if key == "score_a" and len(provider_stats) >= 1:
+                    provider_name = list(provider_stats.keys())[0]
+                elif key == "score_b" and len(provider_stats) >= 2:
+                    provider_name = list(provider_stats.keys())[1]
+                else:
+                    provider_name = key.replace("score_", "")
+
                 lines.append(f"**Score {provider_name}:** {evaluation[key]}")
 
-        # Add metadata if present
+        lines.append("")
+
+        # Add evaluation metadata (cost/tokens for the JUDGE)
         if "_metadata" in evaluation:
             metadata = evaluation["_metadata"]
             if metadata.get("cost") or metadata.get("total_tokens"):
                 lines.append(
-                    f"**Cost:** ${metadata.get('cost', 0):.4f}, "
-                    f"**Tokens:** {metadata.get('total_tokens', 0)}"
+                    f"**Evaluation Cost:** ${metadata.get('cost', 0):.4f} "
+                    f"({metadata.get('total_tokens', 0)} tokens)"
                 )
 
         lines.append("")
@@ -164,13 +198,21 @@ def calculate_provider_stats(comparison: Comparison, providers: list[str]) -> di
         Dict mapping provider names to their statistics
     """
     stats = {
-        provider: {"wins": 0, "losses": 0, "ties": 0, "scores": [], "latencies": []}
+        provider: {
+            "wins": 0,
+            "losses": 0,
+            "ties": 0,
+            "scores": [],
+            "latencies": [],
+            "costs": [],
+            "tokens_returned": [],
+        }
         for provider in providers
     }
 
     for eval_result in comparison.evaluations:
         evaluation = eval_result.evaluation
-        winner = evaluation.get("winner", "unknown")
+        winner = evaluation.get("winner", "unknown").lower()
 
         # Handle different winner formats
         if winner == "tie":
@@ -203,14 +245,14 @@ def calculate_provider_stats(comparison: Comparison, providers: list[str]) -> di
             elif idx == 1 and "score_b" in evaluation:
                 score = evaluation["score_b"]
 
-            if score is not None and score > 0:
+            if score is not None:
                 stats[provider]["scores"].append(score)
 
     return stats
 
 
 def calculate_provider_stats_from_runs(runs: dict, comparison: Comparison) -> dict:
-    """Calculate provider statistics including latencies from runs.
+    """Calculate provider statistics including latencies and costs from runs.
 
     Args:
         runs: Dict mapping provider names to Run objects
@@ -222,10 +264,18 @@ def calculate_provider_stats_from_runs(runs: dict, comparison: Comparison) -> di
     providers = list(runs.keys())
     stats = calculate_provider_stats(comparison, providers)
 
-    # Add latencies from runs
+    # Add latencies, costs, and tokens from runs
     for provider, run in runs.items():
+        # Add model name if available
+        if hasattr(run, "model_name") and run.model_name:
+            stats[provider]["model_name"] = run.model_name
+
         for result in run.results:
             if result.duration_ms:
                 stats[provider]["latencies"].append(result.duration_ms)
+            if result.cost is not None:
+                stats[provider]["costs"].append(result.cost)
+            if result.total_tokens_returned is not None:
+                stats[provider]["tokens_returned"].append(result.total_tokens_returned)
 
     return stats
