@@ -15,7 +15,6 @@ Example:
     ...     "space_ids": ["efd91f05-87cf-4c4c-a04d-0a970f8d30a7"],
     ...     "base_url": "http://ansari.hosted.pairsys.ai:8080"
     ... })
-    ...
     >>> chunks = provider.search("What is tafsir?", top_k=5)
 """
 
@@ -394,7 +393,9 @@ class GoodmemProvider(Provider):
         )
 
     def _parse_cli_response(
-        self, data: dict[str, Any], space_id: str
+        self,
+        data: dict[str, Any],
+        space_id: str,
     ) -> list[RetrievedChunk]:
         """Parse CLI JSON response into RetrievedChunk objects.
 

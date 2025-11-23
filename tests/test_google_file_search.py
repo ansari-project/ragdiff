@@ -107,7 +107,7 @@ class TestGoogleFileSearchProvider:
         mock_client.models.generate_content.assert_called_once()
         call_args = mock_client.models.generate_content.call_args
         assert call_args.kwargs["model"] == "gemini-1.5-flash-lite"
-        assert call_args.kwargs["contents"] == "test query"
+        assert call_args.kwargs["contents"] == "Question: test query"
 
         # Verify tool config
         tools = call_args.kwargs["config"].tools
